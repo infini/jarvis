@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Jarvis</string>
+    <string name="accessibility_service_description">Jarvis가 음성 명령에 따라 카메라 셔터와 기본 화면 조작을 수행합니다.</string>
+</resources>
