@@ -230,10 +230,10 @@ Jarvis는 Android 상태바의 초록색 마이크 표시만으로 상태를 판
 
 | State | Overlay | Sound/Vibration | Meaning |
 | --- | --- | --- | --- |
-| `COMMAND_READY` | 작은 black pill `JARVIS` | 확인음 2회, 짧은 진동 1회 | 호출어 없이 바로 명령 가능 |
-| `COMMAND_PROCESSING` | 작은 black pill `JARVIS` | 없음 | 명령을 실행 중 |
-| `COMMAND_HANDLED` | 작은 black pill `JARVIS` | 확인음 1회, 짧은 진동 1회 | 명령 처리 완료, 다음 명령 가능 |
-| `COMMAND_FAILED` | 작은 black pill `JARVIS` | 실패음 2회, 짧은 진동 2회 | 인식 실패 또는 command window 안의 무명령 |
+| `COMMAND_READY` | 노치 아래 작은 iPhone-style pill `JARVIS` + green dot | 확인음 2회, 짧은 진동 1회 | 호출어 없이 바로 명령 가능 |
+| `COMMAND_PROCESSING` | 노치 아래 작은 iPhone-style pill `JARVIS` + orange dot | 없음 | 명령을 실행 중 |
+| `COMMAND_HANDLED` | 노치 아래 작은 iPhone-style pill `JARVIS` + blue dot | 확인음 1회, 짧은 진동 1회 | 명령 처리 완료, 다음 명령 가능 |
+| `COMMAND_FAILED` | 노치 아래 작은 iPhone-style pill `JARVIS` + red dot | 실패음 2회, 짧은 진동 2회 | 인식 실패 또는 command window 안의 무명령 |
 | `IDLE` | overlay 제거 | 낮은 안내음 1회, 짧은 진동 2회 | 명령 window 종료 |
 
 Passive 상태 표시 정책:
@@ -241,9 +241,9 @@ Passive 상태 표시 정책:
 - owner voice verification 중에는 overlay를 띄우지 않는다. 이 상태는 평상시 기본 대기 상태이므로 지속 표시하면 전체화면 앱 사용을 방해한다.
 - wake waiting 중에도 overlay를 띄우지 않는다. 사용자가 호출어를 말해 command window가 열렸을 때만 명확히 표시한다.
 - notification 문구는 passive 상태 진단용으로 유지하되, 사용자의 현재 화면 위에 지속적으로 노출하지 않는다.
-- overlay text는 상태 설명 문구를 넣지 않고 `JARVIS` 단일 라벨만 사용한다. 상태별 의미는 소리와 진동으로 전달한다.
+- overlay text는 상태 설명 문구를 넣지 않고 `JARVIS` 단일 라벨만 사용한다. 상태별 의미는 작은 컬러 점, 소리, 진동으로 전달한다.
 
-Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표시한다. 별도 “다른 앱 위에 표시” 권한을 요구하지 않지만, Jarvis 접근성 서비스가 켜져 있어야 카메라 앱 위에서도 보인다.
+Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표시한다. 별도 “다른 앱 위에 표시” 권한을 요구하지 않지만, Jarvis 접근성 서비스가 켜져 있어야 카메라 앱 위에서도 보인다. 상단 위치는 Android status bar/display cutout inset을 기준으로 계산해 카메라 노치 영역 아래에 배치한다.
 
 ## 8. Command Model
 

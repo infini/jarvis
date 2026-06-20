@@ -5,7 +5,9 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.view.Gravity
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.TextView
 
@@ -29,12 +31,8 @@ class JarvisStateIndicatorController(
         }
         view.text = INDICATOR_TEXT
         view.setTextColor(Color.WHITE)
-        view.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(16).toFloat()
-            setColor(Color.argb(218, 8, 8, 10))
-            setStroke(dp(1), Color.argb(48, 255, 255, 255))
-        }
+        view.setCompoundDrawables(dotDrawable(dotColorFor(state)), null, null, null)
+        view.background = islandBackground()
     }
 
     fun hide() {
@@ -49,14 +47,45 @@ class JarvisStateIndicatorController(
 
     private fun createIndicatorView(): TextView {
         return TextView(service).apply {
-            textSize = 12f
+            textSize = 11f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            letterSpacing = 0f
-            minWidth = dp(64)
-            setPadding(dp(11), dp(5), dp(11), dp(5))
+            letterSpacing = 0.08f
+            minWidth = dp(78)
+            minHeight = dp(25)
+            compoundDrawablePadding = dp(7)
+            setPadding(dp(12), dp(5), dp(12), dp(5))
             gravity = Gravity.CENTER
             includeFontPadding = false
-            elevation = dp(8).toFloat()
+            elevation = dp(10).toFloat()
+        }
+    }
+
+    private fun islandBackground(): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(18).toFloat()
+            setColor(Color.argb(234, 3, 3, 5))
+            setStroke(dp(1), Color.argb(34, 255, 255, 255))
+        }
+    }
+
+    private fun dotDrawable(color: Int): GradientDrawable {
+        val size = dp(5)
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(color)
+            setSize(size, size)
+            setBounds(0, 0, size, size)
+        }
+    }
+
+    private fun dotColorFor(state: JarvisVoiceState): Int {
+        return when (state) {
+            JarvisVoiceState.COMMAND_READY -> Color.rgb(48, 209, 88)
+            JarvisVoiceState.COMMAND_PROCESSING -> Color.rgb(255, 159, 10)
+            JarvisVoiceState.COMMAND_HANDLED -> Color.rgb(10, 132, 255)
+            JarvisVoiceState.COMMAND_FAILED -> Color.rgb(255, 69, 58)
+            JarvisVoiceState.IDLE -> Color.TRANSPARENT
         }
     }
 
@@ -67,12 +96,46 @@ class JarvisStateIndicatorController(
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = dp(8)
+            y = overlayTopOffset()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode =
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
+            }
+        }
+    }
+
+    private fun overlayTopOffset(): Int {
+        return topSafeInset() + dp(7)
+    }
+
+    private fun topSafeInset(): Int {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val insets = windowManager.currentWindowMetrics.windowInsets
+            val statusBarInset = insets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.statusBars(),
+            ).top
+            val cutoutInset = insets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.displayCutout(),
+            ).top
+            return maxOf(statusBarInset, cutoutInset)
+        }
+        return statusBarHeight()
+    }
+
+    private fun statusBarHeight(): Int {
+        val resourceId = service.resources.getIdentifier(
+            "status_bar_height",
+            "dimen",
+            "android",
+        )
+        return if (resourceId > 0) {
+            service.resources.getDimensionPixelSize(resourceId)
+        } else {
+            0
         }
     }
 
