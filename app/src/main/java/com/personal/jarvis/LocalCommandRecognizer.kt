@@ -60,6 +60,40 @@ object LocalCommandRecognizer {
         }, "JarvisLocalCommandWarmup").start()
     }
 
+    fun recognizeBufferedCommand(
+        context: Context,
+        samples: FloatArray,
+        endpoint: String = "buffered_audio",
+    ): Result {
+        if (!isAvailable(context)) {
+            return Result(command = null, text = "", elapsedMs = 0L, unavailable = true)
+        }
+
+        val startedAt = SystemClock.elapsedRealtime()
+        val localRecognizer = getRecognizer(context.applicationContext)
+        val stream = localRecognizer.createStream()
+        return try {
+            stream.acceptWaveform(samples, SAMPLE_RATE_HZ)
+            stream.inputFinished()
+            while (localRecognizer.isReady(stream)) {
+                localRecognizer.decode(stream)
+            }
+
+            val text = localRecognizer.getResult(stream).text.trim()
+            val command = commandFromText(text)
+            Log.d(TAG, "Buffered local command text='$text' command=$command")
+            Result(
+                command = command,
+                text = text,
+                elapsedMs = SystemClock.elapsedRealtime() - startedAt,
+                endpoint = endpoint,
+                activeSpeechMs = samples.size * 1000L / SAMPLE_RATE_HZ,
+            )
+        } finally {
+            stream.release()
+        }
+    }
+
     @SuppressLint("MissingPermission")
     fun listenForCommand(
         context: Context,
@@ -155,11 +189,16 @@ object LocalCommandRecognizer {
             } else {
                 finalTrailingSilenceMs
             }
+            val finalEndpoint = if (!speechSeen && finalText.isBlank()) {
+                "no_speech_timeout"
+            } else {
+                endpoint
+            }
             return Result(
                 command = finalCommand,
                 text = finalText,
                 elapsedMs = SystemClock.elapsedRealtime() - startedAt,
-                endpoint = endpoint,
+                endpoint = finalEndpoint,
                 activeSpeechMs = activeSpeechMs,
                 trailingSilenceMs = trailing,
             )

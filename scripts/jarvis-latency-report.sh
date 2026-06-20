@@ -44,12 +44,25 @@ function millis(raw) {
   return raw + 0
 }
 
+function addPath(id, name, key) {
+  if (id == "" || name == "") return
+
+  key = id SUBSEP name
+  if (key in pathSeen) return
+
+  pathSeen[key] = 1
+  if (pathText[id] == "") {
+    pathText[id] = name
+  } else {
+    pathText[id] = pathText[id] "->" name
+  }
+}
+
 function printTrace(id) {
   if (id == "" || !seen[id]) return
 
-  path = engine[id]
-  if (path == "") path = "unknown"
-  if (fallback[id] != "") path = path "->" fallback[id]
+  displayPath = pathText[id]
+  if (displayPath == "") displayPath = "unknown"
 
   status = finalEvent[id]
   if (status == "") status = lastEvent[id]
@@ -58,8 +71,14 @@ function printTrace(id) {
   if (displayCommand == "") displayCommand = "-"
   displayStatus = status
   if (displayStatus == "") displayStatus = "-"
-  printf "trace=%s total=%dms path=%s command=%s status=%s parsed=%dms access=%dms bus=%dms\n", id, total[id], path, displayCommand, displayStatus, parsed[id], access[id], bus[id]
+  printf "trace=%s total=%dms path=%s command=%s status=%s parsed=%dms access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, parsed[id], access[id], bus[id]
 
+  if (ownerEndpoint[id] != "") {
+    printf "  owner_endpoint=%s owner_elapsed=%sms speech=%sms\n", ownerEndpoint[id], ownerElapsed[id], ownerSpeech[id]
+  }
+  if (ownerText[id] != "") {
+    printf("  owner_text=%s\n", ownerText[id])
+  }
   if (localText[id] != "") {
     printf("  local_text=%s\n", localText[id])
   }
@@ -87,13 +106,21 @@ function printTrace(id) {
   totalRaw = value($0, "total")
   if (totalRaw != "") total[trace] = millis(totalRaw)
 
-  if (contains($0, "engine=local_asr")) engine[trace] = "local_asr"
-  if (contains($0, "engine=android_stt") && engine[trace] == "") engine[trace] = "android_stt"
-  if (event == "fallback_to_android") fallback[trace] = "android_stt"
+  if (contains($0, "engine=owner_audio_asr")) addPath(trace, "owner_audio_asr")
+  if (contains($0, "engine=local_asr")) addPath(trace, "local_asr")
+  if (contains($0, "engine=android_stt")) addPath(trace, "android_stt")
+  if (event == "fallback_to_android") addPath(trace, "android_stt")
 
   cmd = value($0, "command")
   if (cmd != "") command[trace] = cmd
 
+  if (event == "owner_audio_asr_complete") {
+    ownerEndpoint[trace] = value($0, "endpoint")
+    ownerElapsed[trace] = value($0, "elapsedMs")
+    ownerSpeech[trace] = value($0, "speechMs")
+    text = tailValue($0, "text")
+    if (text != "") ownerText[trace] = text
+  }
   if (event == "local_partial") localText[trace] = tailValue($0, "text")
   if (event == "local_complete") {
     localEndpoint[trace] = value($0, "endpoint")

@@ -7,7 +7,7 @@ import android.util.Log
 class OwnerVoiceGate(
     private val context: Context,
     private val handler: Handler,
-    private val onAuthorized: () -> Unit,
+    private val onAuthorized: (OwnerVoiceEngine.Match) -> Unit,
     private val onMissingProfile: () -> Unit,
     private val onVerificationError: (Exception) -> Unit,
 ) {
@@ -76,7 +76,7 @@ class OwnerVoiceGate(
                     verificationThread = null
                     if (match?.accepted == true) {
                         authorizeFor(authorizationWindowMs)
-                        onAuthorized()
+                        onAuthorized(match)
                     } else {
                         onVerificationError(IllegalStateException("Owner voice verification ended without a match"))
                     }

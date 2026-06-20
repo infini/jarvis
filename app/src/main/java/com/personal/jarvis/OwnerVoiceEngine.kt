@@ -51,6 +51,7 @@ object OwnerVoiceEngine {
         val accepted: Boolean,
         val activeSpeechMs: Long = 0L,
         val acceptance: Acceptance = Acceptance.REJECTED,
+        val commandSamples: FloatArray? = null,
     )
 
     internal data class PreparedAudio(
@@ -114,6 +115,7 @@ object OwnerVoiceEngine {
             accepted = accepted,
             activeSpeechMs = preparedAudio.activeSpeechMs,
             acceptance = if (accepted) Acceptance.STRICT else Acceptance.REJECTED,
+            commandSamples = preparedAudio.samples,
         )
     }
 
