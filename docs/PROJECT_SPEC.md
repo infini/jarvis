@@ -224,19 +224,23 @@ JarvisAccessibilityService
 
 ### Voice State Feedback
 
-Jarvis는 Android 상태바의 초록색 마이크 표시만으로 상태를 판단하지 않는다. 마이크 표시의 의미는 “마이크 사용 중”뿐이므로, 명령 가능 여부는 Jarvis 자체 feedback으로 표시한다.
+Jarvis는 Android 상태바의 초록색 마이크 표시만으로 상태를 판단하지 않는다. 마이크 표시의 의미는 “마이크 사용 중”뿐이므로, 명령 가능 여부는 Jarvis 자체 feedback으로 표시한다. 다만 idle, owner verification, wake waiting처럼 사용자가 즉시 수행할 액션이 없는 passive 상태에서는 화면을 계속 가리지 않도록 overlay를 표시하지 않는다.
 
 상태별 사용자 feedback:
 
 | State | Overlay | Sound/Vibration | Meaning |
 | --- | --- | --- | --- |
-| `WAKE_WAITING` | 회색 `JARVIS · 호출어 대기` | 없음 | owner voice가 없거나 fallback 상태에서 호출어가 필요한 대기 |
-| `OWNER_VERIFYING` | 회색 `JARVIS · 소유자 확인 중` | 없음 | 소유자 목소리 확인 중이며 아직 명령 window가 열리지 않음 |
 | `COMMAND_READY` | 초록색 `JARVIS 듣는 중` | 확인음 2회, 짧은 진동 1회 | 호출어 없이 바로 명령 가능 |
 | `COMMAND_PROCESSING` | 주황색 `JARVIS 처리 중` | 없음 | 명령을 실행 중 |
 | `COMMAND_HANDLED` | 파란색 `JARVIS · 다음 명령 가능` | 확인음 1회, 짧은 진동 1회 | 명령 처리 완료, 다음 명령 가능 |
 | `COMMAND_FAILED` | 빨간색 `JARVIS · 다시 말하세요` | 실패음 2회, 짧은 진동 2회 | 인식 실패 또는 command window 안의 무명령 |
 | `IDLE` | overlay 제거 | 낮은 안내음 1회, 짧은 진동 2회 | 명령 window 종료 |
+
+Passive 상태 표시 정책:
+
+- owner voice verification 중에는 overlay를 띄우지 않는다. 이 상태는 평상시 기본 대기 상태이므로 지속 표시하면 전체화면 앱 사용을 방해한다.
+- wake waiting 중에도 overlay를 띄우지 않는다. 사용자가 호출어를 말해 command window가 열렸을 때만 명확히 표시한다.
+- notification 문구는 passive 상태 진단용으로 유지하되, 사용자의 현재 화면 위에 지속적으로 노출하지 않는다.
 
 Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표시한다. 별도 “다른 앱 위에 표시” 권한을 요구하지 않지만, Jarvis 접근성 서비스가 켜져 있어야 카메라 앱 위에서도 보인다.
 
@@ -417,11 +421,10 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 ### State Feedback Test
 
-- owner gate 대기 중 회색 `JARVIS · 소유자 확인 중` overlay가 표시된다.
 - owner gate 통과 또는 wake-only 발화 후 초록색 `JARVIS 듣는 중` overlay, 확인음 2회, 짧은 진동 1회가 발생한다.
 - 카메라 명령 처리 후 파란색 `JARVIS · 다음 명령 가능` overlay, 확인음 1회, 짧은 진동 1회가 발생한다.
 - command window 안에서 인식 실패 시 빨간색 `JARVIS · 다시 말하세요` overlay, 실패음 2회, 짧은 진동 2회가 발생한다.
-- command window가 종료되면 overlay가 사라지거나 다음 owner gate 상태 overlay로 전환된다.
+- owner gate 대기, 호출어 대기, command window 종료 상태에서는 overlay가 사라진다.
 
 ### Camera Automation Test
 

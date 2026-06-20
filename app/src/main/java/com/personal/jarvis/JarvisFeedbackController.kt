@@ -25,11 +25,11 @@ class JarvisFeedbackController(
     private var currentState: JarvisVoiceState? = null
 
     fun showWakeWaiting() {
-        signal(JarvisVoiceState.WAKE_WAITING)
+        hidePassiveStatus()
     }
 
     fun showOwnerVerifying() {
-        signal(JarvisVoiceState.OWNER_VERIFYING)
+        hidePassiveStatus()
     }
 
     fun commandReady() {
@@ -68,6 +68,10 @@ class JarvisFeedbackController(
 
     fun release() {
         runCatching { toneGenerator.release() }
+    }
+
+    private fun hidePassiveStatus() {
+        signal(JarvisVoiceState.IDLE)
     }
 
     private fun signal(

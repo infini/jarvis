@@ -76,18 +76,6 @@ class JarvisStateIndicatorController(
 
     private fun styleFor(state: JarvisVoiceState): IndicatorStyle {
         return when (state) {
-            JarvisVoiceState.WAKE_WAITING -> IndicatorStyle(
-                text = "JARVIS · 호출어 대기",
-                backgroundColor = Color.argb(210, 38, 42, 48),
-                strokeColor = Color.argb(180, 122, 132, 146),
-                textColor = Color.WHITE,
-            )
-            JarvisVoiceState.OWNER_VERIFYING -> IndicatorStyle(
-                text = "JARVIS · 소유자 확인 중",
-                backgroundColor = Color.argb(210, 44, 47, 54),
-                strokeColor = Color.argb(180, 144, 153, 166),
-                textColor = Color.WHITE,
-            )
             JarvisVoiceState.COMMAND_READY -> IndicatorStyle(
                 text = "JARVIS 듣는 중",
                 backgroundColor = Color.argb(232, 7, 112, 72),
