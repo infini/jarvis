@@ -16,7 +16,7 @@ import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 object LocalCommandRecognizer {
     private const val TAG = "JarvisLocalCommand"
     private const val SAMPLE_RATE_HZ = 16000
-    private const val READ_INTERVAL_MS = 60L
+    private const val READ_INTERVAL_MS = 40L
     private const val MODEL_DIR = "sherpa-korean-streaming"
     private const val ENCODER = "$MODEL_DIR/encoder-epoch-99-avg-1.int8.onnx"
     private const val DECODER = "$MODEL_DIR/decoder-epoch-99-avg-1.onnx"
@@ -132,7 +132,7 @@ object LocalCommandRecognizer {
             val onlineModel = OnlineModelConfig().apply {
                 this.transducer = transducer
                 tokens = TOKENS
-                numThreads = 2
+                numThreads = 4
                 debug = false
                 provider = "cpu"
                 modelType = "zipformer"
