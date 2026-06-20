@@ -24,8 +24,8 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - Xiaomi 15 Ultra에서 `JarvisVoiceService` foreground 실행, 접근성 서비스 바인딩, 배터리 최적화 예외 등록 확인
 - 2026-06-20 21:26 KST 기준 약 15분 유지 테스트에서 프로세스, foreground notification, 접근성 바인딩, owner voice verification loop 유지 확인
 - `자비스` 또는 `헤이 자비스` wake-only 발화 후 확인음/명령 대기 알림을 제공하고, 인증 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
-- wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 25ms로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
-- owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 2.5초 window를 500ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임을 줄임
+- wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 즉시 실행으로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
+- owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 2.0초 window를 250ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
 
 다음 우선순위:
 
@@ -196,9 +196,9 @@ JarvisAccessibilityService
 
 기본 명령은 `자비스` 계열 호출어를 포함해야 한다. 현재 허용 호출어는 `자비스`, `자베스`, `쟈비스`, `제비스`, `차비스`, `jarvis`다. 이는 우발적인 반응을 줄이는 장치이며, 등록된 소유자 목소리 인증을 통과한 경우에만 명령 인식 window를 연다.
 
-예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `자비스` 또는 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. wake-only 발화가 인식되면 window를 다시 12초로 연장하고 25ms 후 다음 명령 인식을 시작한다.
+예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `자비스` 또는 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. wake-only 발화가 인식되면 window를 다시 12초로 연장하고 즉시 다음 명령 인식을 시작한다.
 
-카메라 세션 명령은 처리 후에도 인증 window를 다시 30초로 연장한다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리할 수 있어야 한다. 리스닝이 인증 window 안에서 시작됐다면 final STT 결과가 window 만료 직후 도착해도 해당 발화는 호출어 없는 명령으로 인정한다. 카메라 세션 명령과 `home` 종료 명령은 partial STT 결과에서 먼저 해석되면 즉시 실행하고, 이어서 도착하는 final STT 결과에서는 중복 실행하지 않는다. `home`, `back`, `stop_listening` 같은 종료성 명령은 window를 닫는다.
+카메라 세션 명령은 처리 후에도 인증 window를 다시 30초로 연장한다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리할 수 있어야 한다. 리스닝이 인증 window 안에서 시작됐다면 final STT 결과가 window 만료 직후 도착해도 해당 발화는 호출어 없는 명령으로 인정한다. 카메라 세션 명령과 `home` 종료 명령은 partial STT 결과에서 먼저 해석되면 즉시 실행하고, 이어서 도착하는 final STT 결과에서는 중복 실행하지 않는다. partial 명령 후에는 `SpeechRecognizer.cancel()`로 현재 인식을 빠르게 종료하고, 콜백이 250ms 안에 오지 않으면 recognizer를 재생성해 다음 명령 대기로 돌아간다. `home`, `back`, `stop_listening` 같은 종료성 명령은 window를 닫는다.
 
 ## 8.1 Owner Voice Gate
 
@@ -216,12 +216,12 @@ JarvisAccessibilityService
 2. `OwnerVoiceEngine`이 16kHz mono PCM을 녹음하고 sherpa-onnx로 speaker embedding을 계산한다.
 3. 계산된 embedding을 `OwnerVoiceStore`에 저장한다.
 4. 이후 `JarvisVoiceService`는 owner embedding이 있으면 owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
-5. 최근 2.5초 rolling audio window에서 candidate embedding을 만들고 500ms마다 저장된 embedding과 cosine similarity를 비교한다.
+5. 최근 2.0초 rolling audio window에서 candidate embedding을 만들고 250ms마다 저장된 embedding과 cosine similarity를 비교한다.
 6. similarity가 threshold 이상이면 `AudioRecord`를 닫고 12초 인증 window를 열어 `SpeechRecognizer` 명령 인식을 시작한다.
 7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
 8. window 안에서는 호출어 없는 명령도 허용하며, STT의 command-mode silence timeout을 더 짧게 사용한다.
 9. 카메라 세션 명령과 `home` 종료 명령은 partial STT 결과에서 먼저 해석되면 즉시 실행한다.
-10. partial로 실행한 명령은 final STT 결과 또는 짧은 fallback timeout에서 command window 정리를 완료하며 중복 실행하지 않는다.
+10. partial로 실행한 명령은 recognizer cancel callback 또는 250ms fallback timeout에서 command window 정리를 완료하며 중복 실행하지 않는다.
 11. 카메라 세션 명령이면 인증 window를 30초 연장하고 바로 다음 명령 인식을 시작한다.
 12. 그 외 명령 처리 후에는 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
 

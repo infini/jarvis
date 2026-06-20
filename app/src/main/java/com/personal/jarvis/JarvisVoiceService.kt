@@ -53,6 +53,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         Log.d(TAG, "Finalizing partial command without recognizer callback")
         listening = false
         handler.removeCallbacks(listeningTimeout)
+        resetRecognizer()
         completePartialCommandRun("partial finalize timeout")
     }
 
@@ -91,6 +92,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
             it.setRecognitionListener(this)
         }
         Log.d(TAG, "Speech recognizer created")
+    }
+
+    private fun resetRecognizer() {
+        runCatching { recognizer?.destroy() }
+        recognizer = null
+        createRecognizer()
     }
 
     private fun scheduleListening(delayMs: Long) {
@@ -259,21 +266,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         when (command) {
             CommandBus.COMMAND_STOP_LISTENING -> stopSelf()
-            CommandBus.COMMAND_OPEN_CAMERA -> {
-                CameraLauncher.open(this)
-                CommandBus.send(this, command, "voice")
-            }
-            CommandBus.COMMAND_OPEN_FRONT_CAMERA -> {
-                CameraLauncher.openFront(this)
-                CommandBus.send(this, command, "voice")
-            }
-            CommandBus.COMMAND_OPEN_REAR_CAMERA -> {
-                CameraLauncher.openRear(this)
-                CommandBus.send(this, command, "voice")
-            }
+            CommandBus.COMMAND_OPEN_CAMERA -> CameraLauncher.open(this)
+            CommandBus.COMMAND_OPEN_FRONT_CAMERA,
+            CommandBus.COMMAND_OPEN_REAR_CAMERA -> CommandBus.send(this, command, "voice")
             CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO -> {
                 CameraLauncher.open(this)
-                CommandBus.send(this, CommandBus.COMMAND_OPEN_CAMERA, "voice")
                 handler.postDelayed(
                     { CommandBus.send(this, CommandBus.COMMAND_TAKE_PHOTO, "voice") },
                     CAMERA_OPEN_DELAY_MS,
@@ -469,7 +466,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             handler.removeCallbacks(listeningTimeout)
             handler.removeCallbacks(partialCommandFinalize)
             handler.postDelayed(partialCommandFinalize, PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS)
-            runCatching { recognizer?.stopListening() }
+            runCatching { recognizer?.cancel() }
             return true
         }
         return false
@@ -485,19 +482,19 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_AUTH_WINDOW_MS = 12000L
         private const val CAMERA_SESSION_AUTH_WINDOW_MS = 30000L
         private const val COMMAND_RETRY_GRACE_MS = 2000L
-        private const val OWNER_VERIFY_AUDIO_MS = 2500L
-        private const val OWNER_VERIFY_INTERVAL_MS = 500L
-        private const val OWNER_VERIFY_RETRY_MS = 700L
-        private const val COMMAND_READY_LISTEN_DELAY_MS = 25L
-        private const val COMMAND_RETRY_DELAY_MS = 75L
+        private const val OWNER_VERIFY_AUDIO_MS = 2000L
+        private const val OWNER_VERIFY_INTERVAL_MS = 250L
+        private const val OWNER_VERIFY_RETRY_MS = 300L
+        private const val COMMAND_READY_LISTEN_DELAY_MS = 0L
+        private const val COMMAND_RETRY_DELAY_MS = 25L
         private const val DEFAULT_INPUT_MINIMUM_LENGTH_MS = 1200L
         private const val DEFAULT_POSSIBLY_COMPLETE_SILENCE_MS = 700L
         private const val DEFAULT_COMPLETE_SILENCE_MS = 1000L
-        private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 700L
-        private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 350L
-        private const val COMMAND_COMPLETE_SILENCE_MS = 600L
+        private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 350L
+        private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 180L
+        private const val COMMAND_COMPLETE_SILENCE_MS = 350L
         private const val OWNER_READY_TONE_MS = 120
-        private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 900L
+        private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 250L
         private const val DEFAULT_NOTIFICATION_TEXT = "소유자 목소리 확인 후 음성 명령을 듣습니다."
         private val CAMERA_SESSION_COMMANDS = setOf(
             CommandBus.COMMAND_OPEN_CAMERA,
