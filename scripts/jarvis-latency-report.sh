@@ -73,8 +73,11 @@ function printTrace(id) {
   if (displayStatus == "") displayStatus = "-"
   printf "trace=%s total=%dms path=%s command=%s status=%s parsed=%dms access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, parsed[id], access[id], bus[id]
 
+  if (ownerAcceptance[id] != "") {
+    printf "  owner_acceptance=%s owner_auth_speech=%sms\n", ownerAcceptance[id], ownerAuthSpeech[id]
+  }
   if (ownerEndpoint[id] != "") {
-    printf "  owner_endpoint=%s owner_elapsed=%sms speech=%sms\n", ownerEndpoint[id], ownerElapsed[id], ownerSpeech[id]
+    printf "  owner_endpoint=%s owner_elapsed=%sms speech=%sms samples=%sms\n", ownerEndpoint[id], ownerElapsed[id], ownerSpeech[id], ownerSamples[id]
   }
   if (ownerText[id] != "") {
     printf("  owner_text=%s\n", ownerText[id])
@@ -114,6 +117,13 @@ function printTrace(id) {
   cmd = value($0, "command")
   if (cmd != "") command[trace] = cmd
 
+  if (event == "owner_authorized") {
+    ownerAcceptance[trace] = value($0, "acceptance")
+    ownerAuthSpeech[trace] = value($0, "speechMs")
+  }
+  if (event == "owner_audio_asr_start") {
+    ownerSamples[trace] = value($0, "samplesMs")
+  }
   if (event == "owner_audio_asr_complete") {
     ownerEndpoint[trace] = value($0, "endpoint")
     ownerElapsed[trace] = value($0, "elapsedMs")
