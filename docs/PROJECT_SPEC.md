@@ -318,7 +318,7 @@ adb logcat -v time -s JarvisLatency
 - Runtime: `sherpa-onnx` 공식 Android AAR `v1.13.3`의 Kotlin API jar와 `arm64-v8a` native libraries
 - Model: `3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`
 - 저장 방식: 소유자 embedding `FloatArray`를 little-endian bytes로 변환한 뒤 Base64 인코딩하여 앱 private `SharedPreferences`에 저장한다.
-- 기본 허용 threshold는 `0.50`이다. 짧은 호출어 보정을 위해 말소리 구간이 600ms 이상이고 similarity `0.46` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. 인증 중에는 1.6초 rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다.
+- 기본 허용 threshold는 `0.50`이다. 짧은 호출어 보정을 위해 말소리 구간이 600ms 이상이고 similarity `0.28` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. 인증 중에는 1.6초 rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다. Xiaomi 15 Ultra 실측에서 짧은 `자비스` 호출어는 live score가 대체로 `0.25~0.36` 범위에 머물러 기존 `0.46` near threshold를 통과하지 못했으므로 호출어 전용 near threshold를 낮췄다.
 - 현재 APK는 Xiaomi 15 Ultra를 우선해 `arm64-v8a` ABI만 패키징한다.
 
 현재 구현 흐름:

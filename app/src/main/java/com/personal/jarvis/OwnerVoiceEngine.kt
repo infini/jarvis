@@ -25,7 +25,7 @@ object OwnerVoiceEngine {
     private const val VERIFY_MIN_PEAK_TO_FLOOR_RATIO = 2.2f
     private const val VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS = 0.0025f
     private const val VERIFY_ACTIVE_RMS_RANGE_RATIO = 0.40f
-    private const val NEAR_ACCEPT_THRESHOLD = 0.46f
+    const val NEAR_ACCEPT_THRESHOLD = 0.28f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
     private const val NEAR_ACCEPT_MIN_SPEECH_MS = 600L
 
