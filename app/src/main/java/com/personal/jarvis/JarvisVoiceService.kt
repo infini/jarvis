@@ -34,6 +34,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                             "speechMs=${match.activeSpeechMs} score=${match.score} " +
                             "ownerElapsedMs=${match.verificationElapsedMs} " +
                             "ownerAttempts=${match.verificationAttempts} " +
+                            "profileEmbeddings=${match.ownerEmbeddingCount} " +
                             "peakRms=${match.peakRms} reason=${match.rejectReason ?: "none"}",
                     )
                     openCommandWindow(OWNER_AUTH_WINDOW_MS)

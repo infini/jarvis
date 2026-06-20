@@ -108,6 +108,19 @@ class OwnerVoiceEngineTest {
     }
 
     @Test
+    fun createsShortEnrollmentSegmentsFromLongRecording() {
+        val sampleRate = OwnerVoiceEngine.SAMPLE_RATE_HZ
+        val samples = FloatArray(sampleRate * 6)
+
+        val segments = OwnerVoiceEngine.enrollmentSegments(samples)
+
+        assertEquals(7, segments.size)
+        segments.forEach { segment ->
+            assertEquals(sampleRate * 1400 / 1000, segment.size)
+        }
+    }
+
+    @Test
     fun acceptsNearMatchAfterTwoConsecutiveScores() {
         val first = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
             match = ownerMatch(score = 0.29f, activeSpeechMs = 650L),

@@ -90,6 +90,7 @@ function printTrace(id) {
     printf "  owner_acceptance=%s owner_auth_speech=%sms", ownerAcceptance[id], ownerAuthSpeech[id]
     if (ownerGateElapsed[id] != "") printf " owner_gate_elapsed=%sms", ownerGateElapsed[id]
     if (ownerAttempts[id] != "") printf " owner_attempts=%s", ownerAttempts[id]
+    if (ownerProfileEmbeddings[id] != "") printf " profile_embeddings=%s", ownerProfileEmbeddings[id]
     printf "\n"
   }
   if (ownerEndpoint[id] != "") {
@@ -147,6 +148,7 @@ function printTrace(id) {
     ownerAuthSpeech[trace] = value($0, "speechMs")
     ownerGateElapsed[trace] = value($0, "ownerElapsedMs")
     ownerAttempts[trace] = value($0, "ownerAttempts")
+    ownerProfileEmbeddings[trace] = value($0, "profileEmbeddings")
   }
   if (event == "owner_audio_asr_start") {
     ownerSamples[trace] = value($0, "samplesMs")

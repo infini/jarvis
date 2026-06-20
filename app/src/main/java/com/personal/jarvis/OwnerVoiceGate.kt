@@ -71,6 +71,7 @@ class OwnerVoiceGate(
                                 "score=${candidate.score}, speech=${candidate.activeSpeechMs}ms, " +
                                 "elapsed=${candidate.verificationElapsedMs}ms, " +
                                 "attempts=${candidate.verificationAttempts}, " +
+                                "profileEmbeddings=${candidate.ownerEmbeddingCount}, " +
                                 "peakRms=${candidate.peakRms}, noiseRms=${candidate.noiseFloorRms}, " +
                                 "thresholdRms=${candidate.activeThresholdRms}, " +
                                 "reason=${candidate.rejectReason ?: "none"}",

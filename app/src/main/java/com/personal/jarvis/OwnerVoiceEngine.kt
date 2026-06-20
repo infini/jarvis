@@ -27,6 +27,10 @@ object OwnerVoiceEngine {
     private const val VERIFY_MIN_PEAK_TO_FLOOR_RATIO = 1.8f
     private const val VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS = 0.00032f
     private const val VERIFY_ACTIVE_RMS_RANGE_RATIO = 0.28f
+    private const val ENROLLMENT_SEGMENT_MS = 1400L
+    private const val ENROLLMENT_SEGMENT_STEP_MS = 700L
+    private const val ENROLLMENT_DUPLICATE_SIMILARITY = 0.995f
+    const val MAX_OWNER_EMBEDDINGS = 8
     const val NEAR_ACCEPT_THRESHOLD = 0.28f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
     private const val NEAR_ACCEPT_MIN_SPEECH_MS = 450L
@@ -66,6 +70,7 @@ object OwnerVoiceEngine {
         val activeSpeechMs: Long = 0L,
         val acceptance: Acceptance = Acceptance.REJECTED,
         val commandSamples: FloatArray? = null,
+        val ownerEmbeddingCount: Int = 0,
         val peakRms: Float = 0f,
         val noiseFloorRms: Float = 0f,
         val activeThresholdRms: Float = 0f,
@@ -122,6 +127,24 @@ object OwnerVoiceEngine {
         return createEmbedding(context, preparedAudio)
     }
 
+    fun createEnrollmentEmbeddings(context: Context, samples: FloatArray): List<FloatArray> {
+        val embeddings = mutableListOf<FloatArray>()
+
+        createEmbedding(context, samples)?.let { embeddings += it }
+        for (segment in enrollmentSegments(samples)) {
+            if (embeddings.size >= MAX_OWNER_EMBEDDINGS) break
+
+            val embedding = createEmbedding(context, segment) ?: continue
+            if (embeddings.any { cosineSimilarity(it, embedding) >= ENROLLMENT_DUPLICATE_SIMILARITY }) {
+                continue
+            }
+
+            embeddings += embedding
+        }
+
+        return embeddings
+    }
+
     private fun createEmbedding(context: Context, preparedAudio: PreparedAudio): FloatArray? {
         synchronized(computeLock) {
             val speakerExtractor = getExtractor(context.applicationContext)
@@ -144,9 +167,14 @@ object OwnerVoiceEngine {
         context: Context,
         samples: FloatArray,
         threshold: Float = OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD,
+        ownerEmbeddings: List<FloatArray> = OwnerVoiceStore.getEmbeddings(context),
     ): Match {
-        val ownerEmbedding = OwnerVoiceStore.getEmbedding(context)
-            ?: return Match(0f, accepted = false, rejectReason = RejectReason.MISSING_PROFILE)
+        val validOwnerEmbeddings = ownerEmbeddings.filter { it.isNotEmpty() }
+        if (validOwnerEmbeddings.isEmpty()) {
+            return Match(0f, accepted = false, rejectReason = RejectReason.MISSING_PROFILE)
+        }
+
+        val ownerEmbeddingCount = validOwnerEmbeddings.size
         val preparedAudioResult = prepareSamplesForEmbeddingResult(
             samples = samples,
             requireSpeechContrast = true,
@@ -158,6 +186,7 @@ object OwnerVoiceEngine {
             peakRms = preparedAudioResult.peakRms,
             noiseFloorRms = preparedAudioResult.noiseFloorRms,
             activeThresholdRms = preparedAudioResult.activeThresholdRms,
+            ownerEmbeddingCount = ownerEmbeddingCount,
             rejectReason = preparedAudioResult.rejectReason,
         )
         val candidateEmbedding = createEmbedding(context, preparedAudio)
@@ -168,9 +197,11 @@ object OwnerVoiceEngine {
                 peakRms = preparedAudio.peakRms,
                 noiseFloorRms = preparedAudio.noiseFloorRms,
                 activeThresholdRms = preparedAudio.activeThresholdRms,
+                ownerEmbeddingCount = ownerEmbeddingCount,
                 rejectReason = RejectReason.EMBEDDING_NOT_READY,
             )
-        val score = cosineSimilarity(ownerEmbedding, candidateEmbedding)
+        val score = validOwnerEmbeddings
+            .maxOf { ownerEmbedding -> cosineSimilarity(ownerEmbedding, candidateEmbedding) }
         val accepted = score >= threshold
         return Match(
             score = score,
@@ -178,6 +209,7 @@ object OwnerVoiceEngine {
             activeSpeechMs = preparedAudio.activeSpeechMs,
             acceptance = if (accepted) Acceptance.STRICT else Acceptance.REJECTED,
             commandSamples = preparedAudio.samples,
+            ownerEmbeddingCount = ownerEmbeddingCount,
             peakRms = preparedAudio.peakRms,
             noiseFloorRms = preparedAudio.noiseFloorRms,
             activeThresholdRms = preparedAudio.activeThresholdRms,
@@ -204,6 +236,7 @@ object OwnerVoiceEngine {
         val startedAt = System.currentTimeMillis()
         var verificationAttempts = 0
         var consecutiveAcceptState = ConsecutiveAcceptState()
+        val ownerEmbeddings = OwnerVoiceStore.getEmbeddings(context)
 
         try {
             recorder.startRecording()
@@ -223,7 +256,11 @@ object OwnerVoiceEngine {
                 if (totalSamples >= maxWindowSamples && now - lastVerificationAt >= verificationIntervalMs) {
                     lastVerificationAt = now
                     verificationAttempts += 1
-                    val match = verifyOwner(context, flattenLastSamples(chunks, maxWindowSamples, totalSamples))
+                    val match = verifyOwner(
+                        context = context,
+                        samples = flattenLastSamples(chunks, maxWindowSamples, totalSamples),
+                        ownerEmbeddings = ownerEmbeddings,
+                    )
                     val adjustedMatch = applyConsecutiveAcceptPolicy(match, consecutiveAcceptState)
                     consecutiveAcceptState = adjustedMatch.second
                     val timedMatch = adjustedMatch.first.copy(
@@ -396,6 +433,20 @@ object OwnerVoiceEngine {
         samples: FloatArray,
         requireSpeechContrast: Boolean = false,
     ): PreparedAudio? = prepareSamplesForEmbeddingResult(samples, requireSpeechContrast).audio
+
+    internal fun enrollmentSegments(samples: FloatArray): List<FloatArray> {
+        val segmentSamples = (SAMPLE_RATE_HZ * ENROLLMENT_SEGMENT_MS / 1000L).toInt()
+        val stepSamples = (SAMPLE_RATE_HZ * ENROLLMENT_SEGMENT_STEP_MS / 1000L).toInt()
+        if (samples.size < segmentSamples || segmentSamples <= 0 || stepSamples <= 0) return emptyList()
+
+        val segments = mutableListOf<FloatArray>()
+        var start = 0
+        while (start + segmentSamples <= samples.size) {
+            segments += samples.copyOfRange(start, start + segmentSamples)
+            start += stepSamples
+        }
+        return segments
+    }
 
     private fun prepareSamplesForEmbeddingResult(
         samples: FloatArray,

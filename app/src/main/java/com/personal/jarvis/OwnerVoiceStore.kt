@@ -7,6 +7,7 @@ import java.nio.ByteOrder
 
 object OwnerVoiceStore {
     private const val PREFS_NAME = "owner_voice"
+    private const val KEY_EMBEDDINGS = "owner_embeddings_v2"
     private const val KEY_EMBEDDING = "owner_embedding_v1"
     private const val KEY_ACCESS_KEY_LEGACY = "picovoice_access_key"
     private const val KEY_PROFILE_LEGACY = "owner_profile"
@@ -15,39 +16,72 @@ object OwnerVoiceStore {
     const val DEFAULT_ACCEPT_THRESHOLD = 0.50f
 
     fun saveEmbedding(context: Context, embedding: FloatArray) {
-        val bytes = ByteBuffer.allocate(embedding.size * Float.SIZE_BYTES)
-            .order(ByteOrder.LITTLE_ENDIAN)
-            .apply {
-                embedding.forEach(::putFloat)
-            }
-            .array()
-        val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
+        saveEmbeddings(context, listOf(embedding))
+    }
+
+    fun saveEmbeddings(context: Context, embeddings: List<FloatArray>) {
+        val validEmbeddings = embeddings.filter { it.isNotEmpty() }
+        if (validEmbeddings.isEmpty()) return
+
+        val encoded = validEmbeddings.joinToString("\n", transform = ::encodeEmbedding)
         prefs(context)
             .edit()
-            .putString(KEY_EMBEDDING, encoded)
+            .putString(KEY_EMBEDDINGS, encoded)
+            .putString(KEY_EMBEDDING, encodeEmbedding(validEmbeddings.first()))
             .apply()
     }
 
-    fun getEmbedding(context: Context): FloatArray? {
-        val encoded = prefs(context).getString(KEY_EMBEDDING, null) ?: return null
-        val bytes = runCatching { Base64.decode(encoded, Base64.NO_WRAP) }.getOrNull() ?: return null
-        if (bytes.isEmpty() || bytes.size % Float.SIZE_BYTES != 0) return null
+    fun getEmbedding(context: Context): FloatArray? = getEmbeddings(context).firstOrNull()
 
-        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
-        return FloatArray(bytes.size / Float.SIZE_BYTES) { buffer.float }
+    fun getEmbeddings(context: Context): List<FloatArray> {
+        val stored = prefs(context).getString(KEY_EMBEDDINGS, null)
+            ?.lineSequence()
+            ?.mapNotNull { decodeEmbedding(it.trim()) }
+            ?.filter { it.isNotEmpty() }
+            ?.toList()
+            .orEmpty()
+        if (stored.isNotEmpty()) return stored
+
+        return getLegacyEmbedding(context)?.let(::listOf).orEmpty()
     }
 
-    fun hasProfile(context: Context): Boolean = getEmbedding(context) != null
+    fun embeddingCount(context: Context): Int = getEmbeddings(context).size
+
+    fun hasProfile(context: Context): Boolean = getEmbeddings(context).isNotEmpty()
 
     fun isConfigured(context: Context): Boolean = hasProfile(context)
 
     fun clearProfile(context: Context) {
         prefs(context)
             .edit()
+            .remove(KEY_EMBEDDINGS)
             .remove(KEY_EMBEDDING)
             .remove(KEY_ACCESS_KEY_LEGACY)
             .remove(KEY_PROFILE_LEGACY)
             .apply()
+    }
+
+    private fun encodeEmbedding(embedding: FloatArray): String {
+        val bytes = ByteBuffer.allocate(embedding.size * Float.SIZE_BYTES)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .apply {
+                embedding.forEach(::putFloat)
+            }
+            .array()
+        return Base64.encodeToString(bytes, Base64.NO_WRAP)
+    }
+
+    private fun getLegacyEmbedding(context: Context): FloatArray? {
+        val encoded = prefs(context).getString(KEY_EMBEDDING, null) ?: return null
+        return decodeEmbedding(encoded)
+    }
+
+    private fun decodeEmbedding(encoded: String): FloatArray? {
+        val bytes = runCatching { Base64.decode(encoded, Base64.NO_WRAP) }.getOrNull() ?: return null
+        if (bytes.isEmpty() || bytes.size % Float.SIZE_BYTES != 0) return null
+
+        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        return FloatArray(bytes.size / Float.SIZE_BYTES) { buffer.float }
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

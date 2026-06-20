@@ -9,8 +9,8 @@
 - `JarvisVoiceService`: 마이크를 사용하는 포그라운드 서비스입니다. 소유자 인증, 명령 인식, 명령 실행 객체를 조합해 음성 상태 전환을 관리합니다.
 - `JarvisVoiceServiceStarter`: 앱 UI와 접근성 watchdog에서 공통으로 쓰는 음성 서비스 시작 helper입니다.
 - `OwnerVoiceGate`: 등록된 소유자 목소리를 확인하고 짧은 명령 window를 엽니다.
-- `OwnerVoiceEngine`: sherpa-onnx와 3D-Speaker CAM++ 모델로 소유자 목소리 embedding을 만들고 검증합니다.
-- `OwnerVoiceStore`: 등록된 소유자 목소리 embedding을 앱 private storage에 저장합니다.
+- `OwnerVoiceEngine`: sherpa-onnx와 3D-Speaker CAM++ 모델로 소유자 목소리 embedding 묶음을 만들고 검증합니다.
+- `OwnerVoiceStore`: 등록된 소유자 목소리 embedding 묶음을 앱 private storage에 저장합니다.
 - `OwnerVoiceEnrollmentController`: 앱 UI에서 실행되는 소유자 목소리 등록 workflow를 담당합니다.
 - `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 owner gate 직전 음성 window와 Android STT 실패 fallback을 인식합니다.
 - `LocalCommandSession`: 로컬 명령 ASR 스레드 상태를 관리합니다.
@@ -94,7 +94,7 @@ scripts/jarvis-command-trace.sh 45
 1. Android Studio에서 이 폴더를 엽니다.
 2. 앱을 설치합니다.
 3. 앱에서 마이크 권한과 알림 권한을 허용합니다.
-4. `내 목소리 등록 시작`을 누른 뒤 조용한 곳에서 6초 동안 자연스럽게 말합니다.
+4. `내 목소리 등록 시작`을 누른 뒤 조용한 곳에서 6초 동안 `자비스`를 여러 번 또렷하게 말합니다.
 5. `접근성 설정 열기`를 누르고 `Jarvis` 접근성 서비스를 켭니다.
 6. HyperOS 앱 설정에서 자동 시작을 허용하고 배터리 제한을 풀어줍니다.
 7. 앱으로 돌아와 `Jarvis 시작`을 누릅니다. 이후 접근성 서비스가 살아 있으면 Jarvis 음성 서비스가 내려간 상태를 watchdog이 주기적으로 복구합니다.
@@ -129,6 +129,6 @@ scripts/jarvis-command-trace.sh 45
 
 `화면 켜`는 꺼진 디스플레이를 깨워 잠금화면을 보이게 하는 동작입니다. `화면 꺼`는 접근성 서비스의 잠금화면 전역 액션으로 기기를 잠그는 동작입니다. Android 보안 정책상 비밀번호, 지문, 얼굴인식 같은 잠금 해제는 자동으로 우회하지 않습니다.
 
-소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 마이크를 열어 둔 채 최근 1.2초 음성 window를 반복 검사하고, 통과한 짧은 시간 동안만 명령 인식 window를 엽니다. owner gate는 말소리 앞뒤의 무음을 줄여 embedding을 만들고, 기본 threshold `0.50`을 넘으면 즉시 통과합니다. 인증 중에는 일정한 배경음이 계속 말소리로 처리되지 않도록 배경음 floor 대비 피크가 충분한 구간만 embedding으로 계산합니다. 등록/일반 embedding은 최소 peak RMS `0.002`를 유지하되, Xiaomi 15 Ultra 실기기에서 짧은 `자비스` 발화가 peak RMS `0.0009`대까지 낮게 들어오는 로그가 확인되어 owner verification 경로만 최소 peak RMS `0.00075`, 최소 active RMS `0.00050`, floor 대비 최소 상승폭 `0.00032`로 분리했습니다. 짧은 호출어를 보정하기 위해 active speech가 충분한 `0.28` 이상 근접 점수가 2회 연속 나오거나, 450ms 이상 말소리에서 `0.24` 이상 soft wake 점수가 1회 나오거나, 400ms 이상 말소리에서 `0.14` 이상 soft wake 점수가 4회 나오면 같은 소유자 발화로 보고 command window를 엽니다. soft wake 연속 판정은 짧은 `자비스` 발화의 점수 흔들림을 흡수하기 위해 중간에 `0.10` 이상 애매한 점수 1회까지 허용합니다. owner gate가 통과하면 command window는 즉시 초록 `JARVIS` overlay로 표시합니다. strict, near, single soft wake는 Android STT `ready_for_speech` 시점에 준비음/진동도 내고, 낮은 점수 연속 soft wake는 소리 없이 overlay만 표시합니다. 이 window에서 Android STT가 실제 발화를 감지하지 못하면 Jarvis는 즉시 닫고 8초 동안 낮은 점수 연속 soft wake만 억제해 idle 환경의 반복 오작동을 줄입니다. near와 single soft wake는 이 억제에 묶지 않아 사용자의 `자비스` 재호출이 같이 막히지 않게 합니다. owner gate 통과 직전의 음성 window는 즉시 로컬 ASR로 재해석해 `자비스 카메라 실행`처럼 한 문장 안에 들어온 명령이나 `자비스` wake-only를 먼저 시도합니다. 이후 live command window는 Android System Intelligence(AiAi) `SpeechRecognizer`를 먼저 사용하고, Android STT가 실패하거나 사용할 수 없을 때만 local ASR fallback을 사용합니다. 로컬 ASR fallback은 짧은 명령 후 trailing silence를 감지하면 timeout 전에도 final decode를 실행합니다. 카메라 세션 command window는 서비스 레벨의 30초 deadline으로 닫히므로 fallback 재시도 때문에 무한히 유지되지 않습니다. 이 때문에 Jarvis 대기 중에는 Android의 초록색 마이크 표시가 켜져 있는 것이 정상입니다.
+소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 마이크를 열어 둔 채 최근 1.2초 음성 window를 반복 검사하고, 통과한 짧은 시간 동안만 명령 인식 window를 엽니다. 등록 시에는 전체 6초 음성과 1.4초 단위 짧은 구간에서 최대 8개의 embedding을 저장하고, verification은 이 묶음 중 가장 높은 similarity를 사용합니다. owner gate는 말소리 앞뒤의 무음을 줄여 embedding을 만들고, 기본 threshold `0.50`을 넘으면 즉시 통과합니다. 인증 중에는 일정한 배경음이 계속 말소리로 처리되지 않도록 배경음 floor 대비 피크가 충분한 구간만 embedding으로 계산합니다. 등록/일반 embedding은 최소 peak RMS `0.002`를 유지하되, Xiaomi 15 Ultra 실기기에서 짧은 `자비스` 발화가 peak RMS `0.0009`대까지 낮게 들어오는 로그가 확인되어 owner verification 경로만 최소 peak RMS `0.00075`, 최소 active RMS `0.00050`, floor 대비 최소 상승폭 `0.00032`로 분리했습니다. 짧은 호출어를 보정하기 위해 active speech가 충분한 `0.28` 이상 근접 점수가 2회 연속 나오거나, 450ms 이상 말소리에서 `0.24` 이상 soft wake 점수가 1회 나오거나, 400ms 이상 말소리에서 `0.14` 이상 soft wake 점수가 4회 연속 나오면 같은 소유자 발화로 보고 command window를 엽니다. soft wake 연속 판정은 짧은 `자비스` 발화의 점수 흔들림을 흡수하기 위해 중간에 `0.10` 이상 애매한 점수 1회까지 허용합니다. owner gate가 통과하면 command window는 즉시 초록 `JARVIS` overlay로 표시합니다. strict, near, single soft wake는 Android STT `ready_for_speech` 시점에 준비음/진동도 내고, 낮은 점수 연속 soft wake는 소리 없이 overlay만 표시합니다. 이 window에서 Android STT가 실제 발화를 감지하지 못하면 Jarvis는 즉시 닫고 8초 동안 낮은 점수 연속 soft wake만 억제해 idle 환경의 반복 오작동을 줄입니다. near와 single soft wake는 이 억제에 묶지 않아 사용자의 `자비스` 재호출이 같이 막히지 않게 합니다. owner gate 통과 직전의 음성 window는 즉시 로컬 ASR로 재해석해 `자비스 카메라 실행`처럼 한 문장 안에 들어온 명령이나 `자비스` wake-only를 먼저 시도합니다. 이후 live command window는 Android System Intelligence(AiAi) `SpeechRecognizer`를 먼저 사용하고, Android STT가 실패하거나 사용할 수 없을 때만 local ASR fallback을 사용합니다. 로컬 ASR fallback은 짧은 명령 후 trailing silence를 감지하면 timeout 전에도 final decode를 실행합니다. 카메라 세션 command window는 서비스 레벨의 30초 deadline으로 닫히므로 fallback 재시도 때문에 무한히 유지되지 않습니다. 이 때문에 Jarvis 대기 중에는 Android의 초록색 마이크 표시가 켜져 있는 것이 정상입니다.
 
 Android 14+ 정책상 `targetSdk=35` 앱은 재부팅 broadcast에서 microphone foreground service를 직접 시작할 수 없습니다. 대신 Jarvis는 재부팅 후 시작 알림을 띄우고, 사용자가 알림을 탭하면 마이크 서비스를 시작합니다. 소유자 목소리와 마이크 권한이 준비되어 있고 접근성 서비스가 연결되어 있으면 watchdog이 앱 업데이트나 서비스 종료 이후 음성 서비스를 다시 시작하려고 시도합니다. Android/HyperOS가 백그라운드 시작을 막는 경우에는 시작 알림을 탭하는 경로가 fallback입니다.

@@ -96,12 +96,14 @@ owner_gate_stats() {
       peak = ""
       noise = ""
       threshold = ""
+      profileEmbeddings = ""
       for (i = 1; i <= NF; i++) {
         split($i, pair, "=")
         if (pair[1] == "score") score = pair[2] + 0
         if (pair[1] == "peakRms") peak = pair[2] + 0
         if (pair[1] == "noiseRms") noise = pair[2] + 0
         if (pair[1] == "thresholdRms") threshold = pair[2] + 0
+        if (pair[1] == "profileEmbeddings") profileEmbeddings = pair[2] + 0
       }
       count++
       if (score != "" && (!hasScore || score > maxScore)) {
@@ -111,10 +113,11 @@ owner_gate_stats() {
       if (peak != "" && peak > maxPeak) maxPeak = peak
       if (noise != "" && noise > maxNoise) maxNoise = noise
       if (threshold != "" && threshold > maxThreshold) maxThreshold = threshold
+      if (profileEmbeddings != "" && profileEmbeddings > maxProfileEmbeddings) maxProfileEmbeddings = profileEmbeddings
     }
     END {
       if (count > 0) {
-        printf "samples=%d max_score=%.6g max_peak_rms=%.6g max_noise_rms=%.6g max_threshold_rms=%.6g\n", count, maxScore, maxPeak, maxNoise, maxThreshold
+        printf "samples=%d max_score=%.6g max_peak_rms=%.6g max_noise_rms=%.6g max_threshold_rms=%.6g profile_embeddings=%d\n", count, maxScore, maxPeak, maxNoise, maxThreshold, maxProfileEmbeddings
       }
     }
   ' "$diagnostic_file"

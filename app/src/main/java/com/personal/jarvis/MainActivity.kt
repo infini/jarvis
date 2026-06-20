@@ -9,6 +9,8 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
@@ -20,6 +22,7 @@ import android.widget.TextView
 import android.widget.Toast
 
 class MainActivity : Activity() {
+    private val handler = Handler(Looper.getMainLooper())
     private lateinit var statusView: TextView
     private lateinit var ownerVoiceStatusView: TextView
     private lateinit var enrollProgress: ProgressBar
@@ -150,18 +153,28 @@ class MainActivity : Activity() {
         }
 
         if (JarvisVoiceService.isRunning) {
-            val message = "Jarvis 실행 중에는 목소리 재등록을 시작하지 않습니다. 재부팅 후 Jarvis 시작 전에 등록하세요."
+            val message = "Jarvis 서비스를 잠시 중지하고 목소리 등록을 시작합니다."
             ownerVoiceStatusView.text = message
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+            stopService(Intent(this, JarvisVoiceService::class.java))
+            handler.postDelayed({ beginOwnerEnrollment() }, OWNER_ENROLLMENT_START_DELAY_MS)
             return
         }
 
+        beginOwnerEnrollment()
+    }
+
+    private fun beginOwnerEnrollment() {
+        if (ownerVoiceEnrollmentController.isEnrolling) return
+
+        JarvisVoiceServiceStarter.setOwnerEnrollmentActive(true)
         enrollButton.text = "내 목소리 등록 중지"
         ownerVoiceEnrollmentController.start(ENROLLMENT_DURATION_MS)
     }
 
     private fun stopOwnerEnrollment(message: String? = null) {
         ownerVoiceEnrollmentController.stop()
+        JarvisVoiceServiceStarter.setOwnerEnrollmentActive(false)
         if (::enrollButton.isInitialized) enrollButton.text = "내 목소리 등록 시작"
         message?.let { ownerVoiceStatusView.text = it }
     }
@@ -224,6 +237,7 @@ class MainActivity : Activity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         val accessibility = isJarvisAccessibilityEnabled()
         val hasOwnerProfile = OwnerVoiceStore.hasProfile(this)
+        val ownerEmbeddingCount = OwnerVoiceStore.embeddingCount(this)
 
         statusView.text = buildString {
             appendLine("마이크 권한: ${if (mic) "허용됨" else "필요함"}")
@@ -236,6 +250,7 @@ class MainActivity : Activity() {
 
         ownerVoiceStatusView.text = buildString {
             appendLine("소유자 목소리 인증: ${if (hasOwnerProfile) "등록됨" else "미등록"}")
+            if (hasOwnerProfile) appendLine("저장된 음성 특징: ${ownerEmbeddingCount}개")
             appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++ / Korean streaming ASR")
             appendLine("기본 threshold: ${OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD}")
             appendLine("짧은 호출어 보정: ${OwnerVoiceEngine.NEAR_ACCEPT_THRESHOLD} 이상 2회 또는 soft wake")
@@ -274,5 +289,6 @@ class MainActivity : Activity() {
     companion object {
         private const val REQUEST_PERMISSIONS = 1001
         private const val ENROLLMENT_DURATION_MS = 6000L
+        private const val OWNER_ENROLLMENT_START_DELAY_MS = 500L
     }
 }

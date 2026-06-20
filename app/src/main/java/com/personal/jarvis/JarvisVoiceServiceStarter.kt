@@ -10,6 +10,11 @@ import android.util.Log
 object JarvisVoiceServiceStarter {
     const val EXTRA_START_SOURCE = "start_source"
     private const val TAG = "JarvisVoiceStarter"
+    @Volatile private var ownerEnrollmentActive = false
+
+    fun setOwnerEnrollmentActive(active: Boolean) {
+        ownerEnrollmentActive = active
+    }
 
     fun start(context: Context, source: String): Boolean {
         if (JarvisVoiceService.isRunning) return true
@@ -34,6 +39,9 @@ object JarvisVoiceServiceStarter {
 
     fun autoStartBlockReason(context: Context): String? {
         val appContext = context.applicationContext
+        if (ownerEnrollmentActive) {
+            return "owner_voice_enrollment_active"
+        }
         if (appContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             return "record_audio_permission_missing"
         }
