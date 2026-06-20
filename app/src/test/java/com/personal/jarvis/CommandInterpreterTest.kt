@@ -50,4 +50,11 @@ class CommandInterpreterTest {
         assertTrue(CommandInterpreter.isWakeOnly("자베스"))
         assertFalse(CommandInterpreter.isWakeOnly("자비스 찍어"))
     }
+
+    @Test
+    fun appNavigationCommandsKeepCommandWindowOpen() {
+        assertTrue(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_HOME))
+        assertTrue(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_BACK))
+        assertFalse(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_STOP_LISTENING))
+    }
 }

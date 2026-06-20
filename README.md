@@ -11,8 +11,8 @@
 - `OwnerVoiceEngine`: sherpa-onnx와 3D-Speaker CAM++ 모델로 소유자 목소리 embedding을 만들고 검증합니다.
 - `OwnerVoiceStore`: 등록된 소유자 목소리 embedding을 앱 private storage에 저장합니다.
 - `OwnerVoiceEnrollmentController`: 앱 UI에서 실행되는 소유자 목소리 등록 workflow를 담당합니다.
-- `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 command window 안의 짧은 명령을 로컬에서 빠르게 인식합니다.
-- `LocalCommandSession`: 로컬 명령 ASR 스레드와 fallback 상태를 관리합니다.
+- `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 Android STT 실패 시 command window 안의 짧은 명령을 로컬 fallback 인식합니다.
+- `LocalCommandSession`: 로컬 명령 ASR fallback 스레드 상태를 관리합니다.
 - `SpeechRecognitionIntentFactory`: Android `SpeechRecognizer` 실행 옵션을 한곳에서 생성합니다.
 - `JarvisCommandExecutor`: 내부 명령 실행, 중복 실행 방지, 카메라 세션 window 유지 정책을 담당합니다.
 - `JarvisNotificationController`: 음성 서비스 foreground notification과 상태 문구를 관리합니다.
@@ -54,7 +54,7 @@
 
 소유자 목소리 확인을 통과한 직후에는 12초 동안 명령 대기 상태가 됩니다. 이때는 `자비스` 또는 `헤이 자비스`만 먼저 말한 뒤 이어서 `카메라 셀피 모드로 실행해`처럼 호출어 없이 명령만 말해도 됩니다. Jarvis가 깨어나면 짧은 확인음과 함께 알림 문구가 `소유자 확인됨. 명령을 말하세요.`로 바뀌고, 바로 다음 명령 인식으로 넘어갑니다.
 
-카메라 관련 명령은 처리 후에도 30초 명령 대기 상태를 유지합니다. 예를 들어 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 이어서 말할 수 있습니다. 카메라 세션 안에서는 Android `SpeechRecognizer` 대신 sherpa-onnx 한국어 streaming ASR을 우선 사용해 짧은 명령을 로컬에서 바로 실행합니다. 로컬 모델이 없거나 초기화에 실패하면 기존 `SpeechRecognizer` 경로로 fallback합니다.
+카메라 관련 명령은 처리 후에도 30초 명령 대기 상태를 유지합니다. 예를 들어 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 이어서 말할 수 있습니다. 카메라 세션 안에서는 Android `SpeechRecognizer` partial result를 우선 사용해 짧은 명령을 바로 실행하고, Android STT가 실패하면 sherpa-onnx 한국어 streaming ASR을 fallback으로 사용합니다. `종료`, `홈`, `뒤로`는 현재 앱만 제어하고 Jarvis 명령 대기 상태는 유지합니다. Jarvis 자체를 멈추려면 `자비스, 멈춰`를 사용합니다.
 
 Jarvis 상태 overlay는 사용자가 바로 판단해야 하는 순간에만 표시됩니다. 화면에는 노치/상태바 아래의 작은 iPhone-style pill 형태로 `JARVIS`만 표시하고, 상태는 작은 컬러 점과 소리/진동 패턴으로 전달합니다. 초록 점은 명령 대기/인식 중, 빨간 점은 방금 명령 인식에 실패했다는 뜻입니다. idle/소유자 확인/호출어 대기 상태에서는 화면을 가리지 않도록 overlay를 숨깁니다. 명령 가능 상태에 들어갈 때는 확인음 2회와 짧은 진동이 함께 발생합니다.
 

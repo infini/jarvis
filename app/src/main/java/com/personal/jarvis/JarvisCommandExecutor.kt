@@ -61,12 +61,19 @@ class JarvisCommandExecutor(
             CommandBus.COMMAND_SWITCH_CAMERA,
         )
 
-        val FAST_PARTIAL_COMMANDS = CAMERA_SESSION_COMMANDS + setOf(
+        val COMMAND_WINDOW_CONTINUATION_COMMANDS = CAMERA_SESSION_COMMANDS + setOf(
             CommandBus.COMMAND_HOME,
+            CommandBus.COMMAND_BACK,
         )
 
+        val FAST_PARTIAL_COMMANDS = COMMAND_WINDOW_CONTINUATION_COMMANDS
+
+        fun shouldKeepCommandWindowOpen(command: String): Boolean {
+            return command in COMMAND_WINDOW_CONTINUATION_COMMANDS
+        }
+
         fun String.keepsCommandWindowOpen(): Boolean {
-            return this in CAMERA_SESSION_COMMANDS
+            return shouldKeepCommandWindowOpen(this)
         }
     }
 }

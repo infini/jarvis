@@ -52,7 +52,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var currentListeningAllowsCommandWithoutWake = false
     private var partialCommandHandled = false
     private var partialCommandKeepsWindowOpen = false
-    private var forceSpeechRecognizerOnce = false
+    private var forceLocalCommandOnce = false
     private val listeningTimeout = Runnable {
         if (!listening || destroyed) return@Runnable
         Log.w(TAG, "Listening timed out; restarting recognizer")
@@ -146,13 +146,19 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (destroyed || listening || ownerVoiceGate.isVerifying) return
 
         val commandWindowOpen = shouldUseOwnerGate() && isOwnerAuthorized()
-        if (commandWindowOpen && localCommandSession.canStart() && !forceSpeechRecognizerOnce) {
+        if (commandWindowOpen && forceLocalCommandOnce && localCommandSession.canStart()) {
+            forceLocalCommandOnce = false
             startLocalCommandListening()
             return
         }
-        if (recognizer == null) return
+        if (recognizer == null) {
+            if (commandWindowOpen && localCommandSession.canStart()) {
+                startLocalCommandListening()
+            }
+            return
+        }
 
-        forceSpeechRecognizerOnce = false
+        forceLocalCommandOnce = false
         val intent = SpeechRecognitionIntentFactory.create(this, commandWindowOpen)
 
         try {
@@ -221,12 +227,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 completeCommandRun(commandExecutor.run(command).keepsCommandWindowOpen)
             }
             outcome.unavailable -> {
-                Log.w(TAG, "Local command recognizer unavailable; falling back to speech recognizer")
-                forceSpeechRecognizerOnce = true
-                if (wasListeningForCommand && shouldUseOwnerGate()) {
-                    ownerVoiceGate.extendAuthorization(SPEECH_FALLBACK_AUTH_EXTENSION_MS)
-                }
-                scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+                Log.w(TAG, "Local command recognizer unavailable")
+                feedbackController.commandFailed()
+                scheduleNextCapture(COMMAND_RETRY_DELAY_MS)
             }
             else -> {
                 Log.d(
@@ -234,19 +237,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     "Local command finished without command: " +
                         "text='${result?.text.orEmpty()}', elapsed=${result?.elapsedMs ?: 0L}ms",
                 )
-                if (wasListeningForCommand && recognizer != null) {
-                    forceSpeechRecognizerOnce = true
-                    if (shouldUseOwnerGate()) {
-                        ownerVoiceGate.extendAuthorization(SPEECH_FALLBACK_AUTH_EXTENSION_MS)
-                    }
-                    scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
-                } else {
-                    feedbackController.commandFailed()
-                    if (wasListeningForCommand && shouldUseOwnerGate()) {
-                        ownerVoiceGate.extendAuthorization(COMMAND_RETRY_GRACE_MS)
-                    }
-                    scheduleNextCapture(COMMAND_RETRY_DELAY_MS)
+                feedbackController.commandFailed()
+                if (wasListeningForCommand && shouldUseOwnerGate()) {
+                    ownerVoiceGate.extendAuthorization(COMMAND_RETRY_GRACE_MS)
                 }
+                scheduleNextCapture(COMMAND_RETRY_DELAY_MS)
             }
         }
     }
@@ -352,6 +347,16 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (completePartialCommandRun("speech error $error")) return
 
         currentListeningAllowsCommandWithoutWake = false
+        if (wasListeningForCommand && localCommandSession.canStart()) {
+            Log.w(TAG, "Speech recognizer failed in command window; falling back to local command recognizer")
+            forceLocalCommandOnce = true
+            if (shouldUseOwnerGate()) {
+                ownerVoiceGate.extendAuthorization(LOCAL_FALLBACK_AUTH_EXTENSION_MS)
+            }
+            scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+            return
+        }
+
         val delay = when (error) {
             SpeechRecognizer.ERROR_NO_MATCH,
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
@@ -433,12 +438,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     companion object {
         private const val TAG = "JarvisVoiceService"
-        private const val LISTENING_TIMEOUT_MS = 7000L
+        private const val LISTENING_TIMEOUT_MS = 4500L
         private const val OWNER_AUTH_WINDOW_MS = 12000L
         private const val CAMERA_SESSION_AUTH_WINDOW_MS = 30000L
         private const val COMMAND_RETRY_GRACE_MS = 2000L
-        private const val LOCAL_COMMAND_TIMEOUT_MS = 2500L
-        private const val SPEECH_FALLBACK_AUTH_EXTENSION_MS = 8000L
+        private const val LOCAL_COMMAND_TIMEOUT_MS = 1600L
+        private const val LOCAL_FALLBACK_AUTH_EXTENSION_MS = 6000L
         private const val OWNER_VERIFY_AUDIO_MS = 2000L
         private const val OWNER_VERIFY_INTERVAL_MS = 250L
         private const val OWNER_VERIFY_RETRY_MS = 300L
