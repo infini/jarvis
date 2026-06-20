@@ -22,8 +22,10 @@ object CommandInterpreter {
         val wantsBack = listOf("뒤로", "백").any(normalized::contains)
         val wantsHome = listOf("홈", "홈으로").any(normalized::contains)
         val wantsStop = listOf("멈춰", "중지", "꺼", "그만").any(normalized::contains)
+        val wantsCloseApp = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내").any(normalized::contains)
 
         return when {
+            mentionsCamera && wantsCloseApp -> CommandBus.COMMAND_HOME
             wantsStop -> CommandBus.COMMAND_STOP_LISTENING
             wantsShot && mentionsCamera -> CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO
             wantsShot -> CommandBus.COMMAND_TAKE_PHOTO
