@@ -31,6 +31,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var lastCommandAt = 0L
     private var ownerAuthorizedUntil = 0L
     private var currentListeningAllowsCommandWithoutWake = false
+    private var partialCommandHandled = false
+    private var partialCommandKeepsWindowOpen = false
     private var notificationContentText = DEFAULT_NOTIFICATION_TEXT
     private val listeningTimeout = Runnable {
         if (!listening || destroyed) return@Runnable
@@ -45,6 +47,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
             )
         }
         scheduleNextCapture(300)
+    }
+    private val partialCommandFinalize = Runnable {
+        if (destroyed || !partialCommandHandled) return@Runnable
+        Log.d(TAG, "Finalizing partial command without recognizer callback")
+        listening = false
+        handler.removeCallbacks(listeningTimeout)
+        completePartialCommandRun("partial finalize timeout")
     }
 
     override fun onCreate() {
@@ -129,6 +138,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         try {
             listening = true
             currentListeningAllowsCommandWithoutWake = commandWindowOpen
+            partialCommandHandled = false
+            partialCommandKeepsWindowOpen = false
             recognizer?.startListening(intent)
             handler.removeCallbacks(listeningTimeout)
             handler.postDelayed(listeningTimeout, LISTENING_TIMEOUT_MS)
@@ -136,6 +147,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         } catch (_: RuntimeException) {
             listening = false
             currentListeningAllowsCommandWithoutWake = false
+            partialCommandHandled = false
+            partialCommandKeepsWindowOpen = false
             handler.removeCallbacks(listeningTimeout)
             Log.w(TAG, "Failed to start listening")
             scheduleNextCapture(1000)
@@ -276,6 +289,32 @@ class JarvisVoiceService : Service(), RecognitionListener {
         return command in CAMERA_SESSION_COMMANDS
     }
 
+    private fun completeCommandRun(keepCommandWindowOpen: Boolean) {
+        if (destroyed) return
+        if (keepCommandWindowOpen) {
+            ownerAuthorizedUntil = System.currentTimeMillis() + CAMERA_SESSION_AUTH_WINDOW_MS
+            updateNotification("명령 처리됨. 다음 명령을 말하세요.")
+            scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+        } else {
+            ownerAuthorizedUntil = 0L
+            updateNotification(DEFAULT_NOTIFICATION_TEXT)
+            scheduleNextCapture(250)
+        }
+    }
+
+    private fun completePartialCommandRun(reason: String): Boolean {
+        if (!partialCommandHandled) return false
+
+        val keepCommandWindowOpen = partialCommandKeepsWindowOpen
+        partialCommandHandled = false
+        partialCommandKeepsWindowOpen = false
+        currentListeningAllowsCommandWithoutWake = false
+        handler.removeCallbacks(partialCommandFinalize)
+        Log.d(TAG, "Completing partial command run: $reason")
+        completeCommandRun(keepCommandWindowOpen)
+        return true
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
@@ -355,9 +394,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
     override fun onError(error: Int) {
         val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
         listening = false
-        currentListeningAllowsCommandWithoutWake = false
         handler.removeCallbacks(listeningTimeout)
         Log.w(TAG, "Speech error: $error")
+        if (completePartialCommandRun("speech error $error")) return
+
+        currentListeningAllowsCommandWithoutWake = false
         val delay = when (error) {
             SpeechRecognizer.ERROR_NO_MATCH,
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
@@ -378,16 +419,14 @@ class JarvisVoiceService : Service(), RecognitionListener {
         handler.removeCallbacks(listeningTimeout)
         Log.d(TAG, "Final speech results received")
         val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
+        if (completePartialCommandRun("final result")) return
+
         val outcome = handleSpeech(results)
         currentListeningAllowsCommandWithoutWake = false
         if (outcome == SpeechOutcome.COMMAND_RUN) {
-            ownerAuthorizedUntil = 0L
-            updateNotification(DEFAULT_NOTIFICATION_TEXT)
-            scheduleNextCapture(250)
+            completeCommandRun(keepCommandWindowOpen = false)
         } else if (outcome == SpeechOutcome.COMMAND_RUN_KEEP_WINDOW) {
-            ownerAuthorizedUntil = System.currentTimeMillis() + CAMERA_SESSION_AUTH_WINDOW_MS
-            updateNotification("명령 처리됨. 다음 명령을 말하세요.")
-            scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+            completeCommandRun(keepCommandWindowOpen = true)
         } else if (outcome == SpeechOutcome.WAKE_ONLY) {
             scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
         } else {
@@ -406,9 +445,35 @@ class JarvisVoiceService : Service(), RecognitionListener {
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             .orEmpty()
         if (results.isNotEmpty()) Log.d(TAG, "Partial speech results: $results")
+        runFastPartialCommand(results)
     }
 
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
+
+    private fun runFastPartialCommand(results: List<String>): Boolean {
+        if (partialCommandHandled || results.isEmpty()) return false
+
+        val allowCommandWithoutWake = currentListeningAllowsCommandWithoutWake ||
+            shouldUseOwnerGate() && isOwnerAuthorized()
+        for (candidate in results) {
+            val command = CommandInterpreter.parse(
+                text = candidate,
+                requireWakeWord = !allowCommandWithoutWake,
+            ) ?: continue
+            if (command !in FAST_PARTIAL_COMMANDS) continue
+
+            Log.d(TAG, "Parsed fast partial command: $command from '$candidate'")
+            partialCommandHandled = true
+            partialCommandKeepsWindowOpen = runCommand(command)
+            updateNotification("명령 처리 중입니다.")
+            handler.removeCallbacks(listeningTimeout)
+            handler.removeCallbacks(partialCommandFinalize)
+            handler.postDelayed(partialCommandFinalize, PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS)
+            runCatching { recognizer?.stopListening() }
+            return true
+        }
+        return false
+    }
 
     companion object {
         private const val TAG = "JarvisVoiceService"
@@ -432,6 +497,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 350L
         private const val COMMAND_COMPLETE_SILENCE_MS = 600L
         private const val OWNER_READY_TONE_MS = 120
+        private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 900L
         private const val DEFAULT_NOTIFICATION_TEXT = "소유자 목소리 확인 후 음성 명령을 듣습니다."
         private val CAMERA_SESSION_COMMANDS = setOf(
             CommandBus.COMMAND_OPEN_CAMERA,
@@ -441,6 +507,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
             CommandBus.COMMAND_TAKE_PHOTO,
             CommandBus.COMMAND_OPEN_FILTERS,
             CommandBus.COMMAND_SWITCH_CAMERA,
+        )
+        private val FAST_PARTIAL_COMMANDS = CAMERA_SESSION_COMMANDS + setOf(
+            CommandBus.COMMAND_HOME,
         )
     }
 

@@ -198,7 +198,7 @@ JarvisAccessibilityService
 
 예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `자비스` 또는 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. wake-only 발화가 인식되면 window를 다시 12초로 연장하고 25ms 후 다음 명령 인식을 시작한다.
 
-카메라 세션 명령은 처리 후에도 인증 window를 다시 30초로 연장한다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리할 수 있어야 한다. 리스닝이 인증 window 안에서 시작됐다면 final STT 결과가 window 만료 직후 도착해도 해당 발화는 호출어 없는 명령으로 인정한다. `home`, `back`, `stop_listening` 같은 종료성 명령은 window를 닫는다.
+카메라 세션 명령은 처리 후에도 인증 window를 다시 30초로 연장한다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리할 수 있어야 한다. 리스닝이 인증 window 안에서 시작됐다면 final STT 결과가 window 만료 직후 도착해도 해당 발화는 호출어 없는 명령으로 인정한다. 카메라 세션 명령과 `home` 종료 명령은 partial STT 결과에서 먼저 해석되면 즉시 실행하고, 이어서 도착하는 final STT 결과에서는 중복 실행하지 않는다. `home`, `back`, `stop_listening` 같은 종료성 명령은 window를 닫는다.
 
 ## 8.1 Owner Voice Gate
 
@@ -220,8 +220,10 @@ JarvisAccessibilityService
 6. similarity가 threshold 이상이면 `AudioRecord`를 닫고 12초 인증 window를 열어 `SpeechRecognizer` 명령 인식을 시작한다.
 7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
 8. window 안에서는 호출어 없는 명령도 허용하며, STT의 command-mode silence timeout을 더 짧게 사용한다.
-9. 카메라 세션 명령이면 인증 window를 30초 연장하고 바로 다음 명령 인식을 시작한다.
-10. 그 외 명령 처리 후에는 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
+9. 카메라 세션 명령과 `home` 종료 명령은 partial STT 결과에서 먼저 해석되면 즉시 실행한다.
+10. partial로 실행한 명령은 final STT 결과 또는 짧은 fallback timeout에서 command window 정리를 완료하며 중복 실행하지 않는다.
+11. 카메라 세션 명령이면 인증 window를 30초 연장하고 바로 다음 명령 인식을 시작한다.
+12. 그 외 명령 처리 후에는 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
 
 제약:
 
@@ -250,11 +252,11 @@ JarvisAccessibilityService
 
 ### 1단계: 접근성 노드 탐색
 
-`text`, `contentDescription`, `viewIdResourceName`, `className`에서 키워드를 찾아 클릭 가능한 노드 또는 부모 노드를 클릭한다.
+`text`, `contentDescription`, `viewIdResourceName`, `className`에서 키워드를 찾아 가장 적합한 노드의 화면 중앙을 접근성 제스처로 탭한다. Xiaomi 카메라에서는 접근성 `ACTION_CLICK`보다 실제 좌표 탭이 셔터/전환 버튼에서 더 안정적이다.
 
 예상 키워드:
 
-- 셔터: `shutter`, `capture`, `take photo`, `촬영`, `셔터`, `사진 찍기`, `拍照`
+- 셔터: `com.android.camera:id/shutter_button`, `shutter`, `capture`, `take photo`, `촬영`, `셔터`, `사진 찍기`, `拍照`
 - 필터: `filter`, `effects`, `leica`, `필터`, `효과`, `색감`
 - 전환: `com.android.camera:id/v9_camera_picker`, `switch camera`, `flip camera`, `카메라 전환`, `렌즈 전환`, `전후면 전환`
 
@@ -324,6 +326,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - `자비스` 호출어가 없는 `찍어`, `필터`, `뒤로`는 무시된다.
 - `자비스, 카메라 열어`가 기본 카메라 앱을 연다.
 - `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리한다.
+- 카메라 세션의 `후면`, `전면`, `찍어`, `종료`는 partial STT 결과에서 먼저 실행되어도 final STT 결과에서 중복 실행되지 않는다.
 - `자비스, 카메라 실행`이 기본 카메라 앱을 연다.
 - `헤이 자비스, 카메라 셀피 모드로 실행해`가 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.
 - `자비스, 셀피`와 `자비스, 전면`이 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.

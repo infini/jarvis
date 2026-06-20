@@ -107,37 +107,13 @@ class JarvisAccessibilityService : AccessibilityService() {
     }
 
     private fun tapShutter() {
-        val clicked = clickMatchingNode(
-            listOf(
-                "shutter",
-                "capture",
-                "take photo",
-                "take picture",
-                "camera shutter",
-                "촬영",
-                "셔터",
-                "사진 촬영",
-                "사진 찍기",
-                "拍照",
-            ),
-        )
-        if (!clicked) tapFallback(CameraControlTarget.SHUTTER)
+        val tapped = tapMatchingNode(SHUTTER_KEYWORDS)
+        if (!tapped) tapFallback(CameraControlTarget.SHUTTER)
     }
 
     private fun openFilters() {
-        val clicked = clickMatchingNode(
-            listOf(
-                "filter",
-                "filters",
-                "effect",
-                "effects",
-                "leica",
-                "필터",
-                "효과",
-                "색감",
-            ),
-        )
-        if (!clicked) tapFallback(CameraControlTarget.FILTERS)
+        val tapped = tapMatchingNode(FILTER_KEYWORDS)
+        if (!tapped) tapFallback(CameraControlTarget.FILTERS)
     }
 
     private fun switchCamera() {
@@ -151,9 +127,9 @@ class JarvisAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun clickMatchingNode(keywords: List<String>): Boolean {
+    private fun tapMatchingNode(keywords: List<String>): Boolean {
         val node = findBestMatchingNode(keywords) ?: return false
-        return clickNodeOrClickableParent(node)
+        return tapNodeCenter(node)
     }
 
     private fun clickCameraSwitchButton(): Boolean {
@@ -246,18 +222,6 @@ class JarvisAccessibilityService : AccessibilityService() {
             .lowercase(Locale.KOREAN)
     }
 
-    private fun clickNodeOrClickableParent(node: AccessibilityNodeInfo): Boolean {
-        var current: AccessibilityNodeInfo? = node
-        repeat(MAX_PARENT_SEARCH_DEPTH) {
-            val candidate = current ?: return false
-            if (candidate.isEnabled && candidate.isClickable) {
-                return candidate.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-            }
-            current = candidate.parent
-        }
-        return false
-    }
-
     private fun visibleArea(node: AccessibilityNodeInfo): Int {
         val rect = Rect()
         node.getBoundsInScreen(rect)
@@ -315,10 +279,32 @@ class JarvisAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "JarvisAccessibility"
-        private const val MAX_PARENT_SEARCH_DEPTH = 6
         private const val CAMERA_OPEN_DELAY_MS = 1500L
         private const val CAMERA_FACING_RETRY_DELAY_MS = 500L
         private const val CAMERA_FACING_RETRY_COUNT = 2
+        private val SHUTTER_KEYWORDS = listOf(
+            "com.android.camera:id/shutter_button",
+            "shutter",
+            "capture",
+            "take photo",
+            "take picture",
+            "camera shutter",
+            "촬영",
+            "셔터",
+            "사진 촬영",
+            "사진 찍기",
+            "拍照",
+        )
+        private val FILTER_KEYWORDS = listOf(
+            "filter",
+            "filters",
+            "effect",
+            "effects",
+            "leica",
+            "필터",
+            "효과",
+            "색감",
+        )
         private val CAMERA_SWITCH_KEYWORDS = listOf(
             "com.android.camera:id/v9_camera_picker",
             "switch camera",
