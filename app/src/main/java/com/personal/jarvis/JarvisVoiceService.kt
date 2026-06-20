@@ -204,6 +204,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     override fun onCreate() {
         super.onCreate()
+        if (!hasConfiguredOwnerProfile("onCreate")) {
+            isRunning = false
+            stopSelf()
+            return
+        }
+
         isRunning = true
         Log.d(TAG, "JarvisVoiceService created")
         notificationController.createChannel()
@@ -216,6 +222,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val source = intent?.getStringExtra(JarvisVoiceServiceStarter.EXTRA_START_SOURCE).orEmpty()
         Log.d(TAG, "JarvisVoiceService start command: source=$source flags=$flags startId=$startId")
+        if (!hasConfiguredOwnerProfile("onStartCommand source=$source")) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+
         if (!listening && !ownerVoiceGate.isVerifying) scheduleNextCapture(150)
         return START_STICKY
     }
@@ -236,6 +247,17 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun hasConfiguredOwnerProfile(reason: String): Boolean {
+        if (OwnerVoiceStore.isConfigured(applicationContext)) return true
+
+        Log.w(
+            TAG,
+            "Stopping JarvisVoiceService: owner voice profile is not configured; " +
+                "reason=$reason embeddings=${OwnerVoiceStore.embeddingCount(applicationContext)}",
+        )
+        return false
+    }
 
     private fun createRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {

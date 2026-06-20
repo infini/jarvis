@@ -12,10 +12,11 @@ class JarvisDebugProfileStatusActivity : Activity() {
 
         val requestId = intent?.getStringExtra(EXTRA_REQUEST_ID).orEmpty()
         val embeddingCount = OwnerVoiceStore.embeddingCount(this)
+        val configured = OwnerVoiceStore.isConfigured(this)
         Log.i(
             TAG,
             "request_id=$requestId " +
-                "profile_configured=${embeddingCount > 0} " +
+                "profile_configured=$configured " +
                 "profile_embeddings=$embeddingCount " +
                 "voice_service_running=${JarvisVoiceService.isRunning}",
         )

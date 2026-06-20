@@ -32,6 +32,7 @@ class JarvisDebugOwnerEnrollActivity : Activity() {
         Log.i(TAG, "request_id=$requestId status=recording durationMs=$durationMs")
 
         Thread({
+            var completedEmbeddingCount = 0
             try {
                 val samples = OwnerVoiceEngine.recordSamples(
                     durationMs = durationMs,
@@ -48,7 +49,7 @@ class JarvisDebugOwnerEnrollActivity : Activity() {
                 }
 
                 OwnerVoiceStore.saveEmbeddings(this, embeddings)
-                Log.i(TAG, "request_id=$requestId status=completed profile_embeddings=${embeddings.size}")
+                completedEmbeddingCount = embeddings.size
             } catch (error: Exception) {
                 Log.e(
                     TAG,
@@ -57,6 +58,14 @@ class JarvisDebugOwnerEnrollActivity : Activity() {
                 )
             } finally {
                 JarvisVoiceServiceStarter.setOwnerEnrollmentActive(false)
+                if (completedEmbeddingCount > 0) {
+                    val started = JarvisVoiceServiceStarter.start(this, "debug_owner_enrollment_completed")
+                    Log.i(
+                        TAG,
+                        "request_id=$requestId status=completed " +
+                            "profile_embeddings=$completedEmbeddingCount service_start_requested=$started",
+                    )
+                }
                 runOnUiThread { finish() }
             }
         }, "JarvisDebugOwnerEnroll").start()

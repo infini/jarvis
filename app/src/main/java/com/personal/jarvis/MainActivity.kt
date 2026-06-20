@@ -34,9 +34,9 @@ class MainActivity : Activity() {
             onProgress = { percent -> enrollProgress.progress = percent },
             onStatus = { status -> ownerVoiceStatusView.text = status },
             onCompleted = { embeddingCount ->
-                Toast.makeText(this, "내 목소리 등록 완료: ${embeddingCount}개 저장", Toast.LENGTH_SHORT).show()
                 stopOwnerEnrollment("내 목소리 등록 완료: ${embeddingCount}개 음성 특징 저장됨")
                 updateStatus()
+                restartJarvisAfterOwnerEnrollment(embeddingCount)
             },
             onFailed = { message ->
                 showOwnerVoiceError(message)
@@ -212,12 +212,41 @@ class MainActivity : Activity() {
             requestRuntimePermissions()
             return
         }
+        if (!OwnerVoiceStore.isConfigured(this)) {
+            val message = ownerVoiceStartBlockMessage()
+            ownerVoiceStatusView.text = message
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            if (JarvisVoiceService.isRunning) stopService(Intent(this, JarvisVoiceService::class.java))
+            updateStatus()
+            return
+        }
 
         val started = JarvisVoiceServiceStarter.start(this, "main_activity")
         if (!started) {
             Toast.makeText(this, "Jarvis 서비스를 시작하지 못했습니다. 알림/배터리 설정을 확인하세요.", Toast.LENGTH_LONG).show()
         }
         updateStatus()
+    }
+
+    private fun restartJarvisAfterOwnerEnrollment(embeddingCount: Int) {
+        if (!OwnerVoiceStore.isConfigured(this)) return
+
+        val started = JarvisVoiceServiceStarter.start(this, "owner_voice_enrollment_completed")
+        val message = if (started) {
+            "내 목소리 등록 완료: ${embeddingCount}개 저장. Jarvis 대기를 다시 시작했습니다."
+        } else {
+            "내 목소리 등록 완료: ${embeddingCount}개 저장. Jarvis 시작은 권한/배터리 설정 확인이 필요합니다."
+        }
+        ownerVoiceStatusView.text = message
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun ownerVoiceStartBlockMessage(): String {
+        return if (OwnerVoiceStore.hasProfile(this)) {
+            "저장된 소유자 목소리가 구버전 단일 샘플입니다. 내 목소리 등록을 다시 완료해야 Jarvis가 대기합니다."
+        } else {
+            "소유자 목소리를 먼저 등록하세요."
+        }
     }
 
     override fun onRequestPermissionsResult(
@@ -237,6 +266,7 @@ class MainActivity : Activity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         val accessibility = isJarvisAccessibilityEnabled()
         val hasOwnerProfile = OwnerVoiceStore.hasProfile(this)
+        val ownerProfileConfigured = OwnerVoiceStore.isConfigured(this)
         val ownerEmbeddingCount = OwnerVoiceStore.embeddingCount(this)
 
         statusView.text = buildString {
@@ -249,8 +279,18 @@ class MainActivity : Activity() {
         }
 
         ownerVoiceStatusView.text = buildString {
-            appendLine("소유자 목소리 인증: ${if (hasOwnerProfile) "등록됨" else "미등록"}")
+            appendLine(
+                "소유자 목소리 인증: " + when {
+                    ownerProfileConfigured -> "등록됨"
+                    hasOwnerProfile -> "재등록 필요"
+                    else -> "미등록"
+                },
+            )
             if (hasOwnerProfile) appendLine("저장된 음성 특징: ${ownerEmbeddingCount}개")
+            if (hasOwnerProfile && !ownerProfileConfigured) {
+                appendLine("구버전 단일 샘플 프로필입니다. Jarvis 대기를 시작하지 않습니다.")
+                appendLine("내 목소리 등록 시작을 눌러 다시 등록하세요.")
+            }
             appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++ / Korean streaming ASR")
             appendLine("기본 threshold: ${OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD}")
             appendLine("짧은 호출어 보정: ${OwnerVoiceEngine.NEAR_ACCEPT_THRESHOLD} 이상 2회 또는 soft wake")

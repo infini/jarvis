@@ -17,9 +17,13 @@ object JarvisVoiceServiceStarter {
     }
 
     fun start(context: Context, source: String): Boolean {
+        val appContext = context.applicationContext
+        autoStartBlockReason(appContext)?.let { reason ->
+            Log.w(TAG, "Blocked JarvisVoiceService start from $source: $reason")
+            return false
+        }
         if (JarvisVoiceService.isRunning) return true
 
-        val appContext = context.applicationContext
         val intent = Intent(appContext, JarvisVoiceService::class.java)
             .putExtra(EXTRA_START_SOURCE, source)
 
@@ -47,6 +51,9 @@ object JarvisVoiceServiceStarter {
         }
         if (!OwnerVoiceStore.hasProfile(appContext)) {
             return "owner_voice_profile_missing"
+        }
+        if (!OwnerVoiceStore.isConfigured(appContext)) {
+            return "owner_voice_profile_legacy"
         }
         return null
     }

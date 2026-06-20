@@ -35,7 +35,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - `멈춰`는 Jarvis 서비스를 중지하지 않고 현재 command window만 닫아 이후 `자비스`로 다시 깨울 수 있도록 변경
 - Jarvis 서비스는 한 번 시작되면 재부팅 전까지 foreground service로 유지하며, 앱 UI에서도 서비스 중지 버튼을 제공하지 않도록 변경
 - 접근성 서비스가 살아 있는데 `JarvisVoiceService` foreground service가 없는 상태를 줄이기 위해, 소유자 목소리와 마이크 권한이 준비된 경우 접근성 watchdog이 음성 서비스를 자동 재시작하도록 변경
-- Jarvis 서비스 실행 중에는 마이크 점유 충돌을 피하기 위해 소유자 목소리 재등록을 시작하지 않는다. 재등록은 재부팅 후 Jarvis 시작 전에 수행한다.
+- Jarvis 서비스 실행 중에는 마이크 점유 충돌을 피하기 위해 소유자 목소리 재등록 시작 시 음성 서비스를 잠시 중지한다. 등록 중에는 watchdog 자동 재시작을 막고, 등록이 성공하면 Jarvis 음성 서비스를 다시 시작한다.
 - command window의 watchdog timeout을 12초로 늘려 명령 대기 중 불필요한 STT 재시작을 줄이고, partial 명령 실행 후 다음 리스닝 전환 대기를 80ms로 단축함
 - 카메라 세션 command window는 서비스 레벨 30초 hard deadline으로 관리하며, STT 재시도나 local fallback이 이 시간을 넘겨 명령 대기 상태를 연장하지 못하도록 변경
 - 음성 인식 속도 개선 준비를 위해 `JarvisLatency` trace 로그를 추가하고, Android STT/local ASR/명령 실행/접근성 수신 구간을 같은 trace id로 측정할 수 있게 변경
@@ -58,6 +58,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - command window 전환 지연과 trace 혼선을 줄이기 위해 `scheduleListening`과 `scheduleNextCapture`는 익명 delayed lambda를 누적하지 않고 단일 runnable을 재예약한다.
 - debug profile/enrollment 스크립트는 request id로 자기 실행 로그만 읽고 전체 logcat을 지우지 않는다. `jarvis-command-trace.sh`는 측정 전 `profile_embeddings>=2`를 확인하고, 실패하면 latency 로그를 지우지 않는다.
 - 앱 UI에서 소유자 목소리 재등록을 시작하면 실행 중인 Jarvis 음성 서비스를 잠시 중지하고, 등록 중에는 접근성 watchdog의 자동 재시작을 `owner_voice_enrollment_active`로 억제한다.
+- 저장된 소유자 목소리 embedding이 2개 미만인 구버전 단일 샘플 프로필은 `profile_configured=false`로 취급하고, Jarvis 음성 서비스 시작과 접근성 watchdog 자동 재시작을 차단한다. 재등록 성공 후에는 Jarvis 음성 서비스를 자동으로 다시 시작한다.
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 - 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
 - 명령 가능 여부를 사용자가 확실히 알 수 있도록 소리, 진동, 접근성 overlay 기반 Jarvis 상태 표시를 추가했다.
@@ -307,13 +308,13 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-profile-status.sh
 ```
 
-`profile_embeddings`가 1이면 v1 단일 embedding fallback 프로필이 남아 있는 상태다. 이 상태는 호환용으로만 허용하며, 짧은 `자비스` 호출어 latency 검증에는 사용하지 않는다. USB 연결 상태에서는 다음 스크립트로 debug APK의 no-display owner enrollment Activity를 실행한다.
+`profile_embeddings`가 1이면 v1 단일 embedding fallback 프로필이 남아 있는 상태다. 이 상태는 `profile_configured=false`로 보고 Jarvis 음성 서비스 시작을 차단하므로, `자비스`를 말해도 대기 상태로 들어가지 않는다. USB 연결 상태에서는 다음 스크립트로 debug APK의 no-display owner enrollment Activity를 실행한다.
 
 ```bash
 scripts/jarvis-owner-enroll.sh 6
 ```
 
-스크립트가 `Speak now`를 출력하면 사용자는 6초 동안 `자비스`를 여러 번 또렷하게 말한다. Activity는 등록 중 `JarvisVoiceServiceStarter.setOwnerEnrollmentActive(true)`로 watchdog 재시작을 막고, 기존 `JarvisVoiceService`를 잠시 중지한 뒤 `OwnerVoiceEngine.createEnrollmentEmbeddings`로 최소 2개 이상의 embedding을 만들 때만 `OwnerVoiceStore.saveEmbeddings`를 호출한다. 완료 후 스크립트는 `jarvis-profile-status.sh`를 다시 실행해 저장 상태를 확인한다. profile status/enrollment 스크립트는 request id로 자기 실행 로그만 필터링하고 전체 logcat을 비우지 않으므로 기존 `JarvisLatency` 로그를 보존한다.
+스크립트가 `Speak now`를 출력하면 사용자는 6초 동안 `자비스`를 여러 번 또렷하게 말한다. Activity는 등록 중 `JarvisVoiceServiceStarter.setOwnerEnrollmentActive(true)`로 watchdog 재시작을 막고, 기존 `JarvisVoiceService`를 잠시 중지한 뒤 `OwnerVoiceEngine.createEnrollmentEmbeddings`로 최소 2개 이상의 embedding을 만들 때만 `OwnerVoiceStore.saveEmbeddings`를 호출한다. 완료 후에는 Jarvis 음성 서비스 시작을 다시 요청하고, 스크립트는 `jarvis-profile-status.sh`를 실행해 저장 상태를 확인한다. profile status/enrollment 스크립트는 request id로 자기 실행 로그만 필터링하고 전체 logcat을 비우지 않으므로 기존 `JarvisLatency` 로그를 보존한다.
 
 새 실기기 측정은 `profile_embeddings>=2`를 먼저 확인한 뒤 로그를 비우고 정해진 시간 동안 녹화해 바로 요약한다.
 
@@ -560,6 +561,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - `MY_PACKAGE_REPLACED` 또는 재부팅 후 `Jarvis 대기 준비됨` 알림이 표시된다.
 - 알림의 `Jarvis 시작`을 누르면 `JarvisVoiceService` foreground notification이 표시된다.
 - 소유자 목소리와 마이크 권한이 준비된 상태에서 접근성 서비스만 살아 있고 `JarvisVoiceService`가 없으면 watchdog이 음성 서비스를 다시 시작한다.
+- 저장된 owner embedding이 2개 미만인 구버전 프로필이면 `JarvisVoiceServiceStarter`와 watchdog 모두 음성 서비스 시작을 차단한다.
 - Android 정책상 `BOOT_COMPLETED`에서 microphone foreground service가 직접 시작되지 않는다.
 - HyperOS 자동 시작 허용 및 배터리 제한 해제 후 장시간 대기 안정성을 확인한다.
 

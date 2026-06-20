@@ -14,6 +14,7 @@ object OwnerVoiceStore {
 
     const val MODEL_ASSET_NAME = "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"
     const val DEFAULT_ACCEPT_THRESHOLD = 0.50f
+    const val MIN_CONFIGURED_EMBEDDINGS = 2
 
     fun saveEmbedding(context: Context, embedding: FloatArray) {
         saveEmbeddings(context, listOf(embedding))
@@ -49,7 +50,7 @@ object OwnerVoiceStore {
 
     fun hasProfile(context: Context): Boolean = getEmbeddings(context).isNotEmpty()
 
-    fun isConfigured(context: Context): Boolean = hasProfile(context)
+    fun isConfigured(context: Context): Boolean = embeddingCount(context) >= MIN_CONFIGURED_EMBEDDINGS
 
     fun clearProfile(context: Context) {
         prefs(context)
