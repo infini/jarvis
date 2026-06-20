@@ -28,6 +28,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 2.0초 window를 250ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
 - 짧은 `자비스` 호출어가 2초 window 안의 무음에 묻히지 않도록 owner voice gate에서 RMS 기반 말소리 구간 정리와 근접 점수 2회 연속 통과 정책을 추가함
 - command window 안에서는 sherpa-onnx 한국어 streaming ASR 모델을 우선 사용해 Android `SpeechRecognizer` partial result 대기 시간을 우회하도록 변경
+- local command ASR이 짧은 명령을 못 잡으면 빨간 실패 상태로 고정하지 않고 초록 명령 대기 상태로 되돌린 뒤 Android `SpeechRecognizer` fallback을 1회 시도하도록 변경
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 - 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
 - 명령 가능 여부를 사용자가 확실히 알 수 있도록 소리, 진동, 접근성 overlay 기반 Jarvis 상태 표시를 추가했다.
@@ -243,6 +244,7 @@ Passive 상태 표시 정책:
 - wake waiting 중에도 overlay를 띄우지 않는다. 사용자가 호출어를 말해 command window가 열렸을 때만 명확히 표시한다.
 - notification 문구는 passive 상태 진단용으로 유지하되, 사용자의 현재 화면 위에 지속적으로 노출하지 않는다.
 - overlay text는 상태 설명 문구를 넣지 않고 `JARVIS` 단일 라벨만 사용한다. 상태별 의미는 작은 컬러 점, 소리, 진동으로 전달한다.
+- red dot은 명령 대기 상태가 아니라 직전 인식 실패 상태다. 실패 직후 새 local/fallback listening이 시작되면 overlay는 다시 green dot으로 돌아가야 한다.
 
 Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표시한다. 별도 “다른 앱 위에 표시” 권한을 요구하지 않지만, Jarvis 접근성 서비스가 켜져 있어야 카메라 앱 위에서도 보인다. 상단 위치는 Android status bar/display cutout inset을 기준으로 계산해 카메라 노치 영역 아래에 배치한다.
 
@@ -273,7 +275,7 @@ Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표�
 
 예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `자비스` 또는 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. wake-only 발화가 인식되면 window를 다시 12초로 연장하고 즉시 다음 명령 인식을 시작한다.
 
-카메라 세션 명령은 처리 후에도 인증 window를 다시 30초로 연장한다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리할 수 있어야 한다. 리스닝이 인증 window 안에서 시작됐다면 STT 결과가 window 만료 직후 도착해도 해당 발화는 호출어 없는 명령으로 인정한다. command window 안에서는 sherpa-onnx 한국어 streaming ASR을 우선 사용하고, 로컬 모델이 없거나 초기화에 실패하면 Android `SpeechRecognizer`로 fallback한다. `home`, `back`, `stop_listening` 같은 종료성 명령은 window를 닫는다.
+카메라 세션 명령은 처리 후에도 인증 window를 다시 30초로 연장한다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리할 수 있어야 한다. 리스닝이 인증 window 안에서 시작됐다면 STT 결과가 window 만료 직후 도착해도 해당 발화는 호출어 없는 명령으로 인정한다. command window 안에서는 sherpa-onnx 한국어 streaming ASR을 우선 사용하고, 로컬 모델이 없거나 초기화에 실패하거나 짧은 시간 안에 명령을 못 잡으면 Android `SpeechRecognizer`로 fallback한다. `home`, `back`, `stop_listening` 같은 종료성 명령은 window를 닫는다.
 
 ## 8.1 Owner Voice Gate
 
@@ -295,7 +297,7 @@ Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표�
 6. similarity가 `0.50` 이상이거나 짧은 호출어 보정 near-match 조건을 만족하면 `AudioRecord`를 닫고 12초 인증 window를 연다.
 7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
 8. window 안에서는 호출어 없는 명령도 허용하며, `LocalCommandSession`이 로컬 한국어 streaming ASR로 command text를 먼저 시도한다.
-9. 로컬 모델이 없거나 초기화에 실패하면 Android `SpeechRecognizer` fallback을 사용하고, 이 경우 command-mode silence timeout을 더 짧게 사용한다.
+9. 로컬 모델이 없거나 초기화에 실패하거나 `LocalCommandSession`이 2.5초 안에 명령을 못 잡으면 Android `SpeechRecognizer` fallback을 1회 사용하고, 이 경우 command-mode silence timeout을 더 짧게 사용한다.
 10. 카메라 세션 명령과 `home` 종료 명령은 로컬 streaming ASR 또는 partial STT 결과에서 먼저 해석되면 즉시 실행한다.
 11. 카메라 세션 명령이면 인증 window를 30초 연장하고 바로 다음 명령 인식을 시작한다.
 12. 그 외 명령 처리 후에는 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
@@ -423,9 +425,10 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 ### State Feedback Test
 
-- owner gate 통과 또는 wake-only 발화 후 작은 black pill `JARVIS` overlay, 확인음 2회, 짧은 진동 1회가 발생한다.
-- 카메라 명령 처리 후 작은 black pill `JARVIS` overlay, 확인음 1회, 짧은 진동 1회가 발생한다.
-- command window 안에서 인식 실패 시 작은 black pill `JARVIS` overlay, 실패음 2회, 짧은 진동 2회가 발생한다.
+- owner gate 통과 또는 wake-only 발화 후 작은 iPhone-style pill `JARVIS` green dot overlay, 확인음 2회, 짧은 진동 1회가 발생한다.
+- 카메라 명령 처리 후 작은 iPhone-style pill `JARVIS` blue dot overlay, 확인음 1회, 짧은 진동 1회가 발생한다.
+- command window 안에서 인식 실패 시 작은 iPhone-style pill `JARVIS` red dot overlay, 실패음 2회, 짧은 진동 2회가 발생한다.
+- local command ASR 실패 후 Android `SpeechRecognizer` fallback이 시작되면 red dot이 green dot으로 돌아간다.
 - owner gate 대기, 호출어 대기, command window 종료 상태에서는 overlay가 사라진다.
 
 ### Camera Automation Test

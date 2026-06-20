@@ -52,6 +52,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var currentListeningAllowsCommandWithoutWake = false
     private var partialCommandHandled = false
     private var partialCommandKeepsWindowOpen = false
+    private var forceSpeechRecognizerOnce = false
     private val listeningTimeout = Runnable {
         if (!listening || destroyed) return@Runnable
         Log.w(TAG, "Listening timed out; restarting recognizer")
@@ -145,12 +146,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (destroyed || listening || ownerVoiceGate.isVerifying) return
 
         val commandWindowOpen = shouldUseOwnerGate() && isOwnerAuthorized()
-        if (commandWindowOpen && localCommandSession.canStart()) {
+        if (commandWindowOpen && localCommandSession.canStart() && !forceSpeechRecognizerOnce) {
             startLocalCommandListening()
             return
         }
         if (recognizer == null) return
 
+        forceSpeechRecognizerOnce = false
         val intent = SpeechRecognitionIntentFactory.create(this, commandWindowOpen)
 
         try {
@@ -159,7 +161,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
             partialCommandHandled = false
             partialCommandKeepsWindowOpen = false
             recognizer?.startListening(intent)
-            if (!commandWindowOpen) feedbackController.showWakeWaiting()
+            if (commandWindowOpen) {
+                feedbackController.commandListening()
+            } else {
+                feedbackController.showWakeWaiting()
+            }
             handler.removeCallbacks(listeningTimeout)
             handler.postDelayed(listeningTimeout, LISTENING_TIMEOUT_MS)
             Log.d(TAG, "Listening started")
@@ -182,6 +188,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         currentListeningAllowsCommandWithoutWake = true
         partialCommandHandled = false
         partialCommandKeepsWindowOpen = false
+        feedbackController.commandListening()
         handler.removeCallbacks(listeningTimeout)
         handler.postDelayed(listeningTimeout, LOCAL_COMMAND_TIMEOUT_MS + 500L)
 
@@ -215,14 +222,31 @@ class JarvisVoiceService : Service(), RecognitionListener {
             }
             outcome.unavailable -> {
                 Log.w(TAG, "Local command recognizer unavailable; falling back to speech recognizer")
+                forceSpeechRecognizerOnce = true
+                if (wasListeningForCommand && shouldUseOwnerGate()) {
+                    ownerVoiceGate.extendAuthorization(SPEECH_FALLBACK_AUTH_EXTENSION_MS)
+                }
                 scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
             }
             else -> {
-                feedbackController.commandFailed()
-                if (wasListeningForCommand && shouldUseOwnerGate()) {
-                    ownerVoiceGate.extendAuthorization(COMMAND_RETRY_GRACE_MS)
+                Log.d(
+                    TAG,
+                    "Local command finished without command: " +
+                        "text='${result?.text.orEmpty()}', elapsed=${result?.elapsedMs ?: 0L}ms",
+                )
+                if (wasListeningForCommand && recognizer != null) {
+                    forceSpeechRecognizerOnce = true
+                    if (shouldUseOwnerGate()) {
+                        ownerVoiceGate.extendAuthorization(SPEECH_FALLBACK_AUTH_EXTENSION_MS)
+                    }
+                    scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+                } else {
+                    feedbackController.commandFailed()
+                    if (wasListeningForCommand && shouldUseOwnerGate()) {
+                        ownerVoiceGate.extendAuthorization(COMMAND_RETRY_GRACE_MS)
+                    }
+                    scheduleNextCapture(COMMAND_RETRY_DELAY_MS)
                 }
-                scheduleNextCapture(COMMAND_RETRY_DELAY_MS)
             }
         }
     }
@@ -413,7 +437,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_AUTH_WINDOW_MS = 12000L
         private const val CAMERA_SESSION_AUTH_WINDOW_MS = 30000L
         private const val COMMAND_RETRY_GRACE_MS = 2000L
-        private const val LOCAL_COMMAND_TIMEOUT_MS = 5000L
+        private const val LOCAL_COMMAND_TIMEOUT_MS = 2500L
+        private const val SPEECH_FALLBACK_AUTH_EXTENSION_MS = 8000L
         private const val OWNER_VERIFY_AUDIO_MS = 2000L
         private const val OWNER_VERIFY_INTERVAL_MS = 250L
         private const val OWNER_VERIFY_RETRY_MS = 300L

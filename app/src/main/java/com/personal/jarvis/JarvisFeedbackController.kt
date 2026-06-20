@@ -40,6 +40,10 @@ class JarvisFeedbackController(
         }
     }
 
+    fun commandListening() {
+        signal(JarvisVoiceState.COMMAND_READY)
+    }
+
     fun commandProcessing() {
         signal(JarvisVoiceState.COMMAND_PROCESSING, force = true)
     }
