@@ -88,6 +88,13 @@ scripts/jarvis-profile-status.sh
 ```
 
 정상적인 재등록 상태는 `profile_embeddings`가 2 이상이어야 합니다.
+`profile_embeddings`가 1이면 구버전 단일 embedding 프로필이 남아 있는 상태라 짧은 `자비스` 호출이 느리거나 흔들릴 수 있습니다. USB 연결 상태에서는 다음 스크립트로 debug APK의 no-display 등록 Activity를 실행해 앱 화면을 열지 않고 다시 등록할 수 있습니다.
+
+```bash
+scripts/jarvis-owner-enroll.sh 6
+```
+
+스크립트가 `Speak now`를 출력하면 6초 동안 `자비스`를 여러 번 또렷하게 말합니다. 등록이 끝나면 자동으로 `jarvis-profile-status.sh`를 실행하고, `profile_embeddings>=2`일 때만 속도 측정을 진행합니다.
 
 새 측정은 로그를 비우고 정해진 시간 동안 녹화한 뒤 바로 요약합니다.
 
@@ -106,6 +113,8 @@ scripts/jarvis-command-trace.sh 45
 5. `접근성 설정 열기`를 누르고 `Jarvis` 접근성 서비스를 켭니다.
 6. HyperOS 앱 설정에서 자동 시작을 허용하고 배터리 제한을 풀어줍니다.
 7. 앱으로 돌아와 `Jarvis 시작`을 누릅니다. 이후 접근성 서비스가 살아 있으면 Jarvis 음성 서비스가 내려간 상태를 watchdog이 주기적으로 복구합니다.
+
+USB 디버깅이 연결되어 있으면 `scripts/jarvis-owner-enroll.sh 6`으로 소유자 목소리를 다시 등록하고, `scripts/jarvis-profile-status.sh`로 저장된 embedding 개수가 2 이상인지 확인할 수 있습니다.
 
 ## 설치 방법
 

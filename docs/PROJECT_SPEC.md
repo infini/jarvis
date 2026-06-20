@@ -214,6 +214,8 @@ JarvisAccessibilityService
 | `JarvisVoiceService.kt` | 포그라운드 음성 인식 서비스의 상태 전환 orchestration |
 | `JarvisVoiceServiceStarter.kt` | 앱 UI와 접근성 watchdog에서 공통으로 쓰는 음성 서비스 시작 helper |
 | `debug/JarvisDebugStartActivity.kt` | debug APK 전용 ADB service start 진입점 |
+| `debug/JarvisDebugOwnerEnrollActivity.kt` | debug APK 전용 ADB owner voice 재등록 진입점 |
+| `debug/JarvisDebugProfileStatusActivity.kt` | debug APK 전용 owner voice profile 상태 로그 진입점 |
 | `OwnerVoiceGate.kt` | owner voice verification 스레드, 인증 window 상태 관리 |
 | `OwnerVoiceEngine.kt` | sherpa-onnx speaker embedding 묶음 생성, 녹음, cosine 검증 |
 | `OwnerVoiceStore.kt` | 소유자 음성 embedding 묶음 저장 |
@@ -303,6 +305,14 @@ scripts/jarvis-latency-report.sh
 ```bash
 scripts/jarvis-profile-status.sh
 ```
+
+`profile_embeddings`가 1이면 v1 단일 embedding fallback 프로필이 남아 있는 상태다. 이 상태는 호환용으로만 허용하며, 짧은 `자비스` 호출어 latency 검증에는 사용하지 않는다. USB 연결 상태에서는 다음 스크립트로 debug APK의 no-display owner enrollment Activity를 실행한다.
+
+```bash
+scripts/jarvis-owner-enroll.sh 6
+```
+
+스크립트가 `Speak now`를 출력하면 사용자는 6초 동안 `자비스`를 여러 번 또렷하게 말한다. Activity는 등록 중 `JarvisVoiceServiceStarter.setOwnerEnrollmentActive(true)`로 watchdog 재시작을 막고, 기존 `JarvisVoiceService`를 잠시 중지한 뒤 `OwnerVoiceEngine.createEnrollmentEmbeddings`로 최소 2개 이상의 embedding을 만들 때만 `OwnerVoiceStore.saveEmbeddings`를 호출한다. 완료 후 스크립트는 `jarvis-profile-status.sh`를 다시 실행해 저장 상태를 확인한다.
 
 새 실기기 측정은 로그를 비우고 정해진 시간 동안 녹화한 뒤 바로 요약한다.
 
