@@ -27,6 +27,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 즉시 실행으로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
 - owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 1.6초 window를 180ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
 - 짧은 `자비스` 호출어가 2초 window 안의 무음에 묻히지 않도록 owner voice gate에서 RMS 기반 말소리 구간 정리와 근접 점수 2회 연속 통과 정책을 추가함
+- owner voice gate가 일정한 배경음을 계속 말소리로 판단하지 않도록, 인증 시에는 noise floor 대비 피크가 충분한 음성 구간만 speaker embedding으로 계산하도록 보정함
 - command window 안에서는 Android `SpeechRecognizer` partial result를 우선 사용해 `카메라 실행`, `찍어`, `종료` 같은 짧은 명령을 빠르게 실행하도록 변경
 - Android `SpeechRecognizer`가 command window 안에서 실패하면 초록 명령 대기 상태를 유지한 채 local command ASR fallback을 1회 시도하도록 변경
 - `종료`, `홈`, `뒤로`는 현재 앱만 제어하고 Jarvis command window는 닫지 않도록 변경
@@ -317,7 +318,7 @@ adb logcat -v time -s JarvisLatency
 - Runtime: `sherpa-onnx` 공식 Android AAR `v1.13.3`의 Kotlin API jar와 `arm64-v8a` native libraries
 - Model: `3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`
 - 저장 방식: 소유자 embedding `FloatArray`를 little-endian bytes로 변환한 뒤 Base64 인코딩하여 앱 private `SharedPreferences`에 저장한다.
-- 기본 허용 threshold는 `0.50`이다. 짧은 호출어 보정을 위해 말소리 구간이 600ms 이상이고 similarity `0.46` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다.
+- 기본 허용 threshold는 `0.50`이다. 짧은 호출어 보정을 위해 말소리 구간이 600ms 이상이고 similarity `0.46` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. 인증 중에는 1.6초 rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다.
 - 현재 APK는 Xiaomi 15 Ultra를 우선해 `arm64-v8a` ABI만 패키징한다.
 
 현재 구현 흐름:
@@ -326,7 +327,7 @@ adb logcat -v time -s JarvisLatency
 2. `OwnerVoiceEngine`이 16kHz mono PCM을 녹음하고 sherpa-onnx로 speaker embedding을 계산한다.
 3. 계산된 embedding을 `OwnerVoiceStore`에 저장한다.
 4. 이후 `JarvisVoiceService`는 `OwnerVoiceGate`를 통해 owner embedding이 있는지 확인하고, owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
-5. 최근 1.6초 rolling audio window에서 RMS 기반으로 말소리 앞뒤 무음을 줄인 뒤 candidate embedding을 만들고 180ms마다 저장된 embedding과 cosine similarity를 비교한다.
+5. 최근 1.6초 rolling audio window에서 RMS 기반으로 말소리 앞뒤 무음을 줄인다. 인증 경로에서는 noise floor 대비 peak가 충분한 구간만 candidate embedding으로 만들고, 180ms마다 저장된 embedding과 cosine similarity를 비교한다.
 6. similarity가 `0.50` 이상이거나 짧은 호출어 보정 near-match 조건을 만족하면 `AudioRecord`를 닫고 12초 인증 window를 연다.
 7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
 8. window 안에서는 호출어 없는 명령도 허용하며, Android `SpeechRecognizer` command-mode partial result를 먼저 시도한다.

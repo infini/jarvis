@@ -21,6 +21,10 @@ object OwnerVoiceEngine {
     private const val MIN_PEAK_RMS = 0.004f
     private const val MIN_ACTIVE_RMS = 0.003f
     private const val ACTIVE_RMS_RATIO = 0.18f
+    private const val VERIFY_NOISE_FLOOR_PERCENTILE = 0.20f
+    private const val VERIFY_MIN_PEAK_TO_FLOOR_RATIO = 2.2f
+    private const val VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS = 0.0025f
+    private const val VERIFY_ACTIVE_RMS_RANGE_RATIO = 0.40f
     private const val NEAR_ACCEPT_THRESHOLD = 0.46f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
     private const val NEAR_ACCEPT_MIN_SPEECH_MS = 600L
@@ -85,7 +89,10 @@ object OwnerVoiceEngine {
         threshold: Float = OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD,
     ): Match {
         val ownerEmbedding = OwnerVoiceStore.getEmbedding(context) ?: return Match(0f, accepted = false)
-        val preparedAudio = prepareSamplesForEmbedding(samples) ?: return Match(0f, accepted = false)
+        val preparedAudio = prepareSamplesForEmbedding(
+            samples = samples,
+            requireSpeechContrast = true,
+        ) ?: return Match(0f, accepted = false)
         val candidateEmbedding = createEmbedding(context, preparedAudio)
             ?: return Match(0f, accepted = false, activeSpeechMs = preparedAudio.activeSpeechMs)
         val score = cosineSimilarity(ownerEmbedding, candidateEmbedding)
@@ -255,8 +262,11 @@ object OwnerVoiceEngine {
         return result
     }
 
-    internal fun prepareSamplesForEmbedding(samples: FloatArray): PreparedAudio? {
-        val speechBounds = findSpeechBounds(samples) ?: return null
+    internal fun prepareSamplesForEmbedding(
+        samples: FloatArray,
+        requireSpeechContrast: Boolean = false,
+    ): PreparedAudio? {
+        val speechBounds = findSpeechBounds(samples, requireSpeechContrast) ?: return null
         val activeSampleCount = speechBounds.activeSampleCount
         if (activeSampleCount < SAMPLE_RATE_HZ * MIN_ACTIVE_SPEECH_MS / 1000L) return null
 
@@ -272,7 +282,10 @@ object OwnerVoiceEngine {
         return PreparedAudio(padded, activeSampleCount)
     }
 
-    private fun findSpeechBounds(samples: FloatArray): SpeechBounds? {
+    private fun findSpeechBounds(
+        samples: FloatArray,
+        requireSpeechContrast: Boolean,
+    ): SpeechBounds? {
         val frameSamples = (SAMPLE_RATE_HZ * ENERGY_FRAME_MS / 1000L).toInt()
         if (samples.size < frameSamples) return null
 
@@ -288,7 +301,22 @@ object OwnerVoiceEngine {
         }
         if (peakRms < MIN_PEAK_RMS) return null
 
-        val activeThreshold = maxOf(MIN_ACTIVE_RMS, peakRms * ACTIVE_RMS_RATIO)
+        val activeThreshold = if (requireSpeechContrast) {
+            val noiseFloorRms = noiseFloor(frameRms.map { it.second })
+            val minVerificationPeak = maxOf(
+                MIN_PEAK_RMS,
+                noiseFloorRms * VERIFY_MIN_PEAK_TO_FLOOR_RATIO,
+                noiseFloorRms + VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS,
+            )
+            if (peakRms < minVerificationPeak) return null
+
+            maxOf(
+                MIN_ACTIVE_RMS,
+                noiseFloorRms + (peakRms - noiseFloorRms) * VERIFY_ACTIVE_RMS_RANGE_RATIO,
+            )
+        } else {
+            maxOf(MIN_ACTIVE_RMS, peakRms * ACTIVE_RMS_RATIO)
+        }
         var firstActiveStart = -1
         var lastActiveEnd = -1
         frameRms.forEach { (frameStart, frameValue) ->
@@ -305,6 +333,16 @@ object OwnerVoiceEngine {
             end = (lastActiveEnd + marginSamples).coerceAtMost(samples.size),
             activeSampleCount = lastActiveEnd - firstActiveStart,
         )
+    }
+
+    private fun noiseFloor(frameRms: List<Float>): Float {
+        if (frameRms.isEmpty()) return 0f
+
+        val sorted = frameRms.sorted()
+        val index = (sorted.lastIndex * VERIFY_NOISE_FLOOR_PERCENTILE)
+            .toInt()
+            .coerceIn(0, sorted.lastIndex)
+        return sorted[index]
     }
 
     private fun rms(samples: FloatArray, start: Int, end: Int): Float {
