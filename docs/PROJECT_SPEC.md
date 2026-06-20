@@ -25,7 +25,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 2026-06-20 21:26 KST 기준 약 15분 유지 테스트에서 프로세스, foreground notification, 접근성 바인딩, owner voice verification loop 유지 확인
 - `자비스` 또는 `헤이 자비스` wake-only 발화 후 확인음/명령 대기 알림을 제공하고, 인증 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
 - wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 즉시 실행으로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
-- owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 2.0초 window를 250ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
+- owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 1.6초 window를 180ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
 - 짧은 `자비스` 호출어가 2초 window 안의 무음에 묻히지 않도록 owner voice gate에서 RMS 기반 말소리 구간 정리와 근접 점수 2회 연속 통과 정책을 추가함
 - command window 안에서는 Android `SpeechRecognizer` partial result를 우선 사용해 `카메라 실행`, `찍어`, `종료` 같은 짧은 명령을 빠르게 실행하도록 변경
 - Android `SpeechRecognizer`가 command window 안에서 실패하면 초록 명령 대기 상태를 유지한 채 local command ASR fallback을 1회 시도하도록 변경
@@ -33,6 +33,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - `멈춰`는 Jarvis 서비스를 중지하지 않고 현재 command window만 닫아 이후 `자비스`로 다시 깨울 수 있도록 변경
 - Jarvis 서비스는 한 번 시작되면 재부팅 전까지 foreground service로 유지하며, 앱 UI에서도 서비스 중지 버튼을 제공하지 않도록 변경
 - Jarvis 서비스 실행 중에는 마이크 점유 충돌을 피하기 위해 소유자 목소리 재등록을 시작하지 않는다. 재등록은 재부팅 후 Jarvis 시작 전에 수행한다.
+- command window의 watchdog timeout을 12초로 늘려 명령 대기 중 불필요한 STT 재시작을 줄이고, partial 명령 실행 후 다음 리스닝 전환 대기를 100ms로 단축함
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 - 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
 - 명령 가능 여부를 사용자가 확실히 알 수 있도록 소리, 진동, 접근성 overlay 기반 Jarvis 상태 표시를 추가했다.
@@ -297,7 +298,7 @@ Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표�
 2. `OwnerVoiceEngine`이 16kHz mono PCM을 녹음하고 sherpa-onnx로 speaker embedding을 계산한다.
 3. 계산된 embedding을 `OwnerVoiceStore`에 저장한다.
 4. 이후 `JarvisVoiceService`는 `OwnerVoiceGate`를 통해 owner embedding이 있는지 확인하고, owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
-5. 최근 2.0초 rolling audio window에서 RMS 기반으로 말소리 앞뒤 무음을 줄인 뒤 candidate embedding을 만들고 250ms마다 저장된 embedding과 cosine similarity를 비교한다.
+5. 최근 1.6초 rolling audio window에서 RMS 기반으로 말소리 앞뒤 무음을 줄인 뒤 candidate embedding을 만들고 180ms마다 저장된 embedding과 cosine similarity를 비교한다.
 6. similarity가 `0.50` 이상이거나 짧은 호출어 보정 near-match 조건을 만족하면 `AudioRecord`를 닫고 12초 인증 window를 연다.
 7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
 8. window 안에서는 호출어 없는 명령도 허용하며, Android `SpeechRecognizer` command-mode partial result를 먼저 시도한다.

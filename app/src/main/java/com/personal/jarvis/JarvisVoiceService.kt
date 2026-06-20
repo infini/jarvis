@@ -66,7 +66,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (wasListeningForCommand && shouldUseOwnerGate()) {
             ownerVoiceGate.extendAuthorization(COMMAND_RETRY_GRACE_MS)
         }
-        scheduleNextCapture(300)
+        scheduleNextCapture(if (wasListeningForCommand) COMMAND_RETRY_DELAY_MS else DEFAULT_RETRY_DELAY_MS)
     }
     private val partialCommandFinalize = Runnable {
         if (destroyed || !partialCommandHandled) return@Runnable
@@ -173,7 +173,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 feedbackController.showWakeWaiting()
             }
             handler.removeCallbacks(listeningTimeout)
-            handler.postDelayed(listeningTimeout, LISTENING_TIMEOUT_MS)
+            handler.postDelayed(listeningTimeout, listeningTimeoutMs())
             Log.d(TAG, "Listening started")
         } catch (_: RuntimeException) {
             listening = false
@@ -436,24 +436,34 @@ class JarvisVoiceService : Service(), RecognitionListener {
         return false
     }
 
+    private fun listeningTimeoutMs(): Long {
+        return if (currentListeningAllowsCommandWithoutWake) {
+            COMMAND_LISTENING_TIMEOUT_MS
+        } else {
+            DEFAULT_LISTENING_TIMEOUT_MS
+        }
+    }
+
     companion object {
         @Volatile
         var isRunning: Boolean = false
             private set
 
         private const val TAG = "JarvisVoiceService"
-        private const val LISTENING_TIMEOUT_MS = 4500L
+        private const val DEFAULT_LISTENING_TIMEOUT_MS = 7000L
+        private const val COMMAND_LISTENING_TIMEOUT_MS = 12000L
         private const val OWNER_AUTH_WINDOW_MS = 12000L
         private const val CAMERA_SESSION_AUTH_WINDOW_MS = 30000L
         private const val COMMAND_RETRY_GRACE_MS = 2000L
         private const val LOCAL_COMMAND_TIMEOUT_MS = 1600L
         private const val LOCAL_FALLBACK_AUTH_EXTENSION_MS = 6000L
-        private const val OWNER_VERIFY_AUDIO_MS = 2000L
-        private const val OWNER_VERIFY_INTERVAL_MS = 250L
-        private const val OWNER_VERIFY_RETRY_MS = 300L
+        private const val OWNER_VERIFY_AUDIO_MS = 1600L
+        private const val OWNER_VERIFY_INTERVAL_MS = 180L
+        private const val OWNER_VERIFY_RETRY_MS = 200L
+        private const val DEFAULT_RETRY_DELAY_MS = 300L
         private const val COMMAND_READY_LISTEN_DELAY_MS = 0L
         private const val COMMAND_RETRY_DELAY_MS = 25L
-        private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 250L
+        private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 100L
         private const val DEFAULT_NOTIFICATION_TEXT = "소유자 목소리 확인 후 음성 명령을 듣습니다."
     }
 
