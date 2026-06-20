@@ -58,6 +58,16 @@
 
 Jarvis 상태 overlay는 사용자가 바로 판단해야 하는 순간에만 표시됩니다. 화면에는 노치/상태바 아래의 작은 iPhone-style pill 형태로 `JARVIS`만 표시하고, 상태는 작은 컬러 점과 소리/진동 패턴으로 전달합니다. 초록 점은 명령 대기/인식 중, 빨간 점은 방금 명령 인식에 실패했다는 뜻입니다. idle/소유자 확인/호출어 대기 상태에서는 화면을 가리지 않도록 overlay를 숨깁니다. 명령 가능 상태에 들어갈 때는 확인음 2회와 짧은 진동이 함께 발생합니다.
 
+## 속도 측정 로그
+
+음성 인식 속도 개선은 `JarvisLatency` 로그를 기준으로 판단합니다. 다음 명령을 켜고 `자비스`, `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 한 사이클 말하면 같은 `trace=` 값으로 구간별 시간이 출력됩니다.
+
+```bash
+adb logcat -v time -s JarvisLatency
+```
+
+주요 이벤트는 `listen_start`, `ready_for_speech`, `partial_results`, `final_results`, `command_parsed`, `command_execute_start`, `command_execute_return`, `accessibility_command_received`, `accessibility_command_dispatch_return`, `command_complete`입니다. 음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후 걸린 시간입니다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 명령을 보낸 뒤 접근성 서비스가 받은 지연입니다.
+
 ## 폰에서 켜야 하는 것
 
 1. Android Studio에서 이 폴더를 엽니다.

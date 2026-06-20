@@ -11,7 +11,11 @@ class JarvisCommandExecutor(
     private var lastCommand: String? = null
     private var lastCommandAt = 0L
 
-    fun run(command: String): Result {
+    fun run(
+        command: String,
+        traceId: Long? = null,
+        traceStartedAtMs: Long? = null,
+    ): Result {
         val now = System.currentTimeMillis()
         if (lastCommand == command && now - lastCommandAt < COMMAND_COOLDOWN_MS) {
             Log.d(TAG, "Ignored duplicate command: $command")
@@ -26,16 +30,26 @@ class JarvisCommandExecutor(
             CommandBus.COMMAND_STOP_LISTENING -> Log.d(TAG, "Closing command window without stopping service")
             CommandBus.COMMAND_OPEN_CAMERA -> CameraLauncher.open(context)
             CommandBus.COMMAND_OPEN_FRONT_CAMERA,
-            CommandBus.COMMAND_OPEN_REAR_CAMERA -> CommandBus.send(context, command, "voice")
+            CommandBus.COMMAND_OPEN_REAR_CAMERA -> {
+                CommandBus.send(context, command, "voice", traceId, traceStartedAtMs)
+            }
             CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO -> {
                 CameraLauncher.open(context)
                 handler.postDelayed(
-                    { CommandBus.send(context, CommandBus.COMMAND_TAKE_PHOTO, "voice") },
+                    {
+                        CommandBus.send(
+                            context = context,
+                            command = CommandBus.COMMAND_TAKE_PHOTO,
+                            source = "voice",
+                            traceId = traceId,
+                            traceStartedAtMs = traceStartedAtMs,
+                        )
+                    },
                     CAMERA_OPEN_DELAY_MS,
                 )
             }
             CommandBus.COMMAND_WAKE_SCREEN -> ScreenController.wake(context)
-            else -> CommandBus.send(context, command, "voice")
+            else -> CommandBus.send(context, command, "voice", traceId, traceStartedAtMs)
         }
 
         return Result(command.keepsCommandWindowOpen())

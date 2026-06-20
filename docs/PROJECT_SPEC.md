@@ -35,6 +35,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - Jarvis 서비스 실행 중에는 마이크 점유 충돌을 피하기 위해 소유자 목소리 재등록을 시작하지 않는다. 재등록은 재부팅 후 Jarvis 시작 전에 수행한다.
 - command window의 watchdog timeout을 12초로 늘려 명령 대기 중 불필요한 STT 재시작을 줄이고, partial 명령 실행 후 다음 리스닝 전환 대기를 100ms로 단축함
 - 카메라 세션 command window는 서비스 레벨 30초 hard deadline으로 관리하며, STT 재시도나 local fallback이 이 시간을 넘겨 명령 대기 상태를 연장하지 못하도록 변경
+- 음성 인식 속도 개선 준비를 위해 `JarvisLatency` trace 로그를 추가하고, Android STT/local ASR/명령 실행/접근성 수신 구간을 같은 trace id로 측정할 수 있게 변경
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 - 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
 - 명령 가능 여부를 사용자가 확실히 알 수 있도록 소리, 진동, 접근성 overlay 기반 Jarvis 상태 표시를 추가했다.
@@ -204,6 +205,7 @@ JarvisAccessibilityService
 | `CameraAccessibilityController.kt` | Xiaomi 기본 카메라 접근성 자동화 recipe |
 | `AccessibilityNodeMatcher.kt` | 접근성 노드 키워드 검색, 스코어링, 최적 노드 선택 |
 | `CameraLauncher.kt` | 기본 카메라 앱 실행 |
+| `JarvisLatencyTrace.kt` | 음성 인식/명령 실행 latency trace 로그 |
 | `ScreenController.kt` | 짧은 wake lock으로 화면 켜기 |
 | `AndroidManifest.xml` | 권한, 서비스, 접근성 메타데이터 선언 |
 | `res/xml/jarvis_accessibility_service.xml` | 접근성 서비스 설정 |
@@ -254,6 +256,30 @@ Passive 상태 표시 정책:
 - 30초 command window 자동 만료는 사용자가 요청한 종료가 아니므로 실패음이나 종료음을 내지 않고 overlay만 제거한 뒤 owner gate 대기로 돌아간다.
 
 Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표시한다. 별도 “다른 앱 위에 표시” 권한을 요구하지 않지만, Jarvis 접근성 서비스가 켜져 있어야 카메라 앱 위에서도 보인다. 상단 위치는 Android status bar/display cutout inset을 기준으로 계산해 카메라 노치 영역 아래에 배치한다.
+
+### Latency Instrumentation
+
+음성 인식 속도 개선은 체감이 아니라 `JarvisLatency` 로그의 구간별 시간으로 판단한다. 앱은 command window 안에서 하나의 발화 또는 명령 실행을 trace id 하나로 묶어 다음 이벤트를 기록한다.
+
+```bash
+adb logcat -v time -s JarvisLatency
+```
+
+주요 이벤트:
+
+- `owner_authorized`: 소유자 목소리 인증 통과
+- `listen_start`: Android STT 또는 local ASR 리스닝 시작
+- `ready_for_speech`: Android `SpeechRecognizer` 준비 완료 callback
+- `speech_begin` / `speech_end`: Android `SpeechRecognizer` 발화 시작/끝 callback
+- `partial_results`: partial STT 결과 수신
+- `final_results`: final STT 결과 수신
+- `command_parsed`: 명령 파싱 완료
+- `command_execute_start` / `command_execute_return`: `JarvisCommandExecutor` 실행 진입/반환
+- `accessibility_command_received`: `CommandBus` broadcast를 접근성 서비스가 수신
+- `accessibility_command_dispatch_return`: 접근성 서비스 command dispatch 반환
+- `command_complete`: Jarvis command window 정책까지 반영한 명령 처리 완료
+
+음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후의 시간이다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 command broadcast를 보낸 뒤 접근성 서비스가 받은 지연이다. 다음 최적화는 여러 실기기 샘플에서 `listen_start`→`partial_results`, `partial_results`→`command_execute_start`, `command_execute_return`→`accessibility_command_received` 중 어느 구간이 큰지 확인한 뒤 진행한다.
 
 ## 8. Command Model
 
@@ -432,6 +458,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - `자비스, 화면 꺼`가 접근성 잠금화면 전역 액션으로 기기를 잠근다.
 - `자비스, 멈춰`가 command window만 닫고 음성 서비스는 유지한다.
 - 카메라 세션 명령 후 30초 동안 다음 명령이 없으면 overlay가 사라지고 owner gate 대기로 돌아간다.
+- `adb logcat -v time -s JarvisLatency`로 한 사이클을 측정했을 때 같은 trace id 안에서 STT 수신, 명령 파싱, 실행, 접근성 수신 이벤트가 확인된다.
 
 ### State Feedback Test
 

@@ -23,7 +23,21 @@ class JarvisAccessibilityService : AccessibilityService() {
     private val commandReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val command = intent?.getStringExtra(CommandBus.EXTRA_COMMAND) ?: return
-            handleCommand(command)
+            val traceId = traceIdFrom(intent)
+            val sentAtMs = intent.getLongExtra(CommandBus.EXTRA_SENT_AT_MS, 0L)
+            val traceStartedAtMs = intent.getLongExtra(CommandBus.EXTRA_TRACE_STARTED_AT_MS, 0L)
+            val busDelayMs = if (sentAtMs > 0L) JarvisLatencyTrace.elapsedSince(sentAtMs) else 0L
+            val totalMs = if (traceStartedAtMs > 0L) {
+                JarvisLatencyTrace.elapsedSince(traceStartedAtMs)
+            } else {
+                0L
+            }
+            JarvisLatencyTrace.logExternal(
+                traceId = traceId,
+                event = "accessibility_command_received",
+                detail = "command=$command totalMs=$totalMs busDelayMs=$busDelayMs",
+            )
+            handleCommand(command, traceId)
         }
     }
     private val stateReceiver = object : BroadcastReceiver() {
@@ -57,8 +71,9 @@ class JarvisAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() = Unit
 
-    private fun handleCommand(command: String) {
+    private fun handleCommand(command: String, traceId: Long?) {
         Log.d(TAG, "Handling command: $command")
+        JarvisLatencyTrace.logExternal(traceId, "accessibility_command_dispatch_start", "command=$command")
         when (command) {
             CommandBus.COMMAND_OPEN_CAMERA -> cameraController.openCamera()
             CommandBus.COMMAND_OPEN_FRONT_CAMERA -> cameraController.openCameraFacing(CameraLauncher.CameraFacing.FRONT)
@@ -72,6 +87,12 @@ class JarvisAccessibilityService : AccessibilityService() {
             CommandBus.COMMAND_WAKE_SCREEN -> ScreenController.wake(this)
             CommandBus.COMMAND_SLEEP_SCREEN -> ScreenController.sleep(this)
         }
+        JarvisLatencyTrace.logExternal(traceId, "accessibility_command_dispatch_return", "command=$command")
+    }
+
+    private fun traceIdFrom(intent: Intent): Long? {
+        if (!intent.hasExtra(CommandBus.EXTRA_TRACE_ID)) return null
+        return intent.getLongExtra(CommandBus.EXTRA_TRACE_ID, 0L).takeIf { it > 0L }
     }
 
     companion object {

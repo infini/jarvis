@@ -27,6 +27,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             handler = handler,
             onAuthorized = {
                 if (!destroyed) {
+                    startLatencyTrace("owner_authorized", "windowMs=$OWNER_AUTH_WINDOW_MS")
                     openCommandWindow(OWNER_AUTH_WINDOW_MS)
                     signalCommandReady()
                     scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
@@ -55,8 +56,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var forceLocalCommandOnce = false
     private var commandWindowDeadlineAt = 0L
     private var speechStartedInCurrentListen = false
+    private var latencyTrace: JarvisLatencyTrace? = null
     private val listeningTimeout: Runnable = Runnable {
         if (!listening || destroyed) return@Runnable
+        markLatency("listen_timeout", "commandWindow=$currentListeningAllowsCommandWithoutWake")
         Log.w(TAG, "Listening timed out; restarting recognizer")
         val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
         listening = false
@@ -69,6 +72,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         }
         if (wasListeningForCommand && isCommandWindowExpired()) {
             closeCommandWindow(playFeedback = false)
+            finishLatency("command_window_expired_on_listen_timeout")
             scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
             return@Runnable
         }
@@ -88,11 +92,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         if (listening && speechStartedInCurrentListen) {
             Log.d(TAG, "Command window deadline reached while speech is active; waiting for recognizer result")
+            markLatency("command_window_deadline_waiting_for_speech")
             handler.postDelayed(commandWindowTimeout, ACTIVE_SPEECH_DEADLINE_RECHECK_MS)
             return@Runnable
         }
 
         Log.d(TAG, "Command window deadline reached; returning to owner gate")
+        finishLatency("command_window_timeout")
         listening = false
         currentListeningAllowsCommandWithoutWake = false
         partialCommandHandled = false
@@ -110,6 +116,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
     private val partialCommandFinalize: Runnable = Runnable {
         if (destroyed || !partialCommandHandled) return@Runnable
+        markLatency("partial_finalize_timeout")
         Log.d(TAG, "Finalizing partial command without recognizer callback")
         listening = false
         speechStartedInCurrentListen = false
@@ -188,12 +195,16 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         val commandWindowOpen = isCommandWindowOpen()
         if (commandWindowOpen && forceLocalCommandOnce && localCommandSession.canStart()) {
+            ensureLatencyTrace("listen_cycle_start", "engine=local_asr forced=true")
+                .mark("fallback_listen_requested")
             forceLocalCommandOnce = false
             startLocalCommandListening()
             return
         }
         if (recognizer == null) {
             if (commandWindowOpen && localCommandSession.canStart()) {
+                ensureLatencyTrace("listen_cycle_start", "engine=local_asr recognizer=null")
+                    .mark("fallback_listen_requested")
                 startLocalCommandListening()
             }
             return
@@ -209,6 +220,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
             partialCommandKeepsWindowOpen = false
             speechStartedInCurrentListen = false
             recognizer?.startListening(intent)
+            if (commandWindowOpen) {
+                ensureLatencyTrace("listen_cycle_start", "engine=android_stt")
+                    .mark("listen_start", "engine=android_stt timeoutMs=${listeningTimeoutMs()}")
+            }
             if (commandWindowOpen) {
                 feedbackController.commandListening()
             } else {
@@ -226,6 +241,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             handler.removeCallbacks(listeningTimeout)
             Log.w(TAG, "Failed to start listening")
             if (commandWindowOpen) feedbackController.commandFailed()
+            if (commandWindowOpen) finishLatency("listen_start_failed", "engine=android_stt")
             scheduleNextCapture(1000)
         }
     }
@@ -238,6 +254,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         partialCommandHandled = false
         partialCommandKeepsWindowOpen = false
         speechStartedInCurrentListen = false
+        ensureLatencyTrace("listen_cycle_start", "engine=local_asr")
+            .mark("listen_start", "engine=local_asr timeoutMs=$LOCAL_COMMAND_TIMEOUT_MS")
         feedbackController.commandListening()
         handler.removeCallbacks(listeningTimeout)
         handler.postDelayed(listeningTimeout, LOCAL_COMMAND_TIMEOUT_MS + 500L)
@@ -246,6 +264,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             timeoutMs = LOCAL_COMMAND_TIMEOUT_MS,
             onText = { text ->
                 if (text.isNotBlank()) speechStartedInCurrentListen = true
+                if (text.isNotBlank()) markLatency("local_partial", "text=$text")
                 Log.d(TAG, "Local command partial text: $text")
             },
             onComplete = ::handleLocalCommandOutcome,
@@ -266,18 +285,24 @@ class JarvisVoiceService : Service(), RecognitionListener {
         val command = result?.command
         when {
             command != null -> {
+                markLatency("command_parsed", "source=local command=$command text=${result.text}")
                 Log.d(
                     TAG,
                     "Parsed local command: $command from '${result.text}' in ${result.elapsedMs}ms",
                 )
-                completeCommandRun(commandExecutor.run(command).keepsCommandWindowOpen)
+                completeCommandRun(runCommand(command, "local").keepsCommandWindowOpen)
             }
             outcome.unavailable -> {
                 Log.w(TAG, "Local command recognizer unavailable")
                 feedbackController.commandFailed()
+                finishLatency("local_asr_unavailable")
                 scheduleNextCapture(COMMAND_RETRY_DELAY_MS)
             }
             else -> {
+                markLatency(
+                    "local_no_command",
+                    "text=${result?.text.orEmpty()} elapsedMs=${result?.elapsedMs ?: 0L}",
+                )
                 Log.d(
                     TAG,
                     "Local command finished without command: " +
@@ -285,6 +310,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 )
                 if (wasListeningForCommand && isCommandWindowExpired()) {
                     closeCommandWindow(playFeedback = false)
+                    finishLatency("command_window_expired_after_local_no_command")
                     scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
                     return
                 }
@@ -292,6 +318,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 if (wasListeningForCommand && shouldUseOwnerGate()) {
                     extendCommandWindowWithinDeadline(COMMAND_RETRY_GRACE_MS)
                 }
+                finishLatency("local_no_command_retry")
                 scheduleNextCapture(COMMAND_RETRY_DELAY_MS)
             }
         }
@@ -310,6 +337,36 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     private fun isOwnerAuthorized(): Boolean {
         return ownerVoiceGate.isAuthorized()
+    }
+
+    private fun startLatencyTrace(event: String, detail: String = ""): JarvisLatencyTrace {
+        return JarvisLatencyTrace.start(event, detail).also {
+            latencyTrace = it
+        }
+    }
+
+    private fun ensureLatencyTrace(event: String, detail: String = ""): JarvisLatencyTrace {
+        return latencyTrace ?: startLatencyTrace(event, detail)
+    }
+
+    private fun markLatency(event: String, detail: String = "") {
+        latencyTrace?.mark(event, detail)
+    }
+
+    private fun finishLatency(event: String, detail: String = "") {
+        latencyTrace?.finish(event, detail)
+        latencyTrace = null
+    }
+
+    private fun runCommand(command: String, source: String): JarvisCommandExecutor.Result {
+        val trace = ensureLatencyTrace("command_trace_start", "source=$source command=$command")
+        trace.mark("command_execute_start", "source=$source command=$command")
+        val result = commandExecutor.run(command, trace.id, trace.startedAtMs)
+        trace.mark(
+            "command_execute_return",
+            "source=$source command=$command keepWindow=${result.keepsCommandWindowOpen}",
+        )
+        return result
     }
 
     private fun isCommandWindowOpen(): Boolean {
@@ -374,8 +431,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 text = candidate,
                 requireWakeWord = !allowCommandWithoutWake,
             ) ?: continue
+            markLatency("command_parsed", "source=final command=$command text=$candidate")
             Log.d(TAG, "Parsed command: $command from '$candidate'")
-            return if (commandExecutor.run(command).keepsCommandWindowOpen) {
+            return if (runCommand(command, "final").keepsCommandWindowOpen) {
                 SpeechOutcome.COMMAND_RUN_KEEP_WINDOW
             } else {
                 SpeechOutcome.COMMAND_RUN
@@ -384,11 +442,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         if (results.any(CommandInterpreter::isWakeOnly)) {
             Log.d(TAG, "Wake phrase recognized; keeping command window open")
+            markLatency("wake_only")
             openCommandWindow(OWNER_AUTH_WINDOW_MS)
             signalCommandReady()
             return SpeechOutcome.WAKE_ONLY
         }
 
+        markLatency("parse_no_command", "count=${results.size}")
         return SpeechOutcome.NO_COMMAND
     }
 
@@ -398,9 +458,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
             openCommandWindow(CAMERA_SESSION_AUTH_WINDOW_MS)
             notificationController.update("명령 처리됨. 다음 명령을 말하세요.")
             feedbackController.commandHandled()
+            finishLatency("command_complete", "keepWindow=true nextWindowMs=$CAMERA_SESSION_AUTH_WINDOW_MS")
             scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
         } else {
             closeCommandWindow(playFeedback = true)
+            finishLatency("command_complete", "keepWindow=false")
             scheduleNextCapture(250)
         }
     }
@@ -413,6 +475,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         partialCommandKeepsWindowOpen = false
         currentListeningAllowsCommandWithoutWake = false
         handler.removeCallbacks(partialCommandFinalize)
+        markLatency("partial_command_complete", "reason=$reason keepWindow=$keepCommandWindowOpen")
         Log.d(TAG, "Completing partial command run: $reason")
         completeCommandRun(keepCommandWindowOpen)
         return true
@@ -424,11 +487,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onReadyForSpeech(params: Bundle?) {
+        markLatency("ready_for_speech")
         Log.d(TAG, "Ready for speech")
     }
 
     override fun onBeginningOfSpeech() {
         speechStartedInCurrentListen = true
+        markLatency("speech_begin")
         Log.d(TAG, "Beginning of speech")
     }
 
@@ -437,6 +502,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     override fun onEndOfSpeech() {
         listening = false
         handler.removeCallbacks(listeningTimeout)
+        markLatency("speech_end")
         Log.d(TAG, "End of speech")
     }
 
@@ -445,20 +511,24 @@ class JarvisVoiceService : Service(), RecognitionListener {
         listening = false
         speechStartedInCurrentListen = false
         handler.removeCallbacks(listeningTimeout)
+        markLatency("speech_error", "code=$error commandWindow=$wasListeningForCommand")
         Log.w(TAG, "Speech error: $error")
         if (completePartialCommandRun("speech error $error")) return
 
         currentListeningAllowsCommandWithoutWake = false
         if (wasListeningForCommand && isCommandWindowExpired()) {
             closeCommandWindow(playFeedback = false)
+            finishLatency("command_window_expired_after_speech_error", "code=$error")
             scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
             return
         }
         if (wasListeningForCommand && localCommandSession.canStart()) {
             Log.w(TAG, "Speech recognizer failed in command window; falling back to local command recognizer")
+            markLatency("fallback_to_local", "reason=speech_error code=$error")
             if (shouldUseOwnerGate()) {
                 extendCommandWindowWithinDeadline(LOCAL_FALLBACK_AUTH_EXTENSION_MS)
                 if (!isCommandWindowOpen()) {
+                    finishLatency("fallback_blocked_by_deadline", "code=$error")
                     scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
                     return
                 }
@@ -477,9 +547,15 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 if (wasListeningForCommand && shouldUseOwnerGate()) {
                     extendCommandWindowWithinDeadline(COMMAND_RETRY_GRACE_MS)
                 }
+                if (!forceLocalCommandOnce) {
+                    finishLatency("speech_error_retry", "code=$error delayMs=$COMMAND_RETRY_DELAY_MS")
+                }
                 if (wasListeningForCommand || isCommandWindowOpen()) COMMAND_RETRY_DELAY_MS else OWNER_VERIFY_RETRY_MS
             }
-            else -> 1000L
+            else -> {
+                finishLatency("speech_error_retry", "code=$error delayMs=1000")
+                1000L
+            }
         }
         scheduleNextCapture(delay)
     }
@@ -488,6 +564,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
         listening = false
         speechStartedInCurrentListen = false
         handler.removeCallbacks(listeningTimeout)
+        val finalResults = results
+            ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            .orEmpty()
+        markLatency("final_results", "count=${finalResults.size} first=${finalResults.firstOrNull().orEmpty()}")
         Log.d(TAG, "Final speech results received")
         val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
         if (completePartialCommandRun("final result")) return
@@ -499,10 +579,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
         } else if (outcome == SpeechOutcome.COMMAND_RUN_KEEP_WINDOW) {
             completeCommandRun(keepCommandWindowOpen = true)
         } else if (outcome == SpeechOutcome.WAKE_ONLY) {
+            finishLatency("wake_only_complete")
             scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
         } else {
             if (wasListeningForCommand && isCommandWindowExpired()) {
                 closeCommandWindow(playFeedback = false)
+                finishLatency("command_window_expired_after_final_no_command")
                 scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
                 return
             }
@@ -512,6 +594,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             if (wasListeningForCommand && shouldUseOwnerGate()) {
                 extendCommandWindowWithinDeadline(COMMAND_RETRY_GRACE_MS)
             }
+            finishLatency("no_command_retry", "commandWindow=$wasListeningForCommand")
             scheduleNextCapture(if (wasListeningForCommand || isCommandWindowOpen()) COMMAND_RETRY_DELAY_MS else 250L)
         }
     }
@@ -522,6 +605,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             .orEmpty()
         if (results.isNotEmpty()) speechStartedInCurrentListen = true
+        if (results.isNotEmpty()) {
+            markLatency("partial_results", "count=${results.size} first=${results.first()}")
+        }
         if (results.isNotEmpty()) Log.d(TAG, "Partial speech results: $results")
         runFastPartialCommand(results)
     }
@@ -540,9 +626,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
             ) ?: continue
             if (command !in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS) continue
 
+            markLatency("command_parsed", "source=partial command=$command text=$candidate")
             Log.d(TAG, "Parsed fast partial command: $command from '$candidate'")
             partialCommandHandled = true
-            partialCommandKeepsWindowOpen = commandExecutor.run(command).keepsCommandWindowOpen
+            partialCommandKeepsWindowOpen = runCommand(command, "partial").keepsCommandWindowOpen
             notificationController.update("명령 처리 중입니다.")
             feedbackController.commandProcessing()
             handler.removeCallbacks(listeningTimeout)
