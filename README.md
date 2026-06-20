@@ -9,6 +9,7 @@
 - `JarvisVoiceService`: 마이크를 사용하는 포그라운드 서비스입니다. `자비스, 찍어` 같은 한국어 명령을 듣고 내부 명령으로 바꿉니다.
 - `OwnerVoiceEngine`: sherpa-onnx와 3D-Speaker CAM++ 모델로 소유자 목소리 embedding을 만들고 검증합니다.
 - `OwnerVoiceStore`: 등록된 소유자 목소리 embedding을 앱 private storage에 저장합니다.
+- `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 command window 안의 짧은 명령을 로컬에서 빠르게 인식합니다.
 - `JarvisBootReceiver`: 재부팅 또는 앱 업데이트 후 Jarvis 시작 알림을 띄웁니다.
 - `JarvisAccessibilityService`: 접근성 서비스입니다. 음성 서비스가 보낸 명령을 받아 현재 화면의 버튼을 찾거나, 실패하면 카메라 화면의 예상 위치를 탭합니다.
 - `ScreenController`: 짧은 wake lock으로 꺼진 화면을 깨웁니다.
@@ -43,7 +44,7 @@
 
 소유자 목소리 확인을 통과한 직후에는 12초 동안 명령 대기 상태가 됩니다. 이때는 `자비스` 또는 `헤이 자비스`만 먼저 말한 뒤 이어서 `카메라 셀피 모드로 실행해`처럼 호출어 없이 명령만 말해도 됩니다. Jarvis가 깨어나면 짧은 확인음과 함께 알림 문구가 `소유자 확인됨. 명령을 말하세요.`로 바뀌고, 바로 다음 명령 인식으로 넘어갑니다.
 
-카메라 관련 명령은 처리 후에도 30초 명령 대기 상태를 유지합니다. 예를 들어 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 이어서 말할 수 있습니다. 카메라 세션 안에서는 짧은 명령을 최종 인식 결과 전 partial result에서 먼저 실행해 체감 지연을 줄입니다. partial 명령 처리 후에는 인식기를 빠르게 취소하고 곧바로 다음 명령 대기로 돌아갑니다.
+카메라 관련 명령은 처리 후에도 30초 명령 대기 상태를 유지합니다. 예를 들어 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 이어서 말할 수 있습니다. 카메라 세션 안에서는 Android `SpeechRecognizer` 대신 sherpa-onnx 한국어 streaming ASR을 우선 사용해 짧은 명령을 로컬에서 바로 실행합니다. 로컬 모델이 없거나 초기화에 실패하면 기존 `SpeechRecognizer` 경로로 fallback합니다.
 
 ## 폰에서 켜야 하는 것
 
@@ -68,6 +69,8 @@
 7. Android Studio 상단 기기 목록에서 Xiaomi 15 Ultra를 선택합니다.
 8. `Run` 버튼을 눌러 앱을 설치합니다.
 
+첫 빌드에서는 한국어 streaming ASR 모델을 Hugging Face에서 내려받아 APK asset에 포함합니다. 모델은 `app/build/generated/sherpaAssets` 아래에 캐시되며 git에는 커밋하지 않습니다.
+
 ### APK 파일로 설치
 
 1. Android Studio에서 `Build > Build App Bundle(s) / APK(s) > Build APK(s)`를 실행합니다.
@@ -83,6 +86,6 @@
 
 `화면 켜`는 꺼진 디스플레이를 깨워 잠금화면을 보이게 하는 동작입니다. `화면 꺼`는 접근성 서비스의 잠금화면 전역 액션으로 기기를 잠그는 동작입니다. Android 보안 정책상 비밀번호, 지문, 얼굴인식 같은 잠금 해제는 자동으로 우회하지 않습니다.
 
-소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 마이크를 열어 둔 채 최근 2.5초 음성 window를 반복 검사하고, 통과한 짧은 시간 동안만 `SpeechRecognizer` 명령 인식을 시작합니다. 이 때문에 Jarvis 대기 중에는 Android의 초록색 마이크 표시가 켜져 있는 것이 정상입니다. 현재 구조상 한 문장을 완전히 동시에 인증/인식하지는 못하므로, 실사용에서는 먼저 Jarvis를 부르듯 말해 소유자 확인을 통과한 뒤 명령을 말하는 2단계 흐름이 가장 안정적입니다.
+소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 마이크를 열어 둔 채 최근 2.0초 음성 window를 반복 검사하고, 통과한 짧은 시간 동안만 명령 인식 window를 엽니다. command window 안에서는 sherpa-onnx 한국어 streaming ASR을 우선 사용하고, 불가능하면 Android `SpeechRecognizer`로 fallback합니다. 이 때문에 Jarvis 대기 중에는 Android의 초록색 마이크 표시가 켜져 있는 것이 정상입니다. 현재 구조상 한 문장을 완전히 동시에 인증/인식하지는 못하므로, 실사용에서는 먼저 Jarvis를 부르듯 말해 소유자 확인을 통과한 뒤 명령을 말하는 2단계 흐름이 가장 안정적입니다.
 
 Android 14+ 정책상 `targetSdk=35` 앱은 재부팅 broadcast에서 microphone foreground service를 직접 시작할 수 없습니다. 대신 Jarvis는 재부팅 후 시작 알림을 띄우고, 사용자가 알림을 탭하면 마이크 서비스를 시작합니다. 한 번 시작된 뒤에는 foreground notification으로 계속 대기합니다.

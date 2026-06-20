@@ -26,6 +26,8 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - `자비스` 또는 `헤이 자비스` wake-only 발화 후 확인음/명령 대기 알림을 제공하고, 인증 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
 - wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 즉시 실행으로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
 - owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 2.0초 window를 250ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
+- command window 안에서는 sherpa-onnx 한국어 streaming ASR 모델을 우선 사용해 Android `SpeechRecognizer` partial result 대기 시간을 우회하도록 변경
+- 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 
 다음 우선순위:
 
@@ -120,7 +122,8 @@ Android 일반 앱은 다른 앱의 내부 버튼이나 기능을 직접 제어�
 Jarvis는 다음 조합으로 동작한다.
 
 - Foreground Service: 마이크 기반 음성 인식 유지
-- SpeechRecognizer: 한국어 음성 명령 인식
+- LocalCommandRecognizer: command window 안의 한국어 명령을 sherpa-onnx streaming ASR로 로컬 인식
+- SpeechRecognizer: 로컬 명령 인식이 불가능할 때의 fallback 한국어 음성 명령 인식
 - AccessibilityService: 화면 노드 탐색, 클릭, 전역 동작 수행
 - Intent: 기본 카메라 앱 실행
 - BroadcastReceiver: 재부팅 또는 앱 업데이트 후 Jarvis 시작 알림 표시
@@ -144,6 +147,9 @@ Android 14(API 34)+에서 `RECORD_AUDIO`는 while-in-use 권한으로 취급된�
 사용자 음성
   ↓
 JarvisVoiceService
+  ├─ OwnerVoiceEngine: 소유자 목소리 확인
+  ├─ LocalCommandRecognizer: command window 안의 로컬 streaming ASR
+  └─ SpeechRecognizer: fallback STT
   ↓
 CommandInterpreter
   ↓
@@ -163,6 +169,7 @@ JarvisAccessibilityService
 | `JarvisVoiceService.kt` | 포그라운드 음성 인식 서비스 |
 | `OwnerVoiceEngine.kt` | sherpa-onnx speaker embedding 생성, 녹음, cosine 검증 |
 | `OwnerVoiceStore.kt` | 소유자 음성 embedding 저장 |
+| `LocalCommandRecognizer.kt` | sherpa-onnx 한국어 streaming ASR 기반 저지연 command window 인식 |
 | `CommandInterpreter.kt` | 인식된 문장을 내부 명령으로 변환 |
 | `CommandBus.kt` | 앱 내부 명령 브로드캐스트 |
 | `JarvisAccessibilityService.kt` | 접근성 기반 UI 탐색/탭/전역 동작 |
@@ -198,7 +205,7 @@ JarvisAccessibilityService
 
 예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `자비스` 또는 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. wake-only 발화가 인식되면 window를 다시 12초로 연장하고 즉시 다음 명령 인식을 시작한다.
 
-카메라 세션 명령은 처리 후에도 인증 window를 다시 30초로 연장한다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리할 수 있어야 한다. 리스닝이 인증 window 안에서 시작됐다면 final STT 결과가 window 만료 직후 도착해도 해당 발화는 호출어 없는 명령으로 인정한다. 카메라 세션 명령과 `home` 종료 명령은 partial STT 결과에서 먼저 해석되면 즉시 실행하고, 이어서 도착하는 final STT 결과에서는 중복 실행하지 않는다. partial 명령 후에는 `SpeechRecognizer.cancel()`로 현재 인식을 빠르게 종료하고, 콜백이 250ms 안에 오지 않으면 recognizer를 재생성해 다음 명령 대기로 돌아간다. `home`, `back`, `stop_listening` 같은 종료성 명령은 window를 닫는다.
+카메라 세션 명령은 처리 후에도 인증 window를 다시 30초로 연장한다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리할 수 있어야 한다. 리스닝이 인증 window 안에서 시작됐다면 STT 결과가 window 만료 직후 도착해도 해당 발화는 호출어 없는 명령으로 인정한다. command window 안에서는 sherpa-onnx 한국어 streaming ASR을 우선 사용하고, 로컬 모델이 없거나 초기화에 실패하면 Android `SpeechRecognizer`로 fallback한다. `home`, `back`, `stop_listening` 같은 종료성 명령은 window를 닫는다.
 
 ## 8.1 Owner Voice Gate
 
@@ -217,11 +224,11 @@ JarvisAccessibilityService
 3. 계산된 embedding을 `OwnerVoiceStore`에 저장한다.
 4. 이후 `JarvisVoiceService`는 owner embedding이 있으면 owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
 5. 최근 2.0초 rolling audio window에서 candidate embedding을 만들고 250ms마다 저장된 embedding과 cosine similarity를 비교한다.
-6. similarity가 threshold 이상이면 `AudioRecord`를 닫고 12초 인증 window를 열어 `SpeechRecognizer` 명령 인식을 시작한다.
+6. similarity가 threshold 이상이면 `AudioRecord`를 닫고 12초 인증 window를 연다.
 7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
-8. window 안에서는 호출어 없는 명령도 허용하며, STT의 command-mode silence timeout을 더 짧게 사용한다.
-9. 카메라 세션 명령과 `home` 종료 명령은 partial STT 결과에서 먼저 해석되면 즉시 실행한다.
-10. partial로 실행한 명령은 recognizer cancel callback 또는 250ms fallback timeout에서 command window 정리를 완료하며 중복 실행하지 않는다.
+8. window 안에서는 호출어 없는 명령도 허용하며, 로컬 한국어 streaming ASR로 command text를 먼저 시도한다.
+9. 로컬 모델이 없거나 초기화에 실패하면 Android `SpeechRecognizer` fallback을 사용하고, 이 경우 command-mode silence timeout을 더 짧게 사용한다.
+10. 카메라 세션 명령과 `home` 종료 명령은 로컬 streaming ASR 또는 partial STT 결과에서 먼저 해석되면 즉시 실행한다.
 11. 카메라 세션 명령이면 인증 window를 30초 연장하고 바로 다음 명령 인식을 시작한다.
 12. 그 외 명령 처리 후에는 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
 
@@ -229,9 +236,10 @@ JarvisAccessibilityService
 
 - Android `SpeechRecognizer`는 텍스트 결과만 안정적으로 제공하고 원음 PCM을 제공하지 않는다.
 - 따라서 현재 버전은 “한 문장을 동시에 speaker verification + STT 처리”하지 않고, 소유자 확인 후 짧은 명령 window를 여는 2단계 구조다.
+- `LocalCommandRecognizer`는 command window 안에서만 동작한다. owner voice gate 자체와 command recognition을 하나의 raw audio pipeline으로 합치는 작업은 별도 과제다.
 - owner gate 대기 중에는 Android 상태바의 마이크 개인정보 표시가 켜져 있는 것이 정상이다. Android 정책상 앱이 이 표시를 숨길 수 없다.
 - 빅스비처럼 자연스러운 단일 발화 UX를 만들려면 wake word, speaker verification, command recognition을 하나의 raw audio pipeline으로 재구성해야 한다.
-- 현재 모델과 native library는 앱에 포함되며, 등록/검증 자체는 온디바이스에서 실행된다.
+- 현재 speaker verification 모델과 native library는 source tree에 포함된다. 한국어 streaming ASR 모델은 파일 크기 때문에 source tree에 커밋하지 않고 Gradle 빌드 시 다운로드해 APK에 포함한다.
 
 명령 추가 시 규칙:
 
