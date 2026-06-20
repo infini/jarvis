@@ -9,8 +9,8 @@ object CommandInterpreter {
         if (normalized.isBlank()) return null
         if (requireWakeWord && !hasWakeWord(normalized)) return null
 
-        val wantsFrontCamera = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라").any(normalized::contains)
-        val wantsRearCamera = listOf("후면", "후방", "뒷카메라", "뒤카메라", "백카메라", "리어카메라").any(normalized::contains)
+        val wantsFrontCamera = FRONT_CAMERA_WORDS.any(normalized::contains)
+        val wantsRearCamera = REAR_CAMERA_WORDS.any(normalized::contains)
         val wantsSwitchCamera = listOf(
             "카메라전환",
             "렌즈전환",
@@ -29,7 +29,10 @@ object CommandInterpreter {
             listOf("열어", "켜", "시작", "실행").any(normalized::contains)
         val wantsSpecificCameraMode = !wantsSwitchCamera &&
             wantsFrontCamera.xor(wantsRearCamera) &&
-            listOf("모드", "전환", "바꿔", "변경", "열어", "켜", "시작", "실행").any(normalized::contains)
+            (mentionsCamera ||
+                listOf("모드", "전환", "바꿔", "변경", "열어", "켜", "시작", "실행").any(normalized::contains) ||
+                FRONT_CAMERA_WORDS.any(normalized::endsWith) ||
+                REAR_CAMERA_WORDS.any(normalized::endsWith))
         val wantsFilter = listOf("필터", "효과", "색감").any(normalized::contains)
         val wantsBack = listOf("뒤로", "백").any(normalized::contains)
         val wantsHome = listOf("홈", "홈으로").any(normalized::contains)
@@ -48,8 +51,8 @@ object CommandInterpreter {
             wantsStop -> CommandBus.COMMAND_STOP_LISTENING
             wantsShot && mentionsCamera -> CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO
             wantsShot -> CommandBus.COMMAND_TAKE_PHOTO
-            wantsRearCamera && (mentionsCamera || wantsSpecificCameraMode) -> CommandBus.COMMAND_OPEN_REAR_CAMERA
-            wantsFrontCamera && (mentionsCamera || wantsSpecificCameraMode) -> CommandBus.COMMAND_OPEN_FRONT_CAMERA
+            wantsRearCamera && wantsSpecificCameraMode -> CommandBus.COMMAND_OPEN_REAR_CAMERA
+            wantsFrontCamera && wantsSpecificCameraMode -> CommandBus.COMMAND_OPEN_FRONT_CAMERA
             wantsCameraOpen && wantsFrontCamera -> CommandBus.COMMAND_OPEN_FRONT_CAMERA
             wantsCameraOpen && wantsRearCamera -> CommandBus.COMMAND_OPEN_REAR_CAMERA
             wantsCameraOpen -> CommandBus.COMMAND_OPEN_CAMERA
@@ -81,6 +84,9 @@ object CommandInterpreter {
     private fun hasWakeWord(normalized: String): Boolean {
         return WAKE_WORDS.any(normalized::contains)
     }
+
+    private val FRONT_CAMERA_WORDS = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라")
+    private val REAR_CAMERA_WORDS = listOf("후면", "후방", "뒷카메라", "뒤카메라", "백카메라", "리어카메라")
 
     private val WAKE_WORDS = listOf(
         "자비스",

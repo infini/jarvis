@@ -8,7 +8,10 @@ class CommandInterpreterTest {
     @Test
     fun parsesFirstCameraControlGoalPhrases() {
         assertEquals(CommandBus.COMMAND_OPEN_CAMERA, CommandInterpreter.parse("자비스, 카메라 실행"))
+        assertEquals(CommandBus.COMMAND_OPEN_FRONT_CAMERA, CommandInterpreter.parse("자비스, 셀피"))
+        assertEquals(CommandBus.COMMAND_OPEN_FRONT_CAMERA, CommandInterpreter.parse("자비스, 전면"))
         assertEquals(CommandBus.COMMAND_OPEN_FRONT_CAMERA, CommandInterpreter.parse("자비스, 셀피 모드"))
+        assertEquals(CommandBus.COMMAND_OPEN_REAR_CAMERA, CommandInterpreter.parse("자비스, 후면"))
         assertEquals(CommandBus.COMMAND_OPEN_REAR_CAMERA, CommandInterpreter.parse("자비스, 후면 모드"))
         assertEquals(CommandBus.COMMAND_OPEN_REAR_CAMERA, CommandInterpreter.parse("자비스, 후면으로 전환"))
         assertEquals(CommandBus.COMMAND_SWITCH_CAMERA, CommandInterpreter.parse("자비스, 카메라 전환"))
@@ -28,6 +31,9 @@ class CommandInterpreterTest {
     fun ignoresCommandsWithoutWakeWordByDefault() {
         assertNull(CommandInterpreter.parse("찍어"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("찍어", requireWakeWord = false))
+        assertEquals(CommandBus.COMMAND_OPEN_FRONT_CAMERA, CommandInterpreter.parse("셀피", requireWakeWord = false))
+        assertEquals(CommandBus.COMMAND_OPEN_FRONT_CAMERA, CommandInterpreter.parse("전면", requireWakeWord = false))
+        assertEquals(CommandBus.COMMAND_OPEN_REAR_CAMERA, CommandInterpreter.parse("후면 모드", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("화면 켜", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_SLEEP_SCREEN, CommandInterpreter.parse("화면 꺼", requireWakeWord = false))
     }
