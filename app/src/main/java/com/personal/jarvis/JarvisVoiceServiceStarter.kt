@@ -1,0 +1,46 @@
+package com.personal.jarvis
+
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Log
+
+object JarvisVoiceServiceStarter {
+    const val EXTRA_START_SOURCE = "start_source"
+    private const val TAG = "JarvisVoiceStarter"
+
+    fun start(context: Context, source: String): Boolean {
+        if (JarvisVoiceService.isRunning) return true
+
+        val appContext = context.applicationContext
+        val intent = Intent(appContext, JarvisVoiceService::class.java)
+            .putExtra(EXTRA_START_SOURCE, source)
+
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                appContext.startForegroundService(intent)
+            } else {
+                appContext.startService(intent)
+            }
+            Log.d(TAG, "Requested JarvisVoiceService start: source=$source")
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to start JarvisVoiceService from $source: ${e.javaClass.simpleName}: ${e.message}")
+            false
+        }
+    }
+
+    fun autoStartBlockReason(context: Context): String? {
+        val appContext = context.applicationContext
+        if (appContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            return "record_audio_permission_missing"
+        }
+        if (!OwnerVoiceStore.hasProfile(appContext)) {
+            return "owner_voice_profile_missing"
+        }
+        return null
+    }
+
+}

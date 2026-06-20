@@ -7,6 +7,7 @@
 ## 현재 구조
 
 - `JarvisVoiceService`: 마이크를 사용하는 포그라운드 서비스입니다. 소유자 인증, 명령 인식, 명령 실행 객체를 조합해 음성 상태 전환을 관리합니다.
+- `JarvisVoiceServiceStarter`: 앱 UI와 접근성 watchdog에서 공통으로 쓰는 음성 서비스 시작 helper입니다.
 - `OwnerVoiceGate`: 등록된 소유자 목소리를 확인하고 짧은 명령 window를 엽니다.
 - `OwnerVoiceEngine`: sherpa-onnx와 3D-Speaker CAM++ 모델로 소유자 목소리 embedding을 만들고 검증합니다.
 - `OwnerVoiceStore`: 등록된 소유자 목소리 embedding을 앱 private storage에 저장합니다.
@@ -19,7 +20,7 @@
 - `JarvisFeedbackController`: 명령 가능/처리/실패 상태의 소리, 진동, 상태 broadcast를 담당합니다.
 - `JarvisStateIndicatorController`: 접근성 overlay로 현재 Jarvis 상태를 화면 위에 표시합니다.
 - `JarvisBootReceiver`: 재부팅 또는 앱 업데이트 후 Jarvis 시작 알림을 띄웁니다.
-- `JarvisAccessibilityService`: 접근성 서비스 생명주기와 명령 수신을 담당합니다.
+- `JarvisAccessibilityService`: 접근성 서비스 생명주기, 명령 수신, 음성 서비스 watchdog 복구를 담당합니다.
 - `CameraAccessibilityController`: Xiaomi 기본 카메라의 셔터/필터/전후면 전환 자동화를 담당합니다.
 - `AccessibilityNodeMatcher`: 접근성 노드 키워드 검색과 스코어링을 담당합니다.
 - `ScreenController`: 짧은 wake lock으로 꺼진 화면을 깨웁니다.
@@ -54,7 +55,7 @@
 
 소유자 목소리 확인을 통과한 직후에는 12초 동안 명령 대기 상태가 됩니다. 이때는 `자비스` 또는 `헤이 자비스`만 먼저 말한 뒤 이어서 `카메라 셀피 모드로 실행해`처럼 호출어 없이 명령만 말해도 됩니다. Jarvis가 깨어나면 짧은 확인음과 함께 알림 문구가 `소유자 확인됨. 명령을 말하세요.`로 바뀌고, 바로 다음 명령 인식으로 넘어갑니다.
 
-카메라 관련 명령은 처리 후에도 30초 명령 대기 상태를 유지합니다. 예를 들어 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 이어서 말할 수 있습니다. 30초 안에 다음 명령이 없으면 Jarvis는 조용히 소유자 확인 대기로 돌아가며, Android STT 재시도나 로컬 fallback은 이 시간을 넘겨 명령 대기 상태를 연장하지 않습니다. 카메라 세션 안에서는 Android `SpeechRecognizer` partial result를 우선 사용해 짧은 명령을 바로 실행하고, Android STT가 실패하면 sherpa-onnx 한국어 streaming ASR을 fallback으로 사용합니다. `종료`, `홈`, `뒤로`는 현재 앱만 제어하고 Jarvis 명령 대기 상태는 유지합니다. `멈춰`는 현재 명령 대기만 닫고 소유자 호출 대기로 돌아갑니다. Jarvis 서비스는 한 번 시작되면 재부팅 전까지 foreground service로 유지하는 것을 원칙으로 합니다.
+카메라 관련 명령은 처리 후에도 30초 명령 대기 상태를 유지합니다. 예를 들어 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 이어서 말할 수 있습니다. 30초 안에 다음 명령이 없으면 Jarvis는 조용히 소유자 확인 대기로 돌아가며, Android STT 재시도나 로컬 fallback은 이 시간을 넘겨 명령 대기 상태를 연장하지 않습니다. 카메라 세션 안에서는 Android `SpeechRecognizer` partial result를 우선 사용해 짧은 명령을 바로 실행하고, Android STT가 실패하면 sherpa-onnx 한국어 streaming ASR을 fallback으로 사용합니다. `종료`, `홈`, `뒤로`는 현재 앱만 제어하고 Jarvis 명령 대기 상태는 유지합니다. `멈춰`는 현재 명령 대기만 닫고 소유자 호출 대기로 돌아갑니다. Jarvis 서비스는 한 번 시작되면 재부팅 전까지 foreground service로 유지하는 것을 원칙으로 하며, 접근성 서비스가 켜져 있고 소유자 목소리와 마이크 권한이 준비되어 있으면 watchdog이 꺼진 음성 서비스를 다시 시작합니다.
 
 Jarvis 상태 overlay는 사용자가 바로 판단해야 하는 순간에만 표시됩니다. 화면에는 노치/상태바 아래의 작은 iPhone-style pill 형태로 `JARVIS`만 표시하고, 상태는 작은 컬러 점과 소리/진동 패턴으로 전달합니다. 초록 점은 명령 대기/인식 중, 빨간 점은 방금 명령 인식에 실패했다는 뜻입니다. idle/소유자 확인/호출어 대기 상태에서는 화면을 가리지 않도록 overlay를 숨깁니다. 명령 가능 상태에 들어갈 때는 확인음 2회와 짧은 진동이 함께 발생합니다.
 
@@ -76,7 +77,7 @@ adb logcat -v time -s JarvisLatency
 4. `내 목소리 등록 시작`을 누른 뒤 조용한 곳에서 6초 동안 자연스럽게 말합니다.
 5. `접근성 설정 열기`를 누르고 `Jarvis` 접근성 서비스를 켭니다.
 6. HyperOS 앱 설정에서 자동 시작을 허용하고 배터리 제한을 풀어줍니다.
-7. 앱으로 돌아와 `Jarvis 시작`을 누릅니다.
+7. 앱으로 돌아와 `Jarvis 시작`을 누릅니다. 이후 접근성 서비스가 살아 있으면 Jarvis 음성 서비스가 내려간 상태를 watchdog이 주기적으로 복구합니다.
 
 ## 설치 방법
 
@@ -110,4 +111,4 @@ adb logcat -v time -s JarvisLatency
 
 소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 마이크를 열어 둔 채 최근 1.6초 음성 window를 반복 검사하고, 통과한 짧은 시간 동안만 명령 인식 window를 엽니다. owner gate는 말소리 앞뒤의 무음을 줄여 embedding을 만들고, 기본 threshold `0.50`을 넘으면 즉시 통과합니다. 인증 중에는 일정한 배경음이 계속 말소리로 처리되지 않도록 배경음 floor 대비 피크가 충분한 구간만 embedding으로 계산합니다. 짧은 호출어를 보정하기 위해 active speech가 충분한 `0.28` 이상 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 command window를 엽니다. command window 안에서는 Android `SpeechRecognizer` partial result를 우선 사용하고, Android STT가 실패하면 sherpa-onnx 한국어 streaming ASR을 fallback으로 사용합니다. 카메라 세션 command window는 서비스 레벨의 30초 deadline으로 닫히므로 fallback 재시도 때문에 무한히 유지되지 않습니다. 이 때문에 Jarvis 대기 중에는 Android의 초록색 마이크 표시가 켜져 있는 것이 정상입니다. 현재 구조상 한 문장을 완전히 동시에 인증/인식하지는 못하므로, 실사용에서는 먼저 Jarvis를 부르듯 말해 소유자 확인을 통과한 뒤 명령을 말하는 2단계 흐름이 가장 안정적입니다.
 
-Android 14+ 정책상 `targetSdk=35` 앱은 재부팅 broadcast에서 microphone foreground service를 직접 시작할 수 없습니다. 대신 Jarvis는 재부팅 후 시작 알림을 띄우고, 사용자가 알림을 탭하면 마이크 서비스를 시작합니다. 한 번 시작된 뒤에는 foreground notification으로 계속 대기합니다.
+Android 14+ 정책상 `targetSdk=35` 앱은 재부팅 broadcast에서 microphone foreground service를 직접 시작할 수 없습니다. 대신 Jarvis는 재부팅 후 시작 알림을 띄우고, 사용자가 알림을 탭하면 마이크 서비스를 시작합니다. 소유자 목소리와 마이크 권한이 준비되어 있고 접근성 서비스가 연결되어 있으면 watchdog이 앱 업데이트나 서비스 종료 이후 음성 서비스를 다시 시작하려고 시도합니다. Android/HyperOS가 백그라운드 시작을 막는 경우에는 시작 알림을 탭하는 경로가 fallback입니다.

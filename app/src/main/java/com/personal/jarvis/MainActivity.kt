@@ -200,11 +200,9 @@ class MainActivity : Activity() {
             return
         }
 
-        val intent = Intent(this, JarvisVoiceService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent)
-        } else {
-            startService(intent)
+        val started = JarvisVoiceServiceStarter.start(this, "main_activity")
+        if (!started) {
+            Toast.makeText(this, "Jarvis 서비스를 시작하지 못했습니다. 알림/배터리 설정을 확인하세요.", Toast.LENGTH_LONG).show()
         }
         updateStatus()
     }

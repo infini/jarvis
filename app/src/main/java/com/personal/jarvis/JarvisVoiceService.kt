@@ -128,6 +128,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     override fun onCreate() {
         super.onCreate()
         isRunning = true
+        Log.d(TAG, "JarvisVoiceService created")
         notificationController.createChannel()
         notificationController.startForeground()
         createRecognizer()
@@ -136,11 +137,14 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val source = intent?.getStringExtra(JarvisVoiceServiceStarter.EXTRA_START_SOURCE).orEmpty()
+        Log.d(TAG, "JarvisVoiceService start command: source=$source flags=$flags startId=$startId")
         if (!listening && !ownerVoiceGate.isVerifying) scheduleNextCapture(150)
         return START_STICKY
     }
 
     override fun onDestroy() {
+        Log.d(TAG, "JarvisVoiceService destroyed")
         destroyed = true
         isRunning = false
         handler.removeCallbacksAndMessages(null)

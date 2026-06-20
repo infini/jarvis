@@ -46,6 +46,13 @@ class JarvisAccessibilityService : AccessibilityService() {
             stateIndicatorController.update(state)
         }
     }
+    private val voiceServiceWatchdog = object : Runnable {
+        override fun run() {
+            ensureVoiceServiceRunning("accessibility_watchdog")
+            handler.postDelayed(this, VOICE_SERVICE_WATCHDOG_INTERVAL_MS)
+        }
+    }
+    private var lastVoiceAutoStartBlockReason: String? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -58,9 +65,13 @@ class JarvisAccessibilityService : AccessibilityService() {
             registerReceiver(commandReceiver, commandFilter)
             registerReceiver(stateReceiver, stateFilter)
         }
+        ensureVoiceServiceRunning("accessibility_connected")
+        handler.removeCallbacks(voiceServiceWatchdog)
+        handler.postDelayed(voiceServiceWatchdog, VOICE_SERVICE_WATCHDOG_INTERVAL_MS)
     }
 
     override fun onDestroy() {
+        handler.removeCallbacks(voiceServiceWatchdog)
         runCatching { unregisterReceiver(commandReceiver) }
         runCatching { unregisterReceiver(stateReceiver) }
         stateIndicatorController.dispose()
@@ -70,6 +81,22 @@ class JarvisAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
     override fun onInterrupt() = Unit
+
+    private fun ensureVoiceServiceRunning(source: String) {
+        if (JarvisVoiceService.isRunning) return
+
+        val blockReason = JarvisVoiceServiceStarter.autoStartBlockReason(this)
+        if (blockReason != null) {
+            if (blockReason != lastVoiceAutoStartBlockReason) {
+                Log.d(TAG, "Voice service auto-start blocked: $blockReason")
+                lastVoiceAutoStartBlockReason = blockReason
+            }
+            return
+        }
+
+        lastVoiceAutoStartBlockReason = null
+        JarvisVoiceServiceStarter.start(this, source)
+    }
 
     private fun handleCommand(command: String, traceId: Long?) {
         Log.d(TAG, "Handling command: $command")
@@ -97,5 +124,6 @@ class JarvisAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "JarvisAccessibility"
+        private const val VOICE_SERVICE_WATCHDOG_INTERVAL_MS = 15000L
     }
 }

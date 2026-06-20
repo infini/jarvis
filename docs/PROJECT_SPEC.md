@@ -33,6 +33,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - `종료`, `홈`, `뒤로`는 현재 앱만 제어하고 Jarvis command window는 닫지 않도록 변경
 - `멈춰`는 Jarvis 서비스를 중지하지 않고 현재 command window만 닫아 이후 `자비스`로 다시 깨울 수 있도록 변경
 - Jarvis 서비스는 한 번 시작되면 재부팅 전까지 foreground service로 유지하며, 앱 UI에서도 서비스 중지 버튼을 제공하지 않도록 변경
+- 접근성 서비스가 살아 있는데 `JarvisVoiceService` foreground service가 없는 상태를 줄이기 위해, 소유자 목소리와 마이크 권한이 준비된 경우 접근성 watchdog이 음성 서비스를 자동 재시작하도록 변경
 - Jarvis 서비스 실행 중에는 마이크 점유 충돌을 피하기 위해 소유자 목소리 재등록을 시작하지 않는다. 재등록은 재부팅 후 Jarvis 시작 전에 수행한다.
 - command window의 watchdog timeout을 12초로 늘려 명령 대기 중 불필요한 STT 재시작을 줄이고, partial 명령 실행 후 다음 리스닝 전환 대기를 100ms로 단축함
 - 카메라 세션 command window는 서비스 레벨 30초 hard deadline으로 관리하며, STT 재시도나 local fallback이 이 시간을 넘겨 명령 대기 상태를 연장하지 못하도록 변경
@@ -152,7 +153,10 @@ Android 14(API 34)+에서 `RECORD_AUDIO`는 while-in-use 권한으로 취급된�
 1. `JarvisBootReceiver`가 `BOOT_COMPLETED` 또는 `MY_PACKAGE_REPLACED`를 받는다.
 2. receiver는 마이크 서비스를 직접 시작하지 않고 `Jarvis 대기 준비됨` 알림을 띄운다.
 3. 사용자가 알림의 `Jarvis 시작`을 누르면 notification interaction으로 `JarvisVoiceService`를 foreground service로 시작한다.
-4. 한 번 시작된 뒤에는 foreground notification과 `START_STICKY`로 계속 대기한다.
+4. 소유자 목소리와 마이크 권한이 준비되어 있고 접근성 서비스가 연결되어 있으면 `JarvisAccessibilityService` watchdog이 앱 업데이트, 서비스 kill, 접근성 재바인딩 이후 `JarvisVoiceService`가 없는 상태를 감지해 다시 시작한다.
+5. 한 번 시작된 뒤에는 foreground notification, `START_STICKY`, 접근성 watchdog 조합으로 계속 대기한다.
+
+접근성 watchdog은 Android 정책 우회가 아니라 사용자가 켜 둔 접근성 서비스 생명주기 안에서 복구를 시도하는 보강이다. Android/HyperOS가 백그라운드 foreground service 시작을 제한하면 boot receiver의 `Jarvis 대기 준비됨` 알림 탭이 fallback이다.
 
 완전한 “부팅 직후 무터치 마이크 대기”는 일반 앱 권한만으로는 신뢰할 수 없다. 장기적으로는 기본 Assistant/VoiceInteractionService 역할, device-owner/system app, 또는 사용자가 명시적으로 실행한 foreground session을 유지하는 방식 중 하나를 검토한다.
 
@@ -162,6 +166,7 @@ Android 14(API 34)+에서 `RECORD_AUDIO`는 while-in-use 권한으로 취급된�
 사용자 음성
   ↓
 JarvisVoiceService
+  ├─ JarvisVoiceServiceStarter: UI/watchdog 공통 startForegroundService helper
   ├─ OwnerVoiceGate → OwnerVoiceEngine: 소유자 목소리 확인
   ├─ SpeechRecognitionIntentFactory → SpeechRecognizer: command window 안의 우선 STT
   ├─ LocalCommandSession → LocalCommandRecognizer: Android STT 실패 시 로컬 streaming ASR fallback
@@ -188,6 +193,7 @@ JarvisAccessibilityService
 | `OwnerVoiceEnrollmentController.kt` | 소유자 목소리 등록 workflow, 진행률, 완료/실패 callback |
 | `JarvisBootReceiver.kt` | 부팅/앱 업데이트 후 Jarvis 시작 알림 표시 |
 | `JarvisVoiceService.kt` | 포그라운드 음성 인식 서비스의 상태 전환 orchestration |
+| `JarvisVoiceServiceStarter.kt` | 앱 UI와 접근성 watchdog에서 공통으로 쓰는 음성 서비스 시작 helper |
 | `OwnerVoiceGate.kt` | owner voice verification 스레드, 인증 window 상태 관리 |
 | `OwnerVoiceEngine.kt` | sherpa-onnx speaker embedding 생성, 녹음, cosine 검증 |
 | `OwnerVoiceStore.kt` | 소유자 음성 embedding 저장 |
@@ -201,7 +207,7 @@ JarvisAccessibilityService
 | `JarvisStateBus.kt` | 음성 서비스에서 접근성 서비스로 상태 전달 |
 | `CommandInterpreter.kt` | 인식된 문장을 내부 명령으로 변환 |
 | `CommandBus.kt` | 앱 내부 명령 브로드캐스트 |
-| `JarvisAccessibilityService.kt` | 접근성 서비스 생명주기와 명령 dispatch |
+| `JarvisAccessibilityService.kt` | 접근성 서비스 생명주기, 명령 dispatch, 음성 서비스 watchdog 복구 |
 | `JarvisStateIndicatorController.kt` | 접근성 overlay로 Jarvis 상태 표시 |
 | `CameraAccessibilityController.kt` | Xiaomi 기본 카메라 접근성 자동화 recipe |
 | `AccessibilityNodeMatcher.kt` | 접근성 노드 키워드 검색, 스코어링, 최적 노드 선택 |
@@ -493,6 +499,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 - `MY_PACKAGE_REPLACED` 또는 재부팅 후 `Jarvis 대기 준비됨` 알림이 표시된다.
 - 알림의 `Jarvis 시작`을 누르면 `JarvisVoiceService` foreground notification이 표시된다.
+- 소유자 목소리와 마이크 권한이 준비된 상태에서 접근성 서비스만 살아 있고 `JarvisVoiceService`가 없으면 watchdog이 음성 서비스를 다시 시작한다.
 - Android 정책상 `BOOT_COMPLETED`에서 microphone foreground service가 직접 시작되지 않는다.
 - HyperOS 자동 시작 허용 및 배터리 제한 해제 후 장시간 대기 안정성을 확인한다.
 
