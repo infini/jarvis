@@ -21,6 +21,7 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍기"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 찍어"))
         assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 카메라 종료"))
+        assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 종료"))
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("자비스, 화면 켜"))
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("자비스, 디스플레이 켜줘"))
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("자비스, 폰 깨워"))
@@ -36,6 +37,8 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_OPEN_FRONT_CAMERA, CommandInterpreter.parse("셀피", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_OPEN_FRONT_CAMERA, CommandInterpreter.parse("전면", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_OPEN_REAR_CAMERA, CommandInterpreter.parse("후면 모드", requireWakeWord = false))
+        assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("종료", requireWakeWord = false))
+        assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("전면 종료", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("화면 켜", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_SLEEP_SCREEN, CommandInterpreter.parse("화면 꺼", requireWakeWord = false))
     }

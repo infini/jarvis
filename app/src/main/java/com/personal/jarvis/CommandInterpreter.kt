@@ -48,6 +48,7 @@ object CommandInterpreter {
         return when {
             mentionsCamera && wantsCloseApp -> CommandBus.COMMAND_HOME
             wantsSleepScreen -> CommandBus.COMMAND_SLEEP_SCREEN
+            wantsCloseApp && !wantsStop -> CommandBus.COMMAND_HOME
             wantsStop -> CommandBus.COMMAND_STOP_LISTENING
             wantsShot && mentionsCamera -> CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO
             wantsShot -> CommandBus.COMMAND_TAKE_PHOTO

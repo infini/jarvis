@@ -158,10 +158,9 @@ class JarvisAccessibilityService : AccessibilityService() {
 
     private fun clickCameraSwitchButton(): Boolean {
         val node = findCameraSwitchNode()
-        if (node != null && clickNodeOrClickableParent(node)) return true
+        if (node != null && tapNodeCenter(node)) return true
 
-        tapFallback(CameraControlTarget.SWITCH_CAMERA)
-        return true
+        return tapFallback(CameraControlTarget.SWITCH_CAMERA)
     }
 
     private fun currentCameraFacing(): CameraLauncher.CameraFacing? {
@@ -265,7 +264,15 @@ class JarvisAccessibilityService : AccessibilityService() {
         return rect.width().coerceAtLeast(0) * rect.height().coerceAtLeast(0)
     }
 
-    private fun tapFallback(target: CameraControlTarget) {
+    private fun tapNodeCenter(node: AccessibilityNodeInfo): Boolean {
+        val rect = Rect()
+        node.getBoundsInScreen(rect)
+        if (rect.isEmpty) return false
+        Log.d(TAG, "Tapping node center: ${node.viewIdResourceName} ${node.contentDescription} $rect")
+        return tap(rect.exactCenterX(), rect.exactCenterY())
+    }
+
+    private fun tapFallback(target: CameraControlTarget): Boolean {
         val metrics = resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
@@ -288,15 +295,16 @@ class JarvisAccessibilityService : AccessibilityService() {
             }
         }
 
-        tap(x, y)
+        Log.d(TAG, "Tapping fallback target=$target x=$x y=$y")
+        return tap(x, y)
     }
 
-    private fun tap(x: Float, y: Float) {
+    private fun tap(x: Float, y: Float): Boolean {
         val path = Path().apply { moveTo(x, y) }
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
             .build()
-        dispatchGesture(gesture, null, null)
+        return dispatchGesture(gesture, null, null)
     }
 
     private enum class CameraControlTarget {
