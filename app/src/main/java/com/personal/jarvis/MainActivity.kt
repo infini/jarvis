@@ -24,8 +24,23 @@ class MainActivity : Activity() {
     private lateinit var ownerVoiceStatusView: TextView
     private lateinit var enrollProgress: ProgressBar
     private lateinit var enrollButton: Button
-    @Volatile private var enrolling = false
-    private var enrollmentThread: Thread? = null
+    private val ownerVoiceEnrollmentController by lazy {
+        OwnerVoiceEnrollmentController(
+            context = applicationContext,
+            postToMain = { action -> runOnUiThread(action) },
+            onProgress = { percent -> enrollProgress.progress = percent },
+            onStatus = { status -> ownerVoiceStatusView.text = status },
+            onCompleted = {
+                Toast.makeText(this, "내 목소리 등록 완료", Toast.LENGTH_SHORT).show()
+                stopOwnerEnrollment("내 목소리 등록 완료. 이제 Jarvis 명령은 등록된 목소리 확인 후 실행됩니다.")
+                updateStatus()
+            },
+            onFailed = { message ->
+                showOwnerVoiceError(message)
+                stopOwnerEnrollment()
+            },
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -125,7 +140,7 @@ class MainActivity : Activity() {
     }
 
     private fun toggleOwnerEnrollment() {
-        if (enrolling) {
+        if (ownerVoiceEnrollmentController.isEnrolling) {
             stopOwnerEnrollment("목소리 등록을 중지했습니다.")
             return
         }
@@ -136,57 +151,12 @@ class MainActivity : Activity() {
         }
 
         stopService(Intent(this, JarvisVoiceService::class.java))
-        enrolling = true
-        enrollProgress.progress = 0
         enrollButton.text = "내 목소리 등록 중지"
-        ownerVoiceStatusView.text = "목소리 등록 중: 조용한 곳에서 6초 동안 자연스럽게 말하세요."
-
-        enrollmentThread = Thread({
-            try {
-                val samples = OwnerVoiceEngine.recordSamples(
-                    durationMs = ENROLLMENT_DURATION_MS,
-                    shouldContinue = { enrolling },
-                    onProgress = { progress ->
-                        runOnUiThread {
-                            if (enrolling) {
-                                val percent = (progress * 100f).toInt().coerceIn(0, 100)
-                                enrollProgress.progress = percent
-                                ownerVoiceStatusView.text = "목소리 등록 중: $percent%"
-                            }
-                        }
-                    },
-                )
-
-                if (!enrolling) return@Thread
-
-                runOnUiThread {
-                    ownerVoiceStatusView.text = "목소리 등록 중: 음성 특징을 계산하는 중입니다."
-                }
-
-                val embedding = OwnerVoiceEngine.createEmbedding(applicationContext, samples)
-                    ?: throw IllegalStateException("충분한 음성 특징을 만들지 못했습니다. 더 또렷하게 다시 등록하세요.")
-                OwnerVoiceStore.saveEmbedding(this, embedding)
-
-                runOnUiThread {
-                    Toast.makeText(this, "내 목소리 등록 완료", Toast.LENGTH_SHORT).show()
-                    stopOwnerEnrollment("내 목소리 등록 완료. 이제 Jarvis 명령은 등록된 목소리 확인 후 실행됩니다.")
-                    updateStatus()
-                }
-            } catch (e: Exception) {
-                if (enrolling) {
-                    runOnUiThread {
-                        showOwnerVoiceError("목소리 등록 실패: ${e.message}")
-                        stopOwnerEnrollment()
-                    }
-                }
-            }
-        }, "JarvisOwnerEnrollment").also { it.start() }
+        ownerVoiceEnrollmentController.start(ENROLLMENT_DURATION_MS)
     }
 
     private fun stopOwnerEnrollment(message: String? = null) {
-        enrolling = false
-        enrollmentThread?.interrupt()
-        enrollmentThread = null
+        ownerVoiceEnrollmentController.stop()
         if (::enrollButton.isInitialized) enrollButton.text = "내 목소리 등록 시작"
         message?.let { ownerVoiceStatusView.text = it }
     }
@@ -244,7 +214,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateStatus() {
-        if (enrolling) return
+        if (ownerVoiceEnrollmentController.isEnrolling) return
 
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val notification = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||

@@ -28,6 +28,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 2.0초 window를 250ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
 - command window 안에서는 sherpa-onnx 한국어 streaming ASR 모델을 우선 사용해 Android `SpeechRecognizer` partial result 대기 시간을 우회하도록 변경
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
+- 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
 
 다음 우선순위:
 
@@ -44,7 +45,9 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 2. `docs/PROJECT_SPEC.md`: 목표, 제약, 명령 모델 확인
 3. `app/src/main/java/com/personal/jarvis/CommandBus.kt`: 현재 내부 명령 확인
 4. `app/src/main/java/com/personal/jarvis/CommandInterpreter.kt`: 한국어 음성 문장 매핑 확인
-5. `app/src/main/java/com/personal/jarvis/JarvisAccessibilityService.kt`: 실제 화면 조작 로직 확인
+5. `app/src/main/java/com/personal/jarvis/JarvisCommandExecutor.kt`: 명령 실행 위치, 중복 방지, command window 유지 정책 확인
+6. `app/src/main/java/com/personal/jarvis/CameraAccessibilityController.kt`: 실제 카메라 화면 조작 로직 확인
+7. `app/src/main/java/com/personal/jarvis/AccessibilityNodeMatcher.kt`: 접근성 노드 탐색/스코어링 기준 확인
 
 작업 원칙:
 
@@ -147,9 +150,11 @@ Android 14(API 34)+에서 `RECORD_AUDIO`는 while-in-use 권한으로 취급된�
 사용자 음성
   ↓
 JarvisVoiceService
-  ├─ OwnerVoiceEngine: 소유자 목소리 확인
-  ├─ LocalCommandRecognizer: command window 안의 로컬 streaming ASR
-  └─ SpeechRecognizer: fallback STT
+  ├─ OwnerVoiceGate → OwnerVoiceEngine: 소유자 목소리 확인
+  ├─ LocalCommandSession → LocalCommandRecognizer: command window 안의 로컬 streaming ASR
+  ├─ SpeechRecognitionIntentFactory → SpeechRecognizer: fallback STT
+  ├─ JarvisNotificationController: foreground notification 상태 표시
+  └─ JarvisCommandExecutor: 내부 명령 실행/전달
   ↓
 CommandInterpreter
   ↓
@@ -157,7 +162,9 @@ CommandBus
   ↓
 JarvisAccessibilityService
   ↓
-화면 노드 탐색 또는 좌표 탭
+CameraAccessibilityController
+  ↓
+AccessibilityNodeMatcher 또는 좌표 fallback 탭
 ```
 
 ### Components
@@ -165,14 +172,22 @@ JarvisAccessibilityService
 | File | Role |
 | --- | --- |
 | `MainActivity.kt` | 권한 요청, 접근성 설정 진입, Jarvis 시작/중지 UI |
+| `OwnerVoiceEnrollmentController.kt` | 소유자 목소리 등록 workflow, 진행률, 완료/실패 callback |
 | `JarvisBootReceiver.kt` | 부팅/앱 업데이트 후 Jarvis 시작 알림 표시 |
-| `JarvisVoiceService.kt` | 포그라운드 음성 인식 서비스 |
+| `JarvisVoiceService.kt` | 포그라운드 음성 인식 서비스의 상태 전환 orchestration |
+| `OwnerVoiceGate.kt` | owner voice verification 스레드, 인증 window 상태 관리 |
 | `OwnerVoiceEngine.kt` | sherpa-onnx speaker embedding 생성, 녹음, cosine 검증 |
 | `OwnerVoiceStore.kt` | 소유자 음성 embedding 저장 |
 | `LocalCommandRecognizer.kt` | sherpa-onnx 한국어 streaming ASR 기반 저지연 command window 인식 |
+| `LocalCommandSession.kt` | 로컬 명령 ASR 실행 스레드와 fallback disable 상태 관리 |
+| `SpeechRecognitionIntentFactory.kt` | Android `SpeechRecognizer` intent/timing option 생성 |
+| `JarvisCommandExecutor.kt` | 내부 명령 실행, 중복 실행 방지, 카메라 세션 유지 정책 |
+| `JarvisNotificationController.kt` | foreground notification channel, 표시 문구, notification update |
 | `CommandInterpreter.kt` | 인식된 문장을 내부 명령으로 변환 |
 | `CommandBus.kt` | 앱 내부 명령 브로드캐스트 |
-| `JarvisAccessibilityService.kt` | 접근성 기반 UI 탐색/탭/전역 동작 |
+| `JarvisAccessibilityService.kt` | 접근성 서비스 생명주기와 명령 dispatch |
+| `CameraAccessibilityController.kt` | Xiaomi 기본 카메라 접근성 자동화 recipe |
+| `AccessibilityNodeMatcher.kt` | 접근성 노드 키워드 검색, 스코어링, 최적 노드 선택 |
 | `CameraLauncher.kt` | 기본 카메라 앱 실행 |
 | `ScreenController.kt` | 짧은 wake lock으로 화면 켜기 |
 | `AndroidManifest.xml` | 권한, 서비스, 접근성 메타데이터 선언 |
@@ -222,11 +237,11 @@ JarvisAccessibilityService
 1. 사용자가 `내 목소리 등록 시작`을 누르고 조용한 환경에서 6초 동안 말한다.
 2. `OwnerVoiceEngine`이 16kHz mono PCM을 녹음하고 sherpa-onnx로 speaker embedding을 계산한다.
 3. 계산된 embedding을 `OwnerVoiceStore`에 저장한다.
-4. 이후 `JarvisVoiceService`는 owner embedding이 있으면 owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
+4. 이후 `JarvisVoiceService`는 `OwnerVoiceGate`를 통해 owner embedding이 있는지 확인하고, owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
 5. 최근 2.0초 rolling audio window에서 candidate embedding을 만들고 250ms마다 저장된 embedding과 cosine similarity를 비교한다.
 6. similarity가 threshold 이상이면 `AudioRecord`를 닫고 12초 인증 window를 연다.
 7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
-8. window 안에서는 호출어 없는 명령도 허용하며, 로컬 한국어 streaming ASR로 command text를 먼저 시도한다.
+8. window 안에서는 호출어 없는 명령도 허용하며, `LocalCommandSession`이 로컬 한국어 streaming ASR로 command text를 먼저 시도한다.
 9. 로컬 모델이 없거나 초기화에 실패하면 Android `SpeechRecognizer` fallback을 사용하고, 이 경우 command-mode silence timeout을 더 짧게 사용한다.
 10. 카메라 세션 명령과 `home` 종료 명령은 로컬 streaming ASR 또는 partial STT 결과에서 먼저 해석되면 즉시 실행한다.
 11. 카메라 세션 명령이면 인증 window를 30초 연장하고 바로 다음 명령 인식을 시작한다.
@@ -251,8 +266,9 @@ JarvisAccessibilityService
 실행 위치 기준:
 
 - 앱 실행/시스템 Intent: 전용 launcher/helper
-- 화면 조작: `JarvisAccessibilityService`
+- 화면 조작: `CameraAccessibilityController` 같은 앱별 접근성 controller
 - 음성 서비스 제어: `JarvisVoiceService`
+- 명령 실행/전달 정책: `JarvisCommandExecutor`
 
 ## 9. Accessibility Automation Strategy
 
@@ -359,7 +375,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - `v9_camera_picker` content description에서 `전면`/`후면` 상태 판별 성공
 - 필터 UI 열기 성공
 
-테스트 실패 시 접근성 노드 덤프 또는 화면 좌표를 기준으로 `JarvisAccessibilityService.kt`의 키워드/fallback 좌표를 조정한다.
+테스트 실패 시 접근성 노드 덤프 또는 화면 좌표를 기준으로 `CameraAccessibilityController.kt`의 키워드/fallback 좌표와 `AccessibilityNodeMatcher.kt`의 스코어링을 조정한다.
 
 ### Owner Voice Test
 
@@ -434,3 +450,4 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 4. 권한을 추가하면 Permissions 섹션을 갱신한다.
 5. 실기기 테스트 결과로 좌표나 키워드를 바꾸면 Accessibility Automation Strategy에 기록한다.
 6. 새 기능이 사용자에게 보이면 README도 갱신한다.
+7. 새 앱 자동화를 추가할 때는 `JarvisAccessibilityService`에 로직을 직접 누적하지 말고 앱별 controller와 필요한 matcher/helper로 분리한다.

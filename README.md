@@ -6,12 +6,20 @@
 
 ## 현재 구조
 
-- `JarvisVoiceService`: 마이크를 사용하는 포그라운드 서비스입니다. `자비스, 찍어` 같은 한국어 명령을 듣고 내부 명령으로 바꿉니다.
+- `JarvisVoiceService`: 마이크를 사용하는 포그라운드 서비스입니다. 소유자 인증, 명령 인식, 명령 실행 객체를 조합해 음성 상태 전환을 관리합니다.
+- `OwnerVoiceGate`: 등록된 소유자 목소리를 확인하고 짧은 명령 window를 엽니다.
 - `OwnerVoiceEngine`: sherpa-onnx와 3D-Speaker CAM++ 모델로 소유자 목소리 embedding을 만들고 검증합니다.
 - `OwnerVoiceStore`: 등록된 소유자 목소리 embedding을 앱 private storage에 저장합니다.
+- `OwnerVoiceEnrollmentController`: 앱 UI에서 실행되는 소유자 목소리 등록 workflow를 담당합니다.
 - `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 command window 안의 짧은 명령을 로컬에서 빠르게 인식합니다.
+- `LocalCommandSession`: 로컬 명령 ASR 스레드와 fallback 상태를 관리합니다.
+- `SpeechRecognitionIntentFactory`: Android `SpeechRecognizer` 실행 옵션을 한곳에서 생성합니다.
+- `JarvisCommandExecutor`: 내부 명령 실행, 중복 실행 방지, 카메라 세션 window 유지 정책을 담당합니다.
+- `JarvisNotificationController`: 음성 서비스 foreground notification과 상태 문구를 관리합니다.
 - `JarvisBootReceiver`: 재부팅 또는 앱 업데이트 후 Jarvis 시작 알림을 띄웁니다.
-- `JarvisAccessibilityService`: 접근성 서비스입니다. 음성 서비스가 보낸 명령을 받아 현재 화면의 버튼을 찾거나, 실패하면 카메라 화면의 예상 위치를 탭합니다.
+- `JarvisAccessibilityService`: 접근성 서비스 생명주기와 명령 수신을 담당합니다.
+- `CameraAccessibilityController`: Xiaomi 기본 카메라의 셔터/필터/전후면 전환 자동화를 담당합니다.
+- `AccessibilityNodeMatcher`: 접근성 노드 키워드 검색과 스코어링을 담당합니다.
 - `ScreenController`: 짧은 wake lock으로 꺼진 화면을 깨웁니다.
 - `MainActivity`: 마이크/알림 권한 요청, 접근성 설정 열기, Jarvis 시작/중지 UI입니다.
 
