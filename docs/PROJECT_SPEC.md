@@ -29,6 +29,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - command window 안에서는 sherpa-onnx 한국어 streaming ASR 모델을 우선 사용해 Android `SpeechRecognizer` partial result 대기 시간을 우회하도록 변경
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 - 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
+- 명령 가능 여부를 사용자가 확실히 알 수 있도록 소리, 진동, 접근성 overlay 기반 Jarvis 상태 표시를 추가했다.
 
 다음 우선순위:
 
@@ -48,6 +49,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 5. `app/src/main/java/com/personal/jarvis/JarvisCommandExecutor.kt`: 명령 실행 위치, 중복 방지, command window 유지 정책 확인
 6. `app/src/main/java/com/personal/jarvis/CameraAccessibilityController.kt`: 실제 카메라 화면 조작 로직 확인
 7. `app/src/main/java/com/personal/jarvis/AccessibilityNodeMatcher.kt`: 접근성 노드 탐색/스코어링 기준 확인
+8. `app/src/main/java/com/personal/jarvis/JarvisFeedbackController.kt`: 상태별 소리/진동/overlay broadcast 정책 확인
 
 작업 원칙:
 
@@ -154,6 +156,7 @@ JarvisVoiceService
   ├─ LocalCommandSession → LocalCommandRecognizer: command window 안의 로컬 streaming ASR
   ├─ SpeechRecognitionIntentFactory → SpeechRecognizer: fallback STT
   ├─ JarvisNotificationController: foreground notification 상태 표시
+  ├─ JarvisFeedbackController → JarvisStateBus: 소리/진동/상태 broadcast
   └─ JarvisCommandExecutor: 내부 명령 실행/전달
   ↓
 CommandInterpreter
@@ -161,10 +164,10 @@ CommandInterpreter
 CommandBus
   ↓
 JarvisAccessibilityService
-  ↓
-CameraAccessibilityController
-  ↓
-AccessibilityNodeMatcher 또는 좌표 fallback 탭
+  ├─ JarvisStateIndicatorController: 화면 overlay 상태 표시
+  └─ CameraAccessibilityController
+      ↓
+      AccessibilityNodeMatcher 또는 좌표 fallback 탭
 ```
 
 ### Components
@@ -183,9 +186,13 @@ AccessibilityNodeMatcher 또는 좌표 fallback 탭
 | `SpeechRecognitionIntentFactory.kt` | Android `SpeechRecognizer` intent/timing option 생성 |
 | `JarvisCommandExecutor.kt` | 내부 명령 실행, 중복 실행 방지, 카메라 세션 유지 정책 |
 | `JarvisNotificationController.kt` | foreground notification channel, 표시 문구, notification update |
+| `JarvisFeedbackController.kt` | Jarvis 상태별 소리, 진동, 상태 broadcast |
+| `JarvisVoiceState.kt` | Jarvis 상태 enum |
+| `JarvisStateBus.kt` | 음성 서비스에서 접근성 서비스로 상태 전달 |
 | `CommandInterpreter.kt` | 인식된 문장을 내부 명령으로 변환 |
 | `CommandBus.kt` | 앱 내부 명령 브로드캐스트 |
 | `JarvisAccessibilityService.kt` | 접근성 서비스 생명주기와 명령 dispatch |
+| `JarvisStateIndicatorController.kt` | 접근성 overlay로 Jarvis 상태 표시 |
 | `CameraAccessibilityController.kt` | Xiaomi 기본 카메라 접근성 자동화 recipe |
 | `AccessibilityNodeMatcher.kt` | 접근성 노드 키워드 검색, 스코어링, 최적 노드 선택 |
 | `CameraLauncher.kt` | 기본 카메라 앱 실행 |
@@ -214,6 +221,24 @@ JarvisAccessibilityService
 - `JarvisAccessibilityService`에는 command routing 이상의 로직을 누적하지 않는다.
 - 두 번째 또는 세 번째 앱 controller가 추가되어 라우팅 패턴이 반복되면 `AccessibilityCommandController` interface와 controller registry 도입을 검토한다.
 - 새 앱 제어를 추가할 때는 `CommandBus`, `CommandInterpreter`, `JarvisCommandExecutor`, 앱별 controller, README, 이 문서를 함께 갱신한다.
+
+### Voice State Feedback
+
+Jarvis는 Android 상태바의 초록색 마이크 표시만으로 상태를 판단하지 않는다. 마이크 표시의 의미는 “마이크 사용 중”뿐이므로, 명령 가능 여부는 Jarvis 자체 feedback으로 표시한다.
+
+상태별 사용자 feedback:
+
+| State | Overlay | Sound/Vibration | Meaning |
+| --- | --- | --- | --- |
+| `WAKE_WAITING` | 회색 `JARVIS · 호출어 대기` | 없음 | owner voice가 없거나 fallback 상태에서 호출어가 필요한 대기 |
+| `OWNER_VERIFYING` | 회색 `JARVIS · 소유자 확인 중` | 없음 | 소유자 목소리 확인 중이며 아직 명령 window가 열리지 않음 |
+| `COMMAND_READY` | 초록색 `JARVIS 듣는 중` | 확인음 2회, 짧은 진동 1회 | 호출어 없이 바로 명령 가능 |
+| `COMMAND_PROCESSING` | 주황색 `JARVIS 처리 중` | 없음 | 명령을 실행 중 |
+| `COMMAND_HANDLED` | 파란색 `JARVIS · 다음 명령 가능` | 확인음 1회, 짧은 진동 1회 | 명령 처리 완료, 다음 명령 가능 |
+| `COMMAND_FAILED` | 빨간색 `JARVIS · 다시 말하세요` | 실패음 2회, 짧은 진동 2회 | 인식 실패 또는 command window 안의 무명령 |
+| `IDLE` | overlay 제거 | 낮은 안내음 1회, 짧은 진동 2회 | 명령 window 종료 |
+
+Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표시한다. 별도 “다른 앱 위에 표시” 권한을 요구하지 않지만, Jarvis 접근성 서비스가 켜져 있어야 카메라 앱 위에서도 보인다.
 
 ## 8. Command Model
 
@@ -329,6 +354,7 @@ JarvisAccessibilityService
 | `RECEIVE_BOOT_COMPLETED` | 재부팅 후 Jarvis 시작 알림 표시 |
 | `WAKE_LOCK` | 음성 명령으로 꺼진 화면을 짧게 깨우기 |
 | `TURN_SCREEN_ON` | Android 14+에서 화면 켜기 명령 의도를 명시 |
+| `VIBRATE` | 명령 가능/실패/종료 상태를 촉각 feedback으로 표시 |
 | `BIND_ACCESSIBILITY_SERVICE` | 접근성 서비스 바인딩. 일반 런타임 권한이 아니며 시스템 설정에서 사용자가 직접 켜야 함 |
 
 소유자 목소리 등록/검증은 기존 `RECORD_AUDIO` 권한을 사용한다. 별도 런타임 권한은 추가하지 않았다.
@@ -388,6 +414,14 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - `자비스, 화면 켜`가 꺼진 화면을 깨워 잠금화면을 표시한다.
 - `자비스, 화면 꺼`가 접근성 잠금화면 전역 액션으로 기기를 잠근다.
 - `자비스, 멈춰`가 음성 서비스를 중지한다.
+
+### State Feedback Test
+
+- owner gate 대기 중 회색 `JARVIS · 소유자 확인 중` overlay가 표시된다.
+- owner gate 통과 또는 wake-only 발화 후 초록색 `JARVIS 듣는 중` overlay, 확인음 2회, 짧은 진동 1회가 발생한다.
+- 카메라 명령 처리 후 파란색 `JARVIS · 다음 명령 가능` overlay, 확인음 1회, 짧은 진동 1회가 발생한다.
+- command window 안에서 인식 실패 시 빨간색 `JARVIS · 다시 말하세요` overlay, 실패음 2회, 짧은 진동 2회가 발생한다.
+- command window가 종료되면 overlay가 사라지거나 다음 owner gate 상태 overlay로 전환된다.
 
 ### Camera Automation Test
 

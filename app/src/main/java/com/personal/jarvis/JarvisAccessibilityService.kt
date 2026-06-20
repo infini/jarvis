@@ -16,6 +16,9 @@ class JarvisAccessibilityService : AccessibilityService() {
     private val cameraController by lazy {
         CameraAccessibilityController(this, handler)
     }
+    private val stateIndicatorController by lazy {
+        JarvisStateIndicatorController(this)
+    }
 
     private val commandReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -23,19 +26,30 @@ class JarvisAccessibilityService : AccessibilityService() {
             handleCommand(command)
         }
     }
+    private val stateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val state = JarvisStateBus.stateFrom(intent) ?: return
+            stateIndicatorController.update(state)
+        }
+    }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        val filter = IntentFilter(CommandBus.ACTION_COMMAND)
+        val commandFilter = IntentFilter(CommandBus.ACTION_COMMAND)
+        val stateFilter = IntentFilter(JarvisStateBus.ACTION_STATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(commandReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(commandReceiver, commandFilter, Context.RECEIVER_NOT_EXPORTED)
+            registerReceiver(stateReceiver, stateFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
-            registerReceiver(commandReceiver, filter)
+            registerReceiver(commandReceiver, commandFilter)
+            registerReceiver(stateReceiver, stateFilter)
         }
     }
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(commandReceiver) }
+        runCatching { unregisterReceiver(stateReceiver) }
+        stateIndicatorController.dispose()
         super.onDestroy()
     }
 

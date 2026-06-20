@@ -16,6 +16,8 @@
 - `SpeechRecognitionIntentFactory`: Android `SpeechRecognizer` 실행 옵션을 한곳에서 생성합니다.
 - `JarvisCommandExecutor`: 내부 명령 실행, 중복 실행 방지, 카메라 세션 window 유지 정책을 담당합니다.
 - `JarvisNotificationController`: 음성 서비스 foreground notification과 상태 문구를 관리합니다.
+- `JarvisFeedbackController`: 명령 가능/처리/실패 상태의 소리, 진동, 상태 broadcast를 담당합니다.
+- `JarvisStateIndicatorController`: 접근성 overlay로 현재 Jarvis 상태를 화면 위에 표시합니다.
 - `JarvisBootReceiver`: 재부팅 또는 앱 업데이트 후 Jarvis 시작 알림을 띄웁니다.
 - `JarvisAccessibilityService`: 접근성 서비스 생명주기와 명령 수신을 담당합니다.
 - `CameraAccessibilityController`: Xiaomi 기본 카메라의 셔터/필터/전후면 전환 자동화를 담당합니다.
@@ -53,6 +55,8 @@
 소유자 목소리 확인을 통과한 직후에는 12초 동안 명령 대기 상태가 됩니다. 이때는 `자비스` 또는 `헤이 자비스`만 먼저 말한 뒤 이어서 `카메라 셀피 모드로 실행해`처럼 호출어 없이 명령만 말해도 됩니다. Jarvis가 깨어나면 짧은 확인음과 함께 알림 문구가 `소유자 확인됨. 명령을 말하세요.`로 바뀌고, 바로 다음 명령 인식으로 넘어갑니다.
 
 카메라 관련 명령은 처리 후에도 30초 명령 대기 상태를 유지합니다. 예를 들어 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 이어서 말할 수 있습니다. 카메라 세션 안에서는 Android `SpeechRecognizer` 대신 sherpa-onnx 한국어 streaming ASR을 우선 사용해 짧은 명령을 로컬에서 바로 실행합니다. 로컬 모델이 없거나 초기화에 실패하면 기존 `SpeechRecognizer` 경로로 fallback합니다.
+
+Jarvis 상태는 카메라 같은 전체화면 앱 위에 작은 접근성 overlay로 표시됩니다. 회색 `호출어 대기`/`소유자 확인 중`은 아직 명령을 바로 받을 수 없는 상태이고, 초록색 `JARVIS 듣는 중`은 명령 가능 상태입니다. 파란색 `다음 명령 가능`은 명령 처리 후 이어서 말할 수 있는 상태이고, 빨간색 `다시 말하세요`는 인식 실패 후 재시도 상태입니다. 명령 가능 상태에 들어갈 때는 확인음 2회와 짧은 진동이 함께 발생합니다.
 
 ## 폰에서 켜야 하는 것
 

@@ -2,8 +2,6 @@ package com.personal.jarvis
 
 import android.app.Service
 import android.content.Intent
-import android.media.AudioManager
-import android.media.ToneGenerator
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -45,9 +43,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private val localCommandSession by lazy {
         LocalCommandSession(applicationContext, handler)
     }
+    private val feedbackController by lazy {
+        JarvisFeedbackController(applicationContext, handler)
+    }
     private var recognizer: SpeechRecognizer? = null
     private var listening = false
-    private val toneGenerator by lazy { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70) }
     private var destroyed = false
     private var currentListeningAllowsCommandWithoutWake = false
     private var partialCommandHandled = false
@@ -98,7 +98,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         localCommandSession.stop()
         recognizer?.destroy()
         recognizer = null
-        runCatching { toneGenerator.release() }
+        JarvisStateBus.send(applicationContext, JarvisVoiceState.IDLE)
+        feedbackController.release()
         super.onDestroy()
     }
 
@@ -132,6 +133,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         handler.postDelayed({
             if (shouldUseOwnerGate() && !isOwnerAuthorized()) {
                 notificationController.reset()
+                feedbackController.showOwnerVerifying()
                 startOwnerVerification()
             } else {
                 startListening()
@@ -157,6 +159,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             partialCommandHandled = false
             partialCommandKeepsWindowOpen = false
             recognizer?.startListening(intent)
+            if (!commandWindowOpen) feedbackController.showWakeWaiting()
             handler.removeCallbacks(listeningTimeout)
             handler.postDelayed(listeningTimeout, LISTENING_TIMEOUT_MS)
             Log.d(TAG, "Listening started")
@@ -167,6 +170,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             partialCommandKeepsWindowOpen = false
             handler.removeCallbacks(listeningTimeout)
             Log.w(TAG, "Failed to start listening")
+            if (commandWindowOpen) feedbackController.commandFailed()
             scheduleNextCapture(1000)
         }
     }
@@ -214,6 +218,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
             }
             else -> {
+                feedbackController.commandFailed()
                 if (wasListeningForCommand && shouldUseOwnerGate()) {
                     ownerVoiceGate.extendAuthorization(COMMAND_RETRY_GRACE_MS)
                 }
@@ -271,10 +276,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (keepCommandWindowOpen) {
             ownerVoiceGate.authorizeFor(CAMERA_SESSION_AUTH_WINDOW_MS)
             notificationController.update("명령 처리됨. 다음 명령을 말하세요.")
+            feedbackController.commandHandled()
             scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
         } else {
             ownerVoiceGate.clearAuthorization()
             notificationController.reset()
+            feedbackController.commandWindowClosed()
             scheduleNextCapture(250)
         }
     }
@@ -293,8 +300,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     private fun signalCommandReady() {
-        runCatching { toneGenerator.startTone(ToneGenerator.TONE_PROP_ACK, OWNER_READY_TONE_MS) }
         notificationController.update("소유자 확인됨. 명령을 말하세요.")
+        feedbackController.commandReady()
     }
 
     override fun onReadyForSpeech(params: Bundle?) {
@@ -324,6 +331,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
         val delay = when (error) {
             SpeechRecognizer.ERROR_NO_MATCH,
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                if (wasListeningForCommand || isOwnerAuthorized()) {
+                    feedbackController.commandFailed()
+                }
                 if (wasListeningForCommand && shouldUseOwnerGate()) {
                     ownerVoiceGate.extendAuthorization(COMMAND_RETRY_GRACE_MS)
                 }
@@ -350,6 +360,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
         } else if (outcome == SpeechOutcome.WAKE_ONLY) {
             scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
         } else {
+            if (wasListeningForCommand || isOwnerAuthorized()) {
+                feedbackController.commandFailed()
+            }
             if (wasListeningForCommand && shouldUseOwnerGate()) {
                 ownerVoiceGate.extendAuthorization(COMMAND_RETRY_GRACE_MS)
             }
@@ -384,6 +397,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             partialCommandHandled = true
             partialCommandKeepsWindowOpen = commandExecutor.run(command).keepsCommandWindowOpen
             notificationController.update("명령 처리 중입니다.")
+            feedbackController.commandProcessing()
             handler.removeCallbacks(listeningTimeout)
             handler.removeCallbacks(partialCommandFinalize)
             handler.postDelayed(partialCommandFinalize, PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS)
@@ -405,7 +419,6 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_VERIFY_RETRY_MS = 300L
         private const val COMMAND_READY_LISTEN_DELAY_MS = 0L
         private const val COMMAND_RETRY_DELAY_MS = 25L
-        private const val OWNER_READY_TONE_MS = 120
         private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 250L
         private const val DEFAULT_NOTIFICATION_TEXT = "소유자 목소리 확인 후 음성 명령을 듣습니다."
     }
