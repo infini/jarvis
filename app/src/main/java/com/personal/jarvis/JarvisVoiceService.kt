@@ -30,12 +30,20 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var lastCommand: String? = null
     private var lastCommandAt = 0L
     private var ownerAuthorizedUntil = 0L
+    private var currentListeningAllowsCommandWithoutWake = false
     private var notificationContentText = DEFAULT_NOTIFICATION_TEXT
     private val listeningTimeout = Runnable {
         if (!listening || destroyed) return@Runnable
         Log.w(TAG, "Listening timed out; restarting recognizer")
+        val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
         listening = false
+        currentListeningAllowsCommandWithoutWake = false
         runCatching { recognizer?.cancel() }
+        if (wasListeningForCommand && shouldUseOwnerGate()) {
+            ownerAuthorizedUntil = ownerAuthorizedUntil.coerceAtLeast(
+                System.currentTimeMillis() + COMMAND_RETRY_GRACE_MS,
+            )
+        }
         scheduleNextCapture(300)
     }
 
@@ -120,12 +128,14 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         try {
             listening = true
+            currentListeningAllowsCommandWithoutWake = commandWindowOpen
             recognizer?.startListening(intent)
             handler.removeCallbacks(listeningTimeout)
             handler.postDelayed(listeningTimeout, LISTENING_TIMEOUT_MS)
             Log.d(TAG, "Listening started")
         } catch (_: RuntimeException) {
             listening = false
+            currentListeningAllowsCommandWithoutWake = false
             handler.removeCallbacks(listeningTimeout)
             Log.w(TAG, "Failed to start listening")
             scheduleNextCapture(1000)
@@ -199,7 +209,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         val results = bundle?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
         if (results.isNotEmpty()) Log.d(TAG, "Speech results: $results")
 
-        val allowCommandWithoutWake = shouldUseOwnerGate() && isOwnerAuthorized()
+        val allowCommandWithoutWake = currentListeningAllowsCommandWithoutWake ||
+            shouldUseOwnerGate() && isOwnerAuthorized()
         for (candidate in results) {
             val command = CommandInterpreter.parse(
                 text = candidate,
@@ -342,13 +353,20 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onError(error: Int) {
+        val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
         listening = false
+        currentListeningAllowsCommandWithoutWake = false
         handler.removeCallbacks(listeningTimeout)
         Log.w(TAG, "Speech error: $error")
         val delay = when (error) {
             SpeechRecognizer.ERROR_NO_MATCH,
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                if (isOwnerAuthorized()) COMMAND_RETRY_DELAY_MS else OWNER_VERIFY_RETRY_MS
+                if (wasListeningForCommand && shouldUseOwnerGate()) {
+                    ownerAuthorizedUntil = ownerAuthorizedUntil.coerceAtLeast(
+                        System.currentTimeMillis() + COMMAND_RETRY_GRACE_MS,
+                    )
+                }
+                if (wasListeningForCommand || isOwnerAuthorized()) COMMAND_RETRY_DELAY_MS else OWNER_VERIFY_RETRY_MS
             }
             else -> 1000L
         }
@@ -359,19 +377,26 @@ class JarvisVoiceService : Service(), RecognitionListener {
         listening = false
         handler.removeCallbacks(listeningTimeout)
         Log.d(TAG, "Final speech results received")
+        val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
         val outcome = handleSpeech(results)
+        currentListeningAllowsCommandWithoutWake = false
         if (outcome == SpeechOutcome.COMMAND_RUN) {
             ownerAuthorizedUntil = 0L
             updateNotification(DEFAULT_NOTIFICATION_TEXT)
             scheduleNextCapture(250)
         } else if (outcome == SpeechOutcome.COMMAND_RUN_KEEP_WINDOW) {
-            ownerAuthorizedUntil = System.currentTimeMillis() + OWNER_AUTH_WINDOW_MS
+            ownerAuthorizedUntil = System.currentTimeMillis() + CAMERA_SESSION_AUTH_WINDOW_MS
             updateNotification("명령 처리됨. 다음 명령을 말하세요.")
             scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
         } else if (outcome == SpeechOutcome.WAKE_ONLY) {
             scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
         } else {
-            scheduleNextCapture(if (isOwnerAuthorized()) COMMAND_RETRY_DELAY_MS else 250L)
+            if (wasListeningForCommand && shouldUseOwnerGate()) {
+                ownerAuthorizedUntil = ownerAuthorizedUntil.coerceAtLeast(
+                    System.currentTimeMillis() + COMMAND_RETRY_GRACE_MS,
+                )
+            }
+            scheduleNextCapture(if (wasListeningForCommand || isOwnerAuthorized()) COMMAND_RETRY_DELAY_MS else 250L)
         }
     }
 
@@ -393,6 +418,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val CAMERA_OPEN_DELAY_MS = 1500L
         private const val LISTENING_TIMEOUT_MS = 7000L
         private const val OWNER_AUTH_WINDOW_MS = 12000L
+        private const val CAMERA_SESSION_AUTH_WINDOW_MS = 30000L
+        private const val COMMAND_RETRY_GRACE_MS = 2000L
         private const val OWNER_VERIFY_AUDIO_MS = 2500L
         private const val OWNER_VERIFY_INTERVAL_MS = 500L
         private const val OWNER_VERIFY_RETRY_MS = 700L
