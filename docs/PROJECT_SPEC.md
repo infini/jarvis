@@ -21,6 +21,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 로컬 Debug 빌드는 `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools` 지정 시 성공 확인
 - Xiaomi 15 Ultra USB 연결 상태에서 Debug APK 재설치 성공 확인
 - 앱 업데이트 후 `Jarvis 대기 준비됨` 시작 알림 표시 확인
+- Xiaomi 15 Ultra에서 `JarvisVoiceService` foreground 실행, 접근성 서비스 바인딩, 배터리 최적화 예외 등록 확인
 
 다음 우선순위:
 
