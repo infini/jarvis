@@ -14,15 +14,16 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 음성 서비스 1차 구현 완료
 - 접근성 서비스 1차 구현 완료
 - 기본 카메라 실행 helper 구현 완료
+- Picovoice Eagle 기반 소유자 목소리 등록 UI 및 profile 저장 구현 완료
+- 등록된 소유자 profile이 있을 때 명령 인식 전 owner voice gate 1차 구현 완료
 - README 설치 문서 작성 완료
-- 현재 PC에는 `java`, `gradle`, `ANDROID_HOME`이 잡혀 있지 않아 로컬 빌드 검증은 미완료
+- 로컬 Debug 빌드는 `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools` 지정 시 성공 확인
 
 다음 우선순위:
 
-1. Android Studio에서 Gradle Sync 및 Debug 빌드
-2. Xiaomi 15 Ultra에 설치
-3. 접근성 권한 활성화
-4. 실제 카메라 화면에서 셔터/필터/전환 좌표 보정
+1. Picovoice AccessKey 입력 후 Xiaomi 15 Ultra에서 내 목소리 등록
+2. owner voice gate 통과 후 명령 인식 UX 보정
+3. 실제 카메라 화면에서 셔터/필터/전환 좌표 보정
 
 ## 2. Quick Context For Future Work
 
@@ -52,6 +53,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 기본 카메라 앱을 대상으로 다음 동작을 지원한다.
 
 - `자비스, 카메라 열어`: 기본 카메라 앱 실행
+- `헤이 자비스, 카메라 셀피 모드로 실행해`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
 - `자비스, 찍어`: 현재 화면에서 셔터 버튼 탭
 - `자비스, 카메라 찍어`: 카메라 앱 실행 후 셔터 탭
 - `자비스, 필터`: 카메라 앱 필터/효과 UI 열기
@@ -100,6 +102,8 @@ Jarvis는 다음 조합으로 동작한다.
 
 접근성 서비스는 사용자가 설정에서 직접 켜야 하며, 설치만으로 자동 활성화할 수 없다.
 
+전면 카메라 실행은 Android 카메라 인텐트에 전면 렌즈 힌트 extra를 넣어 시도한다. 이 extra는 카메라 앱 구현에 따라 무시될 수 있으므로, Xiaomi 기본 카메라가 힌트를 무시하면 카메라를 연 뒤 접근성 전환 명령을 조합하는 fallback이 필요하다.
+
 ## 7. Current Architecture
 
 ```text
@@ -122,6 +126,7 @@ JarvisAccessibilityService
 | --- | --- |
 | `MainActivity.kt` | 권한 요청, 접근성 설정 진입, Jarvis 시작/중지 UI |
 | `JarvisVoiceService.kt` | 포그라운드 음성 인식 서비스 |
+| `OwnerVoiceStore.kt` | Picovoice AccessKey와 소유자 음성 profile 저장 |
 | `CommandInterpreter.kt` | 인식된 문장을 내부 명령으로 변환 |
 | `CommandBus.kt` | 앱 내부 명령 브로드캐스트 |
 | `JarvisAccessibilityService.kt` | 접근성 기반 UI 탐색/탭/전역 동작 |
@@ -136,6 +141,7 @@ JarvisAccessibilityService
 | Command | Meaning |
 | --- | --- |
 | `open_camera` | 기본 카메라 앱 열기 |
+| `open_front_camera` | 기본 카메라 앱을 전면 카메라 힌트와 함께 열기 |
 | `open_camera_and_take_photo` | 카메라 앱 열고 잠시 후 촬영 |
 | `take_photo` | 현재 화면에서 셔터 탭 |
 | `open_filters` | 필터/효과 UI 열기 |
@@ -143,6 +149,34 @@ JarvisAccessibilityService
 | `back` | 뒤로가기 |
 | `home` | 홈으로 이동 |
 | `stop_listening` | Jarvis 음성 서비스 중지 |
+
+모든 명령은 `자비스` 계열 호출어를 포함해야 한다. 현재 허용 호출어는 `자비스`, `자베스`, `쟈비스`, `제비스`, `차비스`, `jarvis`다. 이는 우발적인 반응을 줄이는 장치이며, 사용자 목소리 자체를 인증하는 speaker verification은 별도 기능으로 구현해야 한다.
+
+## 8.1 Owner Voice Gate
+
+소유자 목소리 인증은 Picovoice Eagle Android SDK를 사용한다.
+
+- Dependency: `ai.picovoice:eagle-android:3.0.2`
+- Audio input helper: `ai.picovoice:android-voice-processor:1.0.2`
+- AccessKey는 앱 private `SharedPreferences`에 저장한다.
+- Eagle profile bytes는 Base64 인코딩 후 앱 private `SharedPreferences`에 저장한다.
+- 기본 허용 threshold는 `0.72`로 시작하며 실기기 테스트 후 조정한다.
+
+현재 구현 흐름:
+
+1. 사용자가 앱 화면에서 Picovoice AccessKey를 입력하고 저장한다.
+2. `내 목소리 등록 시작`을 누르고 조용한 환경에서 여러 문장을 말한다.
+3. Eagle enrollment가 100%에 도달하면 profile을 export하여 저장한다.
+4. 이후 `JarvisVoiceService`는 profile이 있으면 먼저 Eagle로 소유자 목소리를 확인한다.
+5. 소유자 점수가 threshold 이상이면 12초 인증 window를 열고 `SpeechRecognizer` 명령 인식을 시작한다.
+6. 명령 처리 후 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
+
+제약:
+
+- Android `SpeechRecognizer`는 텍스트 결과만 안정적으로 제공하고 원음 PCM을 제공하지 않는다.
+- 따라서 현재 버전은 “한 문장을 동시에 speaker verification + STT 처리”하지 않고, 소유자 확인 후 짧은 명령 window를 여는 2단계 구조다.
+- 빅스비처럼 자연스러운 단일 발화 UX를 만들려면 wake word, speaker verification, command recognition을 하나의 raw audio pipeline으로 재구성해야 한다.
+- Picovoice AccessKey는 외부 콘솔에서 발급받아야 하며, 최초 활성화/검증에는 네트워크가 필요할 수 있다.
 
 명령 추가 시 규칙:
 
@@ -193,6 +227,8 @@ JarvisAccessibilityService
 | `FOREGROUND_SERVICE_MICROPHONE` | Android 14+ 마이크 foreground service 선언 |
 | `BIND_ACCESSIBILITY_SERVICE` | 접근성 서비스 바인딩. 일반 런타임 권한이 아니며 시스템 설정에서 사용자가 직접 켜야 함 |
 
+소유자 목소리 등록/검증은 기존 `RECORD_AUDIO` 권한을 사용한다. 별도 런타임 권한은 추가하지 않았다.
+
 ## 11. Installation Flow
 
 개발 중 기본 설치 방법은 Android Studio 직접 설치다.
@@ -225,7 +261,9 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 ### Voice Test
 
+- `자비스` 호출어가 없는 `찍어`, `필터`, `뒤로`는 무시된다.
 - `자비스, 카메라 열어`가 기본 카메라 앱을 연다.
+- `헤이 자비스, 카메라 셀피 모드로 실행해`가 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.
 - `자비스, 찍어`가 카메라 화면에서 셔터를 누른다.
 - 카메라 앱이 열리지 않은 상태에서 `자비스, 카메라 찍어`가 카메라를 열고 촬영을 시도한다.
 - `자비스, 멈춰`가 음성 서비스를 중지한다.
@@ -238,6 +276,15 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - 필터 UI 열기 성공
 
 테스트 실패 시 접근성 노드 덤프 또는 화면 좌표를 기준으로 `JarvisAccessibilityService.kt`의 키워드/fallback 좌표를 조정한다.
+
+### Owner Voice Test
+
+- AccessKey가 비어 있으면 목소리 등록 시작이 거부된다.
+- AccessKey가 유효하면 `내 목소리 등록 시작` 후 등록률이 올라간다.
+- 등록률 100%에서 owner profile이 저장된다.
+- owner profile이 저장된 상태에서 Jarvis 시작 시 먼저 owner voice verification이 시작된다.
+- 등록된 사용자 목소리 점수가 threshold 이상이면 명령 인식 window가 열린다.
+- 다른 사람 목소리는 threshold 미만으로 유지되어 명령 인식 window가 열리지 않아야 한다.
 
 ## 13. Known Risks
 

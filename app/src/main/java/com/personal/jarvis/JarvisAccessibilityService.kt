@@ -11,6 +11,7 @@ import android.graphics.Rect
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.Locale
@@ -50,8 +51,10 @@ class JarvisAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     private fun handleCommand(command: String) {
+        Log.d(TAG, "Handling command: $command")
         when (command) {
             CommandBus.COMMAND_OPEN_CAMERA -> CameraLauncher.open(this)
+            CommandBus.COMMAND_OPEN_FRONT_CAMERA -> CameraLauncher.openFront(this)
             CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO -> {
                 CameraLauncher.open(this)
                 handler.postDelayed({ tapShutter() }, CAMERA_OPEN_DELAY_MS)
@@ -235,6 +238,7 @@ class JarvisAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        private const val TAG = "JarvisAccessibility"
         private const val MAX_PARENT_SEARCH_DEPTH = 6
         private const val CAMERA_OPEN_DELAY_MS = 1500L
     }

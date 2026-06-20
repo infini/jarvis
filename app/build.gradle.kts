@@ -16,6 +16,11 @@ android {
     }
 }
 
+dependencies {
+    implementation("ai.picovoice:eagle-android:3.0.2")
+    implementation("ai.picovoice:android-voice-processor:1.0.2")
+}
+
 kotlin {
     jvmToolchain(17)
 }
