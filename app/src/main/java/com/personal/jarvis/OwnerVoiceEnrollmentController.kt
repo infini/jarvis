@@ -7,7 +7,7 @@ class OwnerVoiceEnrollmentController(
     private val postToMain: (() -> Unit) -> Unit,
     private val onProgress: (Int) -> Unit,
     private val onStatus: (String) -> Unit,
-    private val onCompleted: () -> Unit,
+    private val onCompleted: (Int) -> Unit,
     private val onFailed: (String) -> Unit,
 ) {
     @Volatile private var enrolling = false
@@ -49,6 +49,9 @@ class OwnerVoiceEnrollmentController(
                 if (embeddings.isEmpty()) {
                     throw IllegalStateException("충분한 음성 특징을 만들지 못했습니다. 더 또렷하게 다시 등록하세요.")
                 }
+                if (embeddings.size < OwnerVoiceEngine.MIN_OWNER_EMBEDDINGS) {
+                    throw IllegalStateException("'자비스'를 여러 번 또렷하게 말해 다시 등록하세요.")
+                }
 
                 if (!enrolling) return@Thread
 
@@ -58,7 +61,7 @@ class OwnerVoiceEnrollmentController(
                         onStatus("목소리 등록 완료: ${embeddings.size}개 음성 특징 저장됨")
                         enrolling = false
                         thread = null
-                        onCompleted()
+                        onCompleted(embeddings.size)
                     }
                 }
             } catch (e: Exception) {

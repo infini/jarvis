@@ -33,9 +33,9 @@ class MainActivity : Activity() {
             postToMain = { action -> runOnUiThread(action) },
             onProgress = { percent -> enrollProgress.progress = percent },
             onStatus = { status -> ownerVoiceStatusView.text = status },
-            onCompleted = {
-                Toast.makeText(this, "내 목소리 등록 완료", Toast.LENGTH_SHORT).show()
-                stopOwnerEnrollment("내 목소리 등록 완료. 이제 Jarvis 명령은 등록된 목소리 확인 후 실행됩니다.")
+            onCompleted = { embeddingCount ->
+                Toast.makeText(this, "내 목소리 등록 완료: ${embeddingCount}개 저장", Toast.LENGTH_SHORT).show()
+                stopOwnerEnrollment("내 목소리 등록 완료: ${embeddingCount}개 음성 특징 저장됨")
                 updateStatus()
             },
             onFailed = { message ->

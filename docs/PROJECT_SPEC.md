@@ -365,14 +365,14 @@ scripts/jarvis-command-trace.sh 45
 - Runtime: `sherpa-onnx` 공식 Android AAR `v1.13.3`의 Kotlin API jar와 `arm64-v8a` native libraries
 - Model: `3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`
 - 저장 방식: 소유자 embedding `FloatArray` 묶음을 little-endian bytes로 변환한 뒤 Base64 인코딩하여 앱 private `SharedPreferences`에 저장한다. v1 단일 embedding은 읽기 fallback으로 유지하고, 신규 등록은 v2 다중 embedding을 저장한다.
-- 등록 시 전체 6초 음성 embedding과 1.4초 window / 700ms step 구간 embedding을 합쳐 최대 8개를 저장한다. verification은 등록 embedding 묶음 중 가장 높은 cosine similarity를 사용한다.
+- 등록 시 전체 6초 음성 embedding과 1.4초 window / 700ms step 구간 embedding을 합쳐 최소 2개, 최대 8개를 저장한다. verification은 등록 embedding 묶음 중 가장 높은 cosine similarity를 사용한다.
 - 기본 허용 threshold는 `0.50`이다. 등록/일반 embedding은 최소 peak RMS `0.002`를 유지하고, owner verification 경로는 짧고 작은 호출어를 놓치지 않도록 최소 peak RMS `0.00075`, 최소 active RMS `0.00050`, floor 대비 최소 상승폭 `0.00032`를 사용한다. 짧은 호출어 보정을 위해 말소리 구간이 450ms 이상이고 similarity `0.28` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. 단발 soft wake는 450ms 이상 말소리에서 similarity `0.24` 이상일 때 허용하고, 낮은 점수 soft wake는 400ms 이상 말소리에서 similarity `0.14` 이상이 4회 연속 나와야 보조 경로로 통과시킨다. soft wake 연속 판정은 중간에 similarity `0.10` 이상 애매한 점수 1회까지 허용한다. owner gate가 통과하면 command window는 초록 overlay로 표시한다. Android STT가 실제 발화를 감지하지 못하면 8초 동안 낮은 점수 연속 soft wake만 억제해 idle false accept 반복을 줄이고, near/single soft wake는 억제하지 않아 사용자의 재호출이 같이 막히지 않게 한다. 인증 중에는 1.2초 rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다.
 - 현재 APK는 Xiaomi 15 Ultra를 우선해 `arm64-v8a` ABI만 패키징한다.
 
 현재 구현 흐름:
 
 1. 사용자가 `내 목소리 등록 시작`을 누르고 조용한 환경에서 6초 동안 `자비스`를 여러 번 또렷하게 말한다.
-2. `OwnerVoiceEngine`이 16kHz mono PCM을 녹음하고 sherpa-onnx로 전체 음성과 짧은 구간 speaker embedding을 계산한다.
+2. `OwnerVoiceEngine`이 16kHz mono PCM을 녹음하고 sherpa-onnx로 전체 음성과 짧은 구간 speaker embedding을 계산한다. embedding이 2개 미만이면 등록 실패로 보고 다시 녹음하게 한다.
 3. 계산된 embedding 묶음을 `OwnerVoiceStore`에 저장한다.
 4. 이후 `JarvisVoiceService`는 `OwnerVoiceGate`를 통해 owner embedding 묶음이 있는지 확인하고, owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
 5. 최근 1.2초 rolling audio window에서 RMS 기반으로 말소리 앞뒤 무음을 줄인다. 인증 경로에서는 noise floor 대비 peak가 충분한 구간만 candidate embedding으로 만들고, 80ms마다 저장된 embedding 묶음과 cosine similarity 최고점을 비교한다.
@@ -532,7 +532,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 ### Owner Voice Test
 
 - `내 목소리 등록 시작` 후 6초 녹음 진행률이 올라간다.
-- 등록 완료 시 최대 8개의 owner embedding이 저장된다.
+- 등록 완료 시 2개 이상 8개 이하의 owner embedding이 저장된다.
 - owner embedding 묶음이 저장된 상태에서 Jarvis 시작 시 먼저 owner voice verification이 시작된다.
 - 등록된 사용자 목소리 similarity가 threshold 이상이면 명령 인식 window가 열린다.
 - 다른 사람 목소리는 threshold 미만으로 유지되어 명령 인식 window가 열리지 않아야 한다.
