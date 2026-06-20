@@ -11,6 +11,7 @@ MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSED_MS="${JARVIS_MAX_SPEECH_PARSED_MS:-2500}"
 MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
 START_DEBUG_ACTIVITY="${JARVIS_START_DEBUG_ACTIVITY:-1}"
+SKIP_PROFILE_CHECK="${JARVIS_SKIP_PROFILE_CHECK:-0}"
 
 case "$DURATION_SECONDS" in
   ''|*[!0-9]*)
@@ -39,6 +40,10 @@ case "$MAX_SPEECH_PARSED_MS" in
     exit 2
     ;;
 esac
+
+if [[ "$SKIP_PROFILE_CHECK" != "1" ]]; then
+  "$SCRIPT_DIR/jarvis-profile-status.sh"
+fi
 
 echo "Clearing Jarvis logcat and recording for ${DURATION_SECONDS}s."
 adb logcat -c

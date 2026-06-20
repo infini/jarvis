@@ -42,9 +42,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
                         match.acceptance != OwnerVoiceEngine.Acceptance.STRICT
                     commandFeedbackEnabled = shouldPlayCommandReadyFeedback(match)
                     signalCommandReady()
-                    if (!startOwnerAudioCommandRecognition(match)) {
-                        scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
-                    }
+                    startOwnerAudioCommandRecognition(match)
+                    scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
                 }
             },
             onMissingProfile = {
@@ -77,6 +76,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var commandWindowSpeechGraceUntil = 0L
     private var speechStartedInCurrentListen = false
     private var latencyTrace: JarvisLatencyTrace? = null
+    private var suppressCancelledRecognizerCallbacks = false
     @Volatile private var ownerAudioCommandActive = false
     private var ownerAudioCommandThread: Thread? = null
     private val startListeningRunnable = Runnable {
@@ -281,9 +281,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     private fun startListening() {
-        if (destroyed || listening || ownerVoiceGate.isVerifying || ownerAudioCommandActive) return
+        if (destroyed || listening || ownerVoiceGate.isVerifying) return
 
         val commandWindowOpen = isCommandWindowOpen()
+        suppressCancelledRecognizerCallbacks = false
         if (commandWindowOpen && forceLocalCommandOnce && localCommandSession.canStart()) {
             ensureLatencyTrace("listen_cycle_start", "engine=local_asr mode=fallback_after_android")
                 .mark("fallback_listen_requested")
@@ -351,6 +352,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private fun startLocalCommandListening(mode: String) {
         if (destroyed || listening || ownerVoiceGate.isVerifying || localCommandSession.isActive) return
 
+        suppressCancelledRecognizerCallbacks = false
         listening = true
         currentListeningAllowsCommandWithoutWake = true
         androidListenAfterLocal = false
@@ -518,6 +520,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         val command = result?.command
         when {
             command != null -> {
+                cancelListeningAfterOwnerAudioCommand()
                 markLatency("command_parsed", "source=owner_audio command=$command text=${result.text}")
                 Log.d(
                     TAG,
@@ -531,19 +534,23 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 commandWindowOpenedByNonStrictOwnerGate = false
                 commandFeedbackEnabled = true
                 signalCommandReady()
-                finishLatency("wake_only_complete", "source=owner_audio")
-                scheduleListening(ownerReadyDelayAfter(result))
+                if (listening) {
+                    markLatency("owner_audio_wake_only_listening")
+                } else {
+                    finishLatency("wake_only_complete", "source=owner_audio")
+                    scheduleListening(ownerReadyDelayAfter(result))
+                }
             }
             failed || result?.unavailable == true -> {
                 markLatency("owner_audio_asr_unavailable")
-                scheduleListening(ownerReadyDelayAfter(result))
+                if (!listening) scheduleListening(ownerReadyDelayAfter(result))
             }
             else -> {
                 markLatency(
                     "owner_audio_no_command",
                     "text=${result?.text.orEmpty()} elapsedMs=${result?.elapsedMs ?: 0L}",
                 )
-                scheduleListening(ownerReadyDelayAfter(result))
+                if (!listening) scheduleListening(ownerReadyDelayAfter(result))
             }
         }
     }
@@ -557,6 +564,26 @@ class JarvisVoiceService : Service(), RecognitionListener {
         ownerAudioCommandActive = false
         ownerAudioCommandThread?.interrupt()
         ownerAudioCommandThread = null
+    }
+
+    private fun cancelListeningAfterOwnerAudioCommand() {
+        if (!listening && !localCommandSession.isActive) return
+
+        suppressCancelledRecognizerCallbacks = true
+        listening = false
+        currentListeningAllowsCommandWithoutWake = false
+        androidListenAfterLocal = false
+        partialCommandHandled = false
+        partialCommandKeepsWindowOpen = false
+        partialWakeHandled = false
+        speechStartedInCurrentListen = false
+        handler.removeCallbacks(listeningTimeout)
+        handler.removeCallbacks(partialCommandFinalize)
+        if (localCommandSession.isActive) {
+            localCommandSession.stop()
+        } else {
+            runCatching { recognizer?.cancel() }
+        }
     }
 
     private fun startAndroidFallbackAfterLocal(reason: String): Boolean {
@@ -603,6 +630,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     private fun runCommand(command: String, source: String): JarvisCommandExecutor.Result {
+        if (source != "owner_audio") {
+            stopOwnerAudioCommandRecognition()
+        }
         val trace = ensureLatencyTrace("command_trace_start", "source=$source command=$command")
         trace.mark("command_execute_start", "source=$source command=$command")
         val result = commandExecutor.run(command, trace.id, trace.startedAtMs)
@@ -748,6 +778,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onReadyForSpeech(params: Bundle?) {
+        if (shouldSuppressCancelledRecognizerCallback()) return
+
         markLatency("ready_for_speech")
         if (commandFeedbackEnabled && (currentListeningAllowsCommandWithoutWake || isCommandWindowOpen())) {
             feedbackController.commandReady()
@@ -756,6 +788,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onBeginningOfSpeech() {
+        if (shouldSuppressCancelledRecognizerCallback()) return
+
         speechStartedInCurrentListen = true
         markLatency("speech_begin")
         Log.d(TAG, "Beginning of speech")
@@ -764,6 +798,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
     override fun onEndOfSpeech() {
+        if (shouldSuppressCancelledRecognizerCallback()) return
+
         listening = false
         handler.removeCallbacks(listeningTimeout)
         markLatency("speech_end")
@@ -771,6 +807,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onError(error: Int) {
+        if (shouldSuppressCancelledRecognizerCallback(clear = true)) return
+
         val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
         val wasAndroidFallbackAfterLocal = androidListenAfterLocal
         val hadSpeechInCurrentListen = speechStartedInCurrentListen
@@ -872,6 +910,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onResults(results: Bundle?) {
+        if (shouldSuppressCancelledRecognizerCallback(clear = true)) return
+
         listening = false
         androidListenAfterLocal = false
         speechStartedInCurrentListen = false
@@ -913,6 +953,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onPartialResults(partialResults: Bundle?) {
+        if (shouldSuppressCancelledRecognizerCallback()) return
+
         Log.d(TAG, "Partial speech results received")
         val results = partialResults
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -927,6 +969,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
+
+    private fun shouldSuppressCancelledRecognizerCallback(clear: Boolean = false): Boolean {
+        if (!suppressCancelledRecognizerCallbacks || listening) return false
+        if (clear) suppressCancelledRecognizerCallbacks = false
+        Log.d(TAG, "Suppressed recognizer callback after owner audio command")
+        return true
+    }
 
     private fun runFastPartialCommand(results: List<String>): Boolean {
         if (partialCommandHandled || results.isEmpty()) return false
@@ -1006,7 +1055,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val LOCAL_COMMAND_TIMEOUT_MS = 6000L
         private const val LOCAL_FALLBACK_AUTH_EXTENSION_MS = 6000L
         private const val LOCAL_ANDROID_FALLBACK_MIN_SPEECH_MS = 360L
-        private const val OWNER_VERIFY_AUDIO_MS = 1200L
+        private const val OWNER_VERIFY_AUDIO_MS = 960L
         private const val OWNER_VERIFY_INTERVAL_MS = 80L
         private const val OWNER_VERIFY_RETRY_MS = 200L
         private const val DEFAULT_RETRY_DELAY_MS = 300L

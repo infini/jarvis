@@ -25,10 +25,11 @@ class JarvisDebugOwnerEnrollActivity : Activity() {
             ?.getLongExtra(EXTRA_DURATION_MS, DEFAULT_DURATION_MS)
             ?.coerceIn(MIN_DURATION_MS, MAX_DURATION_MS)
             ?: DEFAULT_DURATION_MS
+        val requestId = intent?.getStringExtra(EXTRA_REQUEST_ID).orEmpty()
 
         JarvisVoiceServiceStarter.setOwnerEnrollmentActive(true)
         stopService(Intent(this, JarvisVoiceService::class.java))
-        Log.i(TAG, "status=recording durationMs=$durationMs")
+        Log.i(TAG, "request_id=$requestId status=recording durationMs=$durationMs")
 
         Thread({
             try {
@@ -40,16 +41,20 @@ class JarvisDebugOwnerEnrollActivity : Activity() {
                 if (embeddings.size < OwnerVoiceEngine.MIN_OWNER_EMBEDDINGS) {
                     Log.e(
                         TAG,
-                        "status=failed reason=not_enough_embeddings " +
+                        "request_id=$requestId status=failed reason=not_enough_embeddings " +
                             "profile_embeddings=${embeddings.size}",
                     )
                     return@Thread
                 }
 
                 OwnerVoiceStore.saveEmbeddings(this, embeddings)
-                Log.i(TAG, "status=completed profile_embeddings=${embeddings.size}")
+                Log.i(TAG, "request_id=$requestId status=completed profile_embeddings=${embeddings.size}")
             } catch (error: Exception) {
-                Log.e(TAG, "status=failed reason=${error.javaClass.simpleName} message=${error.message}")
+                Log.e(
+                    TAG,
+                    "request_id=$requestId status=failed " +
+                        "reason=${error.javaClass.simpleName} message=${error.message}",
+                )
             } finally {
                 JarvisVoiceServiceStarter.setOwnerEnrollmentActive(false)
                 runOnUiThread { finish() }
@@ -59,6 +64,7 @@ class JarvisDebugOwnerEnrollActivity : Activity() {
 
     companion object {
         const val EXTRA_DURATION_MS = "duration_ms"
+        const val EXTRA_REQUEST_ID = "request_id"
         private const val TAG = "JarvisDebugEnroll"
         private const val DEFAULT_DURATION_MS = 6_000L
         private const val MIN_DURATION_MS = 3_000L

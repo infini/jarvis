@@ -10,10 +10,12 @@ class JarvisDebugProfileStatusActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val requestId = intent?.getStringExtra(EXTRA_REQUEST_ID).orEmpty()
         val embeddingCount = OwnerVoiceStore.embeddingCount(this)
         Log.i(
             TAG,
-            "profile_configured=${embeddingCount > 0} " +
+            "request_id=$requestId " +
+                "profile_configured=${embeddingCount > 0} " +
                 "profile_embeddings=$embeddingCount " +
                 "voice_service_running=${JarvisVoiceService.isRunning}",
         )
@@ -21,6 +23,7 @@ class JarvisDebugProfileStatusActivity : Activity() {
     }
 
     companion object {
+        const val EXTRA_REQUEST_ID = "request_id"
         private const val TAG = "JarvisDebugStatus"
     }
 }

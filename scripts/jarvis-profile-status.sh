@@ -3,12 +3,24 @@ set -euo pipefail
 
 STATUS_ACTIVITY="com.personal.jarvis/.debug.JarvisDebugProfileStatusActivity"
 LOG_TAG="JarvisDebugStatus"
+REQUEST_ID="$(date +%s)-$$"
+WAIT_DEADLINE=5
 
-adb logcat -c
-adb shell am start -n "$STATUS_ACTIVITY" >/dev/null
-sleep 1
+adb shell am start -n "$STATUS_ACTIVITY" --es request_id "$REQUEST_ID" >/dev/null
 
-STATUS_LINE="$(adb logcat -d -v time -s "$LOG_TAG" | grep "$LOG_TAG" | tail -1 || true)"
+STATUS_LINE=""
+for ((elapsed = 0; elapsed < WAIT_DEADLINE; elapsed++)); do
+  STATUS_LINE="$(
+    adb logcat -d -v time -s "$LOG_TAG" |
+      grep "request_id=${REQUEST_ID}" |
+      tail -1 || true
+  )"
+  if [[ -n "$STATUS_LINE" ]]; then
+    break
+  fi
+  sleep 1
+done
+
 if [[ -z "$STATUS_LINE" ]]; then
   echo "FAIL: no Jarvis profile status log found." >&2
   exit 1

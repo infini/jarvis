@@ -94,6 +94,28 @@ class OwnerVoiceEngineTest {
     }
 
     @Test
+    fun preparesSubSecondWakeWindowForVerification() {
+        val sampleRate = OwnerVoiceEngine.SAMPLE_RATE_HZ
+        val samples = FloatArray(sampleRate * 960 / 1000)
+        val speechStart = sampleRate * 180 / 1000
+        val speechSamples = sampleRate * 520 / 1000
+
+        for (index in speechStart until speechStart + speechSamples) {
+            samples[index] = if (index % 2 == 0) 0.003f else -0.003f
+        }
+
+        val prepared = assertNotNull(
+            OwnerVoiceEngine.prepareSamplesForEmbedding(
+                samples = samples,
+                requireSpeechContrast = true,
+            ),
+        )
+
+        assertTrue(prepared.activeSpeechMs in 500L..550L)
+        assertEquals(sampleRate * 1200 / 1000, prepared.samples.size)
+    }
+
+    @Test
     fun rejectsLowContrastNoiseForVerification() {
         val samples = FloatArray(OwnerVoiceEngine.SAMPLE_RATE_HZ * 2) { index ->
             if (index % 2 == 0) 0.00095f else -0.00095f
