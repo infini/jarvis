@@ -27,7 +27,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 즉시 실행으로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
 - owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 1.6초 window를 180ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
 - 짧은 `자비스` 호출어가 2초 window 안의 무음에 묻히지 않도록 owner voice gate에서 RMS 기반 말소리 구간 정리와 근접 점수 2회 연속 통과 정책을 추가함
-- Xiaomi 15 Ultra 실기기 로그에서 짧은 `자비스` 호출 점수가 0.16~0.23에 머무르는 케이스가 확인되어, 900ms 이상 말소리에서 similarity `0.20` 이상이 1회 나오거나 450ms 이상 말소리에서 `0.16` 이상이 2회 연속 나오면 soft wake로 통과시키도록 보정함
+- Xiaomi 15 Ultra 실기기 로그에서 짧은 `자비스` 호출 점수가 0.16~0.23에 머무르는 케이스가 확인되어, 650ms 이상 말소리에서 similarity `0.20` 이상이 1회 나오거나 450ms 이상 말소리에서 `0.16` 이상이 2회 나오면 soft wake로 통과시키도록 보정함. 짧은 호출어의 점수 흔들림을 흡수하기 위해 soft wake 연속 판정 중간에 similarity `0.12` 이상 애매한 점수 1회까지 허용함
 - owner voice gate가 일정한 배경음을 계속 말소리로 판단하지 않도록, 인증 시에는 noise floor 대비 피크가 충분한 음성 구간만 speaker embedding으로 계산하도록 보정함
 - command window 안에서는 sherpa-onnx 한국어 streaming ASR을 우선 사용해 `카메라 실행`, `찍어`, `종료` 같은 짧은 명령을 빠르게 실행하도록 변경
 - local command ASR이 command window 안에서 명령을 못 잡으면 초록 명령 대기 상태를 유지한 채 Android `SpeechRecognizer` fallback을 1회 시도하도록 변경
@@ -291,7 +291,7 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-command-trace.sh 45
 ```
 
-스크립트는 `trace`, `total`, `path`, `command`, `status`, `parsed`, `access`, `bus`를 한 줄로 출력한다. 하위 줄에는 `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `owner_text`, `local_endpoint`, `local_elapsed`, `local_text`를 출력해 owner gate, owner audio ASR, live local ASR, Android fallback 병목을 분리한다. `jarvis-command-trace.sh`는 `status=command_complete`가 하나도 없으면 실패 종료한다. 목표는 command window 안의 정상 명령이 `path=owner_audio_asr` 또는 `path=owner_audio_asr->local_asr`, `status=command_complete`로 끝나고, `parsed`와 `access`가 체감 지연을 설명할 수 있는 낮은 값으로 유지되는 것이다. `path=local_asr->android_stt` 또는 `owner_audio_asr->local_asr->android_stt`는 local ASR이 말소리는 들었지만 명령을 못 잡아 Android fallback을 탔다는 뜻이므로 별도 튜닝 대상으로 본다.
+스크립트는 `trace`, `total`, `path`, `command`, `status`, `parsed`, `access`, `bus`를 한 줄로 출력한다. 하위 줄에는 `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `owner_text`, `local_endpoint`, `local_elapsed`, `local_text`를 출력해 owner gate, owner audio ASR, live local ASR, Android fallback 병목을 분리한다. `jarvis-command-trace.sh`는 `status=command_complete`가 하나도 없으면 실패 종료하고, 기본 기준 `parsed<=2500ms`, 접근성 실행이 있는 경우 `access<=4000ms`도 함께 검사한다. 기준은 `JARVIS_MAX_PARSED_MS`, `JARVIS_MAX_ACCESS_MS` 환경 변수로 조정한다. 목표는 command window 안의 정상 명령이 `path=owner_audio_asr` 또는 `path=owner_audio_asr->local_asr`, `status=command_complete`로 끝나고, `parsed`와 `access`가 체감 지연을 설명할 수 있는 낮은 값으로 유지되는 것이다. `path=local_asr->android_stt` 또는 `owner_audio_asr->local_asr->android_stt`는 local ASR이 말소리는 들었지만 명령을 못 잡아 Android fallback을 탔다는 뜻이므로 별도 튜닝 대상으로 본다.
 
 주요 이벤트:
 
@@ -349,7 +349,7 @@ scripts/jarvis-command-trace.sh 45
 - Runtime: `sherpa-onnx` 공식 Android AAR `v1.13.3`의 Kotlin API jar와 `arm64-v8a` native libraries
 - Model: `3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`
 - 저장 방식: 소유자 embedding `FloatArray`를 little-endian bytes로 변환한 뒤 Base64 인코딩하여 앱 private `SharedPreferences`에 저장한다.
-- 기본 허용 threshold는 `0.50`이다. 짧은 호출어 보정을 위해 말소리 구간이 600ms 이상이고 similarity `0.28` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. Xiaomi 15 Ultra 실기기 로그에서 등록 사용자 `자비스` 발화가 0.16~0.23에 머무르는 케이스가 있어, 900ms 이상 말소리에서 similarity `0.20` 이상인 soft wake 점수가 1회 나오거나 450ms 이상 말소리에서 similarity `0.16` 이상인 soft wake 점수가 2회 연속 나오면 보조 경로로 통과시킨다. 인증 중에는 1.6초 rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다.
+- 기본 허용 threshold는 `0.50`이다. 짧은 호출어 보정을 위해 말소리 구간이 600ms 이상이고 similarity `0.28` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. Xiaomi 15 Ultra 실기기 로그에서 등록 사용자 `자비스` 발화가 0.16~0.23에 머무르는 케이스가 있어, 650ms 이상 말소리에서 similarity `0.20` 이상인 soft wake 점수가 1회 나오거나 450ms 이상 말소리에서 similarity `0.16` 이상인 soft wake 점수가 2회 나오면 보조 경로로 통과시킨다. soft wake 연속 판정은 중간에 similarity `0.12` 이상 애매한 점수 1회까지 허용한다. 인증 중에는 1.6초 rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다.
 - 현재 APK는 Xiaomi 15 Ultra를 우선해 `arm64-v8a` ABI만 패키징한다.
 
 현재 구현 흐름:

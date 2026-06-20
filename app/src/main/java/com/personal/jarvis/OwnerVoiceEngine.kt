@@ -29,10 +29,11 @@ object OwnerVoiceEngine {
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
     private const val NEAR_ACCEPT_MIN_SPEECH_MS = 600L
     const val SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD = 0.20f
-    private const val SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS = 900L
+    private const val SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS = 650L
     const val SOFT_WAKE_ACCEPT_THRESHOLD = 0.16f
     private const val SOFT_WAKE_ACCEPT_REQUIRED_COUNT = 2
     private const val SOFT_WAKE_ACCEPT_MIN_SPEECH_MS = 450L
+    private const val SOFT_WAKE_BRIDGE_THRESHOLD = 0.12f
 
     private val initLock = Any()
     private val computeLock = Any()
@@ -71,6 +72,7 @@ object OwnerVoiceEngine {
     internal data class ConsecutiveAcceptState(
         val nearCount: Int = 0,
         val softWakeCount: Int = 0,
+        val softWakeBridgeUsed: Boolean = false,
     )
 
     fun createEmbedding(context: Context, samples: FloatArray): FloatArray? {
@@ -209,6 +211,15 @@ object OwnerVoiceEngine {
             }
 
             return match to ConsecutiveAcceptState(softWakeCount = softWakeCount)
+        }
+
+        if (
+            previousState.softWakeCount > 0 &&
+            !previousState.softWakeBridgeUsed &&
+            match.score >= SOFT_WAKE_BRIDGE_THRESHOLD &&
+            match.activeSpeechMs >= SOFT_WAKE_ACCEPT_MIN_SPEECH_MS
+        ) {
+            return match to previousState.copy(softWakeBridgeUsed = true)
         }
 
         return match to ConsecutiveAcceptState()

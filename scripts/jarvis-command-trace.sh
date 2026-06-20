@@ -6,10 +6,26 @@ LOG_FILE="${2:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPORT_SCRIPT="$SCRIPT_DIR/jarvis-latency-report.sh"
 TEMP_LOG_FILE=""
+MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
+MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
 
 case "$DURATION_SECONDS" in
   ''|*[!0-9]*)
     echo "usage: $0 [duration_seconds] [optional_log_file]" >&2
+    exit 2
+    ;;
+esac
+
+case "$MAX_PARSED_MS" in
+  ''|*[!0-9]*)
+    echo "JARVIS_MAX_PARSED_MS must be an integer" >&2
+    exit 2
+    ;;
+esac
+
+case "$MAX_ACCESS_MS" in
+  ''|*[!0-9]*)
+    echo "JARVIS_MAX_ACCESS_MS must be an integer" >&2
     exit 2
     ;;
 esac
@@ -29,10 +45,38 @@ adb logcat -d -v time -s JarvisLatency > "$LOG_FILE"
 REPORT_OUTPUT="$("$REPORT_SCRIPT" "$LOG_FILE")"
 printf '%s\n' "$REPORT_OUTPUT"
 
-if printf '%s\n' "$REPORT_OUTPUT" | grep -q 'status=command_complete'; then
-  echo "PASS: command_complete trace found."
-  exit 0
+COMMAND_COMPLETE_LINES="$(
+  printf '%s\n' "$REPORT_OUTPUT" | awk '/^trace=/ && /status=command_complete/'
+)"
+if [[ -z "$COMMAND_COMPLETE_LINES" ]]; then
+  echo "FAIL: no command_complete trace found. Speak the command cycle during the capture window." >&2
+  exit 1
 fi
 
-echo "FAIL: no command_complete trace found. Speak the command cycle during the capture window." >&2
-exit 1
+SLOW_LINES="$(
+  printf '%s\n' "$COMMAND_COMPLETE_LINES" | awk \
+    -v maxParsed="$MAX_PARSED_MS" \
+    -v maxAccess="$MAX_ACCESS_MS" '
+      function fieldValue(key, i, pair) {
+        for (i = 1; i <= NF; i++) {
+          split($i, pair, "=")
+          if (pair[1] == key) return pair[2] + 0
+        }
+        return 0
+      }
+      {
+        parsed = fieldValue("parsed")
+        access = fieldValue("access")
+        if (parsed <= 0 || parsed > maxParsed || (access > 0 && access > maxAccess)) print
+      }
+    '
+)"
+
+if [[ -n "$SLOW_LINES" ]]; then
+  echo "FAIL: command_complete trace exceeded latency threshold." >&2
+  echo "Thresholds: parsed<=${MAX_PARSED_MS}ms, access<=${MAX_ACCESS_MS}ms when access is present." >&2
+  printf '%s\n' "$SLOW_LINES" >&2
+  exit 1
+fi
+
+echo "PASS: command_complete trace found within latency thresholds."
