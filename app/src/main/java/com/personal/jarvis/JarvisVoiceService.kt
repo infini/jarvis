@@ -7,6 +7,8 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -23,10 +25,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var listening = false
     @Volatile private var verifyingOwner = false
     private var ownerVerificationThread: Thread? = null
+    private val toneGenerator by lazy { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 70) }
     private var destroyed = false
     private var lastCommand: String? = null
     private var lastCommandAt = 0L
     private var ownerAuthorizedUntil = 0L
+    private var notificationContentText = DEFAULT_NOTIFICATION_TEXT
     private val listeningTimeout = Runnable {
         if (!listening || destroyed) return@Runnable
         Log.w(TAG, "Listening timed out; restarting recognizer")
@@ -54,6 +58,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         stopOwnerVerification()
         recognizer?.destroy()
         recognizer = null
+        runCatching { toneGenerator.release() }
         super.onDestroy()
     }
 
@@ -80,6 +85,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (destroyed) return
         handler.postDelayed({
             if (shouldUseOwnerGate() && !isOwnerAuthorized()) {
+                updateNotification(DEFAULT_NOTIFICATION_TEXT)
                 startOwnerVerification()
             } else {
                 startListening()
@@ -145,6 +151,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     if (match.accepted) {
                         Log.d(TAG, "Owner voice accepted: ${match.score}")
                         ownerAuthorizedUntil = System.currentTimeMillis() + OWNER_AUTH_WINDOW_MS
+                        signalCommandReady()
                         scheduleListening(100)
                     } else {
                         Log.d(TAG, "Owner voice rejected: ${match.score}")
@@ -177,15 +184,29 @@ class JarvisVoiceService : Service(), RecognitionListener {
         return System.currentTimeMillis() < ownerAuthorizedUntil
     }
 
-    private fun handleSpeech(bundle: Bundle?) {
+    private fun handleSpeech(bundle: Bundle?): SpeechOutcome {
         val results = bundle?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
         if (results.isNotEmpty()) Log.d(TAG, "Speech results: $results")
+
+        val allowCommandWithoutWake = shouldUseOwnerGate() && isOwnerAuthorized()
         for (candidate in results) {
-            val command = CommandInterpreter.parse(candidate) ?: continue
+            val command = CommandInterpreter.parse(
+                text = candidate,
+                requireWakeWord = !allowCommandWithoutWake,
+            ) ?: continue
             Log.d(TAG, "Parsed command: $command from '$candidate'")
             runCommand(command)
-            break
+            return SpeechOutcome.COMMAND_RUN
         }
+
+        if (results.any(CommandInterpreter::isWakeOnly)) {
+            Log.d(TAG, "Wake phrase recognized; keeping command window open")
+            ownerAuthorizedUntil = System.currentTimeMillis() + OWNER_AUTH_WINDOW_MS
+            signalCommandReady()
+            return SpeechOutcome.WAKE_ONLY
+        }
+
+        return SpeechOutcome.NO_COMMAND
     }
 
     private fun runCommand(command: String) {
@@ -248,7 +269,21 @@ class JarvisVoiceService : Service(), RecognitionListener {
         }
     }
 
-    private fun buildNotification(): Notification {
+    private fun updateNotification(contentText: String) {
+        if (notificationContentText == contentText) return
+        notificationContentText = contentText
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(NOTIFICATION_ID, buildNotification(contentText))
+    }
+
+    private fun signalCommandReady() {
+        runCatching { toneGenerator.startTone(ToneGenerator.TONE_PROP_ACK, OWNER_READY_TONE_MS) }
+        updateNotification("소유자 확인됨. 명령을 말하세요.")
+    }
+
+    private fun buildNotification(
+        contentText: String = notificationContentText,
+    ): Notification {
         val openAppIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -260,7 +295,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_jarvis)
             .setContentTitle("Jarvis 실행 중")
-            .setContentText("소유자 목소리 확인 후 음성 명령을 듣습니다.")
+            .setContentText(contentText)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -280,7 +315,6 @@ class JarvisVoiceService : Service(), RecognitionListener {
         listening = false
         handler.removeCallbacks(listeningTimeout)
         Log.d(TAG, "End of speech")
-        scheduleNextCapture(250)
     }
 
     override fun onError(error: Int) {
@@ -299,8 +333,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
         listening = false
         handler.removeCallbacks(listeningTimeout)
         Log.d(TAG, "Final speech results received")
-        handleSpeech(results)
-        ownerAuthorizedUntil = 0L
+        val outcome = handleSpeech(results)
+        if (outcome == SpeechOutcome.COMMAND_RUN) {
+            ownerAuthorizedUntil = 0L
+            updateNotification(DEFAULT_NOTIFICATION_TEXT)
+        }
         scheduleNextCapture(250)
     }
 
@@ -324,5 +361,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_AUTH_WINDOW_MS = 12000L
         private const val OWNER_VERIFY_AUDIO_MS = 2500L
         private const val OWNER_VERIFY_RETRY_MS = 700L
+        private const val OWNER_READY_TONE_MS = 120
+        private const val DEFAULT_NOTIFICATION_TEXT = "소유자 목소리 확인 후 음성 명령을 듣습니다."
+    }
+
+    private enum class SpeechOutcome {
+        COMMAND_RUN,
+        WAKE_ONLY,
+        NO_COMMAND,
     }
 }

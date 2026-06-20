@@ -23,12 +23,13 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 앱 업데이트 후 `Jarvis 대기 준비됨` 시작 알림 표시 확인
 - Xiaomi 15 Ultra에서 `JarvisVoiceService` foreground 실행, 접근성 서비스 바인딩, 배터리 최적화 예외 등록 확인
 - 2026-06-20 21:26 KST 기준 약 15분 유지 테스트에서 프로세스, foreground notification, 접근성 바인딩, owner voice verification loop 유지 확인
+- `헤이 자비스` wake-only 발화 후 확인음/명령 대기 알림을 제공하고, 인증 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
 
 다음 우선순위:
 
 1. Xiaomi 15 Ultra에서 내 목소리 등록 후 threshold 실측
-2. 재부팅 후 시작 알림 및 HyperOS 자동 시작/배터리 설정 실기기 검증
-3. owner voice gate 통과 후 명령 인식 UX 보정
+2. owner voice gate 통과 후 명령 인식 UX 보정
+3. 재부팅 후 시작 알림 및 HyperOS 자동 시작/배터리 설정 실기기 검증
 4. 실제 카메라 화면에서 셔터/필터/전환 좌표 보정
 
 ## 2. Quick Context For Future Work
@@ -171,6 +172,8 @@ JarvisAccessibilityService
 
 모든 명령은 `자비스` 계열 호출어를 포함해야 한다. 현재 허용 호출어는 `자비스`, `자베스`, `쟈비스`, `제비스`, `차비스`, `jarvis`다. 이는 우발적인 반응을 줄이는 장치이며, 사용자 목소리 자체를 인증하는 speaker verification은 별도 기능으로 구현해야 한다.
 
+예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. wake-only 발화가 인식되면 window를 다시 12초로 연장한다.
+
 ## 8.1 Owner Voice Gate
 
 소유자 목소리 인증은 오픈소스 `sherpa-onnx` Android 런타임과 3D-Speaker CAM++ speaker verification 모델을 사용한다.
@@ -188,7 +191,9 @@ JarvisAccessibilityService
 3. 계산된 embedding을 `OwnerVoiceStore`에 저장한다.
 4. 이후 `JarvisVoiceService`는 owner embedding이 있으면 먼저 2.5초 발화를 녹음해 candidate embedding을 계산한다.
 5. 저장된 embedding과 candidate embedding의 cosine similarity가 threshold 이상이면 12초 인증 window를 열고 `SpeechRecognizer` 명령 인식을 시작한다.
-6. 명령 처리 후 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
+6. window 안에서 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
+7. window 안에서는 호출어 없는 명령도 허용한다.
+8. 명령 처리 후 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
 
 제약:
 

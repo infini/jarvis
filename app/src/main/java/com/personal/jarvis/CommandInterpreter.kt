@@ -3,13 +3,11 @@ package com.personal.jarvis
 import java.util.Locale
 
 object CommandInterpreter {
-    fun parse(text: String): String? {
-        val normalized = text
-            .lowercase(Locale.KOREAN)
-            .replace("\\s+".toRegex(), "")
+    fun parse(text: String, requireWakeWord: Boolean = true): String? {
+        val normalized = normalize(text)
 
         if (normalized.isBlank()) return null
-        if (!hasWakeWord(normalized)) return null
+        if (requireWakeWord && !hasWakeWord(normalized)) return null
 
         val mentionsCamera = normalized.contains("카메라") ||
             normalized.contains("셀피") ||
@@ -39,14 +37,32 @@ object CommandInterpreter {
         }
     }
 
-    private fun hasWakeWord(normalized: String): Boolean {
-        return listOf(
-            "자비스",
-            "자베스",
-            "쟈비스",
-            "제비스",
-            "차비스",
-            "jarvis",
-        ).any(normalized::contains)
+    fun isWakeOnly(text: String): Boolean {
+        val normalized = normalize(text)
+        if (!hasWakeWord(normalized)) return false
+
+        val withoutWake = WAKE_WORDS.fold(normalized) { current, wakeWord ->
+            current.replace(wakeWord, "")
+        }
+        return withoutWake.isBlank() || listOf("헤이", "hey", "하이").any { withoutWake == it }
     }
+
+    private fun normalize(text: String): String {
+        return text
+            .lowercase(Locale.KOREAN)
+            .replace("\\s+".toRegex(), "")
+    }
+
+    private fun hasWakeWord(normalized: String): Boolean {
+        return WAKE_WORDS.any(normalized::contains)
+    }
+
+    private val WAKE_WORDS = listOf(
+        "자비스",
+        "자베스",
+        "쟈비스",
+        "제비스",
+        "차비스",
+        "jarvis",
+    )
 }
