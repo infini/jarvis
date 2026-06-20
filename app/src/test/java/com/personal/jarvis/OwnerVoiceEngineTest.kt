@@ -70,6 +70,44 @@ class OwnerVoiceEngineTest {
     }
 
     @Test
+    fun preparesVeryQuietWakeSpeechForVerification() {
+        val sampleRate = OwnerVoiceEngine.SAMPLE_RATE_HZ
+        val samples = FloatArray(sampleRate * 2) { index ->
+            if (index % 2 == 0) 0.00035f else -0.00035f
+        }
+        val speechStart = sampleRate / 2
+        val speechSamples = sampleRate * 520 / 1000
+
+        for (index in speechStart until speechStart + speechSamples) {
+            samples[index] = if (index % 2 == 0) 0.00105f else -0.00105f
+        }
+
+        val prepared = assertNotNull(
+            OwnerVoiceEngine.prepareSamplesForEmbedding(
+                samples = samples,
+                requireSpeechContrast = true,
+            ),
+        )
+
+        assertTrue(prepared.activeSpeechMs in 500L..550L)
+        assertTrue(prepared.samples.size >= sampleRate * 1200 / 1000)
+    }
+
+    @Test
+    fun rejectsLowContrastNoiseForVerification() {
+        val samples = FloatArray(OwnerVoiceEngine.SAMPLE_RATE_HZ * 2) { index ->
+            if (index % 2 == 0) 0.00095f else -0.00095f
+        }
+
+        assertNull(
+            OwnerVoiceEngine.prepareSamplesForEmbedding(
+                samples = samples,
+                requireSpeechContrast = true,
+            ),
+        )
+    }
+
+    @Test
     fun acceptsNearMatchAfterTwoConsecutiveScores() {
         val first = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
             match = ownerMatch(score = 0.29f, activeSpeechMs = 650L),

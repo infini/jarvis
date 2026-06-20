@@ -20,10 +20,12 @@ object OwnerVoiceEngine {
     private const val SPEECH_EDGE_MARGIN_MS = 180L
     private const val MIN_PEAK_RMS = 0.002f
     private const val MIN_ACTIVE_RMS = 0.0014f
+    private const val VERIFY_MIN_PEAK_RMS = 0.00075f
+    private const val VERIFY_MIN_ACTIVE_RMS = 0.00050f
     private const val ACTIVE_RMS_RATIO = 0.18f
     private const val VERIFY_NOISE_FLOOR_PERCENTILE = 0.20f
     private const val VERIFY_MIN_PEAK_TO_FLOOR_RATIO = 1.8f
-    private const val VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS = 0.0012f
+    private const val VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS = 0.00032f
     private const val VERIFY_ACTIVE_RMS_RANGE_RATIO = 0.28f
     const val NEAR_ACCEPT_THRESHOLD = 0.28f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
@@ -474,18 +476,19 @@ object OwnerVoiceEngine {
             start += frameSamples
         }
         val noiseFloorRms = noiseFloor(frameRms.map { it.second })
-        if (peakRms < MIN_PEAK_RMS) {
+        val minPeakRms = if (requireSpeechContrast) VERIFY_MIN_PEAK_RMS else MIN_PEAK_RMS
+        if (peakRms < minPeakRms) {
             return SpeechBoundsResult(
                 rejectReason = RejectReason.PEAK_BELOW_MIN,
                 peakRms = peakRms,
                 noiseFloorRms = noiseFloorRms,
-                activeThresholdRms = MIN_PEAK_RMS,
+                activeThresholdRms = minPeakRms,
             )
         }
 
         val activeThreshold = if (requireSpeechContrast) {
             val minVerificationPeak = maxOf(
-                MIN_PEAK_RMS,
+                VERIFY_MIN_PEAK_RMS,
                 noiseFloorRms * VERIFY_MIN_PEAK_TO_FLOOR_RATIO,
                 noiseFloorRms + VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS,
             )
@@ -499,7 +502,7 @@ object OwnerVoiceEngine {
             }
 
             maxOf(
-                MIN_ACTIVE_RMS,
+                VERIFY_MIN_ACTIVE_RMS,
                 noiseFloorRms + (peakRms - noiseFloorRms) * VERIFY_ACTIVE_RMS_RANGE_RATIO,
             )
         } else {
