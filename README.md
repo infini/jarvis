@@ -81,7 +81,7 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-command-trace.sh 45
 ```
 
-출력의 `path`는 `owner_audio_asr`, `owner_audio_asr->local_asr`, `local_asr->android_stt` 같은 실제 인식 경로이고, `total`은 마지막 trace 이벤트까지의 누적 시간입니다. `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `local_endpoint`를 함께 보면 owner gate와 명령 ASR 중 어느 단계가 병목인지 분리할 수 있습니다. 정상적인 빠른 명령은 `command_parsed`, `command_execute_start`, `accessibility_command_received`, `command_complete`가 같은 trace 안에 이어져야 합니다.
+출력의 `path`는 `owner_audio_asr`, `owner_audio_asr->local_asr`, `local_asr->android_stt` 같은 실제 인식 경로이고, `total`은 마지막 trace 이벤트까지의 누적 시간입니다. `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `local_endpoint`를 함께 보면 owner gate와 명령 ASR 중 어느 단계가 병목인지 분리할 수 있습니다. 정상적인 빠른 명령은 `command_parsed`, `command_execute_start`, `accessibility_command_received`, `command_complete`가 같은 trace 안에 이어져야 합니다. `jarvis-command-trace.sh`는 `status=command_complete`가 없으면 실패로 종료합니다.
 
 ## 폰에서 켜야 하는 것
 

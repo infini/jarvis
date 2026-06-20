@@ -291,7 +291,7 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-command-trace.sh 45
 ```
 
-스크립트는 `trace`, `total`, `path`, `command`, `status`, `parsed`, `access`, `bus`를 한 줄로 출력한다. 하위 줄에는 `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `owner_text`, `local_endpoint`, `local_elapsed`, `local_text`를 출력해 owner gate, owner audio ASR, live local ASR, Android fallback 병목을 분리한다. 목표는 command window 안의 정상 명령이 `path=owner_audio_asr` 또는 `path=owner_audio_asr->local_asr`, `status=command_complete`로 끝나고, `parsed`와 `access`가 체감 지연을 설명할 수 있는 낮은 값으로 유지되는 것이다. `path=local_asr->android_stt` 또는 `owner_audio_asr->local_asr->android_stt`는 local ASR이 말소리는 들었지만 명령을 못 잡아 Android fallback을 탔다는 뜻이므로 별도 튜닝 대상으로 본다.
+스크립트는 `trace`, `total`, `path`, `command`, `status`, `parsed`, `access`, `bus`를 한 줄로 출력한다. 하위 줄에는 `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `owner_text`, `local_endpoint`, `local_elapsed`, `local_text`를 출력해 owner gate, owner audio ASR, live local ASR, Android fallback 병목을 분리한다. `jarvis-command-trace.sh`는 `status=command_complete`가 하나도 없으면 실패 종료한다. 목표는 command window 안의 정상 명령이 `path=owner_audio_asr` 또는 `path=owner_audio_asr->local_asr`, `status=command_complete`로 끝나고, `parsed`와 `access`가 체감 지연을 설명할 수 있는 낮은 값으로 유지되는 것이다. `path=local_asr->android_stt` 또는 `owner_audio_asr->local_asr->android_stt`는 local ASR이 말소리는 들었지만 명령을 못 잡아 Android fallback을 탔다는 뜻이므로 별도 튜닝 대상으로 본다.
 
 주요 이벤트:
 
