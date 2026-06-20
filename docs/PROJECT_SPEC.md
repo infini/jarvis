@@ -197,6 +197,8 @@ JarvisAccessibilityService
 
 예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `자비스` 또는 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. wake-only 발화가 인식되면 window를 다시 12초로 연장하고 25ms 후 다음 명령 인식을 시작한다.
 
+카메라 세션 명령은 처리 후에도 인증 window를 다시 12초로 연장한다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리할 수 있어야 한다. `home`, `back`, `stop_listening` 같은 종료성 명령은 window를 닫는다.
+
 ## 8.1 Owner Voice Gate
 
 소유자 목소리 인증은 오픈소스 `sherpa-onnx` Android 런타임과 3D-Speaker CAM++ speaker verification 모델을 사용한다.
@@ -217,7 +219,8 @@ JarvisAccessibilityService
 6. similarity가 threshold 이상이면 `AudioRecord`를 닫고 12초 인증 window를 열어 `SpeechRecognizer` 명령 인식을 시작한다.
 7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
 8. window 안에서는 호출어 없는 명령도 허용하며, STT의 command-mode silence timeout을 더 짧게 사용한다.
-9. 명령 처리 후 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
+9. 카메라 세션 명령이면 인증 window를 12초 연장하고 바로 다음 명령 인식을 시작한다.
+10. 그 외 명령 처리 후에는 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
 
 제약:
 
@@ -319,6 +322,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 - `자비스` 호출어가 없는 `찍어`, `필터`, `뒤로`는 무시된다.
 - `자비스, 카메라 열어`가 기본 카메라 앱을 연다.
+- `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리한다.
 - `자비스, 카메라 실행`이 기본 카메라 앱을 연다.
 - `헤이 자비스, 카메라 셀피 모드로 실행해`가 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.
 - `자비스, 셀피`와 `자비스, 전면`이 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.

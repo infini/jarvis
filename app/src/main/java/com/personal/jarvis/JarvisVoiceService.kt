@@ -206,8 +206,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 requireWakeWord = !allowCommandWithoutWake,
             ) ?: continue
             Log.d(TAG, "Parsed command: $command from '$candidate'")
-            runCommand(command)
-            return SpeechOutcome.COMMAND_RUN
+            return if (runCommand(command)) {
+                SpeechOutcome.COMMAND_RUN_KEEP_WINDOW
+            } else {
+                SpeechOutcome.COMMAND_RUN
+            }
         }
 
         if (results.any(CommandInterpreter::isWakeOnly)) {
@@ -220,11 +223,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
         return SpeechOutcome.NO_COMMAND
     }
 
-    private fun runCommand(command: String) {
+    private fun runCommand(command: String): Boolean {
         val now = System.currentTimeMillis()
         if (lastCommand == command && now - lastCommandAt < COMMAND_COOLDOWN_MS) {
             Log.d(TAG, "Ignored duplicate command: $command")
-            return
+            return keepsCommandWindowOpen(command)
         }
         lastCommand = command
         lastCommandAt = now
@@ -255,6 +258,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
             CommandBus.COMMAND_WAKE_SCREEN -> ScreenController.wake(this)
             else -> CommandBus.send(this, command, "voice")
         }
+        return keepsCommandWindowOpen(command)
+    }
+
+    private fun keepsCommandWindowOpen(command: String): Boolean {
+        return command in CAMERA_SESSION_COMMANDS
     }
 
     private fun createNotificationChannel() {
@@ -356,6 +364,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
             ownerAuthorizedUntil = 0L
             updateNotification(DEFAULT_NOTIFICATION_TEXT)
             scheduleNextCapture(250)
+        } else if (outcome == SpeechOutcome.COMMAND_RUN_KEEP_WINDOW) {
+            ownerAuthorizedUntil = System.currentTimeMillis() + OWNER_AUTH_WINDOW_MS
+            updateNotification("명령 처리됨. 다음 명령을 말하세요.")
+            scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
         } else if (outcome == SpeechOutcome.WAKE_ONLY) {
             scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
         } else {
@@ -394,10 +406,20 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val COMMAND_COMPLETE_SILENCE_MS = 600L
         private const val OWNER_READY_TONE_MS = 120
         private const val DEFAULT_NOTIFICATION_TEXT = "소유자 목소리 확인 후 음성 명령을 듣습니다."
+        private val CAMERA_SESSION_COMMANDS = setOf(
+            CommandBus.COMMAND_OPEN_CAMERA,
+            CommandBus.COMMAND_OPEN_FRONT_CAMERA,
+            CommandBus.COMMAND_OPEN_REAR_CAMERA,
+            CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO,
+            CommandBus.COMMAND_TAKE_PHOTO,
+            CommandBus.COMMAND_OPEN_FILTERS,
+            CommandBus.COMMAND_SWITCH_CAMERA,
+        )
     }
 
     private enum class SpeechOutcome {
         COMMAND_RUN,
+        COMMAND_RUN_KEEP_WINDOW,
         WAKE_ONLY,
         NO_COMMAND,
     }
