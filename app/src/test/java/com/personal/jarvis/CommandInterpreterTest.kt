@@ -2,7 +2,9 @@ package com.personal.jarvis
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class CommandInterpreterTest {
     @Test
@@ -36,5 +38,13 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_OPEN_REAR_CAMERA, CommandInterpreter.parse("후면 모드", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("화면 켜", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_SLEEP_SCREEN, CommandInterpreter.parse("화면 꺼", requireWakeWord = false))
+    }
+
+    @Test
+    fun recognizesJarvisOnlyAsWakePhrase() {
+        assertTrue(CommandInterpreter.isWakeOnly("자비스"))
+        assertTrue(CommandInterpreter.isWakeOnly("헤이 자비스"))
+        assertTrue(CommandInterpreter.isWakeOnly("자베스"))
+        assertFalse(CommandInterpreter.isWakeOnly("자비스 찍어"))
     }
 }

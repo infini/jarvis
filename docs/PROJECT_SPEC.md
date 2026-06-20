@@ -23,7 +23,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 앱 업데이트 후 `Jarvis 대기 준비됨` 시작 알림 표시 확인
 - Xiaomi 15 Ultra에서 `JarvisVoiceService` foreground 실행, 접근성 서비스 바인딩, 배터리 최적화 예외 등록 확인
 - 2026-06-20 21:26 KST 기준 약 15분 유지 테스트에서 프로세스, foreground notification, 접근성 바인딩, owner voice verification loop 유지 확인
-- `헤이 자비스` wake-only 발화 후 확인음/명령 대기 알림을 제공하고, 인증 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
+- `자비스` 또는 `헤이 자비스` wake-only 발화 후 확인음/명령 대기 알림을 제공하고, 인증 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
 - wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 25ms로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
 - owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 2.5초 window를 500ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임을 줄임
 
@@ -126,7 +126,7 @@ Jarvis는 다음 조합으로 동작한다.
 
 접근성 서비스는 사용자가 설정에서 직접 켜야 하며, 설치만으로 자동 활성화할 수 없다.
 
-전면/후면 카메라 실행은 Android 카메라 인텐트에 렌즈 방향 힌트 extra를 넣어 시도한다. 이 extra는 카메라 앱 구현에 따라 무시될 수 있으므로, Xiaomi 기본 카메라가 힌트를 무시하면 카메라를 연 뒤 접근성 전환 명령을 조합하는 fallback이 필요하다.
+전면/후면 카메라 실행은 Android 카메라 인텐트에 렌즈 방향 힌트 extra를 넣은 뒤, 접근성 서비스에서 Xiaomi 카메라의 `com.android.camera:id/v9_camera_picker` 노드를 읽어 현재 렌즈를 확인한다. content description은 실기기에서 `전후면 카메라 전환,후면` 또는 `전후면 카메라 전환,전면` 형태로 노출된다. 현재 렌즈가 목표와 다를 때만 전환 버튼을 클릭한다.
 
 Android 14(API 34)+에서 `RECORD_AUDIO`는 while-in-use 권한으로 취급된다. 현재 앱은 `targetSdk=35`이므로 `BOOT_COMPLETED` receiver에서 microphone foreground service를 직접 시작할 수 없다. 부팅 후 자동 대기는 다음 구조로 처리한다.
 
@@ -195,7 +195,7 @@ JarvisAccessibilityService
 
 기본 명령은 `자비스` 계열 호출어를 포함해야 한다. 현재 허용 호출어는 `자비스`, `자베스`, `쟈비스`, `제비스`, `차비스`, `jarvis`다. 이는 우발적인 반응을 줄이는 장치이며, 등록된 소유자 목소리 인증을 통과한 경우에만 명령 인식 window를 연다.
 
-예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. wake-only 발화가 인식되면 window를 다시 12초로 연장하고 25ms 후 다음 명령 인식을 시작한다.
+예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `자비스` 또는 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. wake-only 발화가 인식되면 window를 다시 12초로 연장하고 25ms 후 다음 명령 인식을 시작한다.
 
 ## 8.1 Owner Voice Gate
 
@@ -215,7 +215,7 @@ JarvisAccessibilityService
 4. 이후 `JarvisVoiceService`는 owner embedding이 있으면 owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
 5. 최근 2.5초 rolling audio window에서 candidate embedding을 만들고 500ms마다 저장된 embedding과 cosine similarity를 비교한다.
 6. similarity가 threshold 이상이면 `AudioRecord`를 닫고 12초 인증 window를 열어 `SpeechRecognizer` 명령 인식을 시작한다.
-7. window 안에서 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
+7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
 8. window 안에서는 호출어 없는 명령도 허용하며, STT의 command-mode silence timeout을 더 짧게 사용한다.
 9. 명령 처리 후 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
 
@@ -252,7 +252,7 @@ JarvisAccessibilityService
 
 - 셔터: `shutter`, `capture`, `take photo`, `촬영`, `셔터`, `사진 찍기`, `拍照`
 - 필터: `filter`, `effects`, `leica`, `필터`, `효과`, `색감`
-- 전환: `switch camera`, `flip camera`, `카메라 전환`, `렌즈 전환`, `전후면 전환`
+- 전환: `com.android.camera:id/v9_camera_picker`, `switch camera`, `flip camera`, `카메라 전환`, `렌즈 전환`, `전후면 전환`
 
 ### 2단계: 좌표 fallback
 
@@ -262,7 +262,7 @@ JarvisAccessibilityService
 
 - 셔터: `x=50%`, `y=88%`
 - 필터: `x=25%`, `y=88%`
-- 전환: `x=86%`, `y=14%`
+- 전환: `x=90%`, `y=87%`
 
 실기기 테스트 후 Xiaomi 15 Ultra 기본 카메라 UI에 맞춰 보정한다.
 
@@ -339,6 +339,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - portrait 상태에서 셔터 탭 성공
 - landscape 상태에서 셔터 탭 성공
 - 전면/후면 전환 성공
+- `v9_camera_picker` content description에서 `전면`/`후면` 상태 판별 성공
 - 필터 UI 열기 성공
 
 테스트 실패 시 접근성 노드 덤프 또는 화면 좌표를 기준으로 `JarvisAccessibilityService.kt`의 키워드/fallback 좌표를 조정한다.
