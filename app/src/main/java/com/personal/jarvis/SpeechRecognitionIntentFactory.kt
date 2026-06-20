@@ -39,7 +39,7 @@ object SpeechRecognitionIntentFactory {
     private const val DEFAULT_INPUT_MINIMUM_LENGTH_MS = 1200L
     private const val DEFAULT_POSSIBLY_COMPLETE_SILENCE_MS = 700L
     private const val DEFAULT_COMPLETE_SILENCE_MS = 1000L
-    private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 1000L
-    private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 800L
-    private const val COMMAND_COMPLETE_SILENCE_MS = 1400L
+    private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 700L
+    private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 450L
+    private const val COMMAND_COMPLETE_SILENCE_MS = 900L
 }

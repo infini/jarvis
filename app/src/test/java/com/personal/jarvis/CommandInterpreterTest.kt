@@ -64,4 +64,11 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_STOP_LISTENING, CommandInterpreter.parse("멈춰", requireWakeWord = false))
         assertFalse(JarvisCommandExecutor.shouldStopVoiceService(CommandBus.COMMAND_STOP_LISTENING))
     }
+
+    @Test
+    fun latencySensitiveSystemCommandsUseFastPartialPath() {
+        assertTrue(CommandBus.COMMAND_WAKE_SCREEN in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
+        assertTrue(CommandBus.COMMAND_SLEEP_SCREEN in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
+        assertTrue(CommandBus.COMMAND_STOP_LISTENING in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
+    }
 }

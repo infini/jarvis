@@ -80,7 +80,11 @@ function printTrace(id) {
   if (parsed[id] > 0 && androidSpeechBegin[id] > 0 && parsed[id] >= androidSpeechBegin[id]) {
     speechParse = parsed[id] - androidSpeechBegin[id]
   }
-  printf "trace=%s total=%dms path=%s command=%s status=%s parsed=%dms speech_parse=%dms access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, parsed[id], speechParse, access[id], bus[id]
+  listenReady = 0
+  if (androidReady[id] > 0 && androidListenStart[id] > 0 && androidReady[id] >= androidListenStart[id]) {
+    listenReady = androidReady[id] - androidListenStart[id]
+  }
+  printf "trace=%s total=%dms path=%s command=%s status=%s listen=%dms listen_ready=%dms parsed=%dms speech_parse=%dms access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, androidListenStart[id], listenReady, parsed[id], speechParse, access[id], bus[id]
 
   if (ownerAcceptance[id] != "") {
     printf "  owner_acceptance=%s owner_auth_speech=%sms\n", ownerAcceptance[id], ownerAuthSpeech[id]
@@ -164,6 +168,7 @@ function printTrace(id) {
     text = tailValue($0, "text")
     if (text != "") localText[trace] = text
   }
+  if (event == "listen_start" && contains($0, "engine=android_stt") && totalRaw != "" && androidListenStart[trace] == "") androidListenStart[trace] = millis(totalRaw)
   if (event == "ready_for_speech" && totalRaw != "" && androidReady[trace] == "") androidReady[trace] = millis(totalRaw)
   if (event == "speech_begin" && totalRaw != "" && androidSpeechBegin[trace] == "") androidSpeechBegin[trace] = millis(totalRaw)
   if (event == "speech_end" && totalRaw != "" && androidSpeechEnd[trace] == "") androidSpeechEnd[trace] = millis(totalRaw)

@@ -80,7 +80,11 @@ class JarvisCommandExecutor(
         )
         private val VOICE_SERVICE_STOP_COMMANDS = emptySet<String>()
 
-        val FAST_PARTIAL_COMMANDS = COMMAND_WINDOW_CONTINUATION_COMMANDS
+        val FAST_PARTIAL_COMMANDS = COMMAND_WINDOW_CONTINUATION_COMMANDS + setOf(
+            CommandBus.COMMAND_WAKE_SCREEN,
+            CommandBus.COMMAND_SLEEP_SCREEN,
+            CommandBus.COMMAND_STOP_LISTENING,
+        )
 
         fun shouldKeepCommandWindowOpen(command: String): Boolean {
             return command in COMMAND_WINDOW_CONTINUATION_COMMANDS

@@ -997,8 +997,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_VERIFY_INTERVAL_MS = 120L
         private const val OWNER_VERIFY_RETRY_MS = 200L
         private const val DEFAULT_RETRY_DELAY_MS = 300L
-        private const val OWNER_READY_LISTEN_DELAY_MS = 80L
-        private const val COMMAND_CHAIN_LISTEN_DELAY_MS = 120L
+        private const val OWNER_READY_LISTEN_DELAY_MS = 0L
+        private const val COMMAND_CHAIN_LISTEN_DELAY_MS = 80L
         private const val FALLBACK_LISTEN_DELAY_MS = 0L
         private const val COMMAND_RETRY_DELAY_MS = 25L
         private const val NON_STRICT_IDLE_SUPPRESS_MS = 8000L
