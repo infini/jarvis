@@ -14,26 +14,26 @@ import kotlin.math.sqrt
 object OwnerVoiceEngine {
     const val SAMPLE_RATE_HZ = 16000
     private const val EMBEDDING_MIN_AUDIO_MS = 1200L
-    private const val MIN_ACTIVE_SPEECH_MS = 350L
+    private const val MIN_ACTIVE_SPEECH_MS = 240L
     private const val READ_INTERVAL_MS = 100L
     private const val ENERGY_FRAME_MS = 25L
     private const val SPEECH_EDGE_MARGIN_MS = 180L
-    private const val MIN_PEAK_RMS = 0.004f
-    private const val MIN_ACTIVE_RMS = 0.003f
+    private const val MIN_PEAK_RMS = 0.002f
+    private const val MIN_ACTIVE_RMS = 0.0014f
     private const val ACTIVE_RMS_RATIO = 0.18f
     private const val VERIFY_NOISE_FLOOR_PERCENTILE = 0.20f
-    private const val VERIFY_MIN_PEAK_TO_FLOOR_RATIO = 2.2f
-    private const val VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS = 0.0025f
-    private const val VERIFY_ACTIVE_RMS_RANGE_RATIO = 0.40f
+    private const val VERIFY_MIN_PEAK_TO_FLOOR_RATIO = 1.8f
+    private const val VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS = 0.0012f
+    private const val VERIFY_ACTIVE_RMS_RANGE_RATIO = 0.28f
     const val NEAR_ACCEPT_THRESHOLD = 0.28f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
-    private const val NEAR_ACCEPT_MIN_SPEECH_MS = 600L
-    const val SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD = 0.20f
+    private const val NEAR_ACCEPT_MIN_SPEECH_MS = 450L
+    const val SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD = 0.16f
     private const val SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS = 650L
-    const val SOFT_WAKE_ACCEPT_THRESHOLD = 0.16f
-    private const val SOFT_WAKE_ACCEPT_REQUIRED_COUNT = 2
-    private const val SOFT_WAKE_ACCEPT_MIN_SPEECH_MS = 450L
-    private const val SOFT_WAKE_BRIDGE_THRESHOLD = 0.12f
+    const val SOFT_WAKE_ACCEPT_THRESHOLD = 0.10f
+    private const val SOFT_WAKE_ACCEPT_REQUIRED_COUNT = 3
+    private const val SOFT_WAKE_ACCEPT_MIN_SPEECH_MS = 400L
+    private const val SOFT_WAKE_BRIDGE_THRESHOLD = 0.08f
 
     private val initLock = Any()
     private val computeLock = Any()
@@ -47,17 +47,35 @@ object OwnerVoiceEngine {
         SOFT_WAKE_CONSECUTIVE,
     }
 
+    enum class RejectReason {
+        MISSING_PROFILE,
+        INPUT_TOO_SHORT,
+        PEAK_BELOW_MIN,
+        PEAK_BELOW_FLOOR,
+        NO_ACTIVE_SPEECH,
+        ACTIVE_SPEECH_TOO_SHORT,
+        EMBEDDING_NOT_READY,
+        LOW_SCORE,
+    }
+
     data class Match(
         val score: Float,
         val accepted: Boolean,
         val activeSpeechMs: Long = 0L,
         val acceptance: Acceptance = Acceptance.REJECTED,
         val commandSamples: FloatArray? = null,
+        val peakRms: Float = 0f,
+        val noiseFloorRms: Float = 0f,
+        val activeThresholdRms: Float = 0f,
+        val rejectReason: RejectReason? = null,
     )
 
     internal data class PreparedAudio(
         val samples: FloatArray,
         val activeSampleCount: Int,
+        val peakRms: Float,
+        val noiseFloorRms: Float,
+        val activeThresholdRms: Float,
     ) {
         val activeSpeechMs: Long
             get() = activeSampleCount * 1000L / SAMPLE_RATE_HZ
@@ -67,6 +85,26 @@ object OwnerVoiceEngine {
         val start: Int,
         val end: Int,
         val activeSampleCount: Int,
+    )
+
+    private data class SpeechBoundsResult(
+        val bounds: SpeechBounds? = null,
+        val rejectReason: RejectReason? = null,
+        val peakRms: Float = 0f,
+        val noiseFloorRms: Float = 0f,
+        val activeThresholdRms: Float = 0f,
+    ) {
+        val activeSpeechMs: Long
+            get() = bounds?.activeSampleCount?.times(1000L)?.div(SAMPLE_RATE_HZ) ?: 0L
+    }
+
+    private data class PreparedAudioResult(
+        val audio: PreparedAudio? = null,
+        val rejectReason: RejectReason? = null,
+        val activeSpeechMs: Long = 0L,
+        val peakRms: Float = 0f,
+        val noiseFloorRms: Float = 0f,
+        val activeThresholdRms: Float = 0f,
     )
 
     internal data class ConsecutiveAcceptState(
@@ -103,13 +141,31 @@ object OwnerVoiceEngine {
         samples: FloatArray,
         threshold: Float = OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD,
     ): Match {
-        val ownerEmbedding = OwnerVoiceStore.getEmbedding(context) ?: return Match(0f, accepted = false)
-        val preparedAudio = prepareSamplesForEmbedding(
+        val ownerEmbedding = OwnerVoiceStore.getEmbedding(context)
+            ?: return Match(0f, accepted = false, rejectReason = RejectReason.MISSING_PROFILE)
+        val preparedAudioResult = prepareSamplesForEmbeddingResult(
             samples = samples,
             requireSpeechContrast = true,
-        ) ?: return Match(0f, accepted = false)
+        )
+        val preparedAudio = preparedAudioResult.audio ?: return Match(
+            score = 0f,
+            accepted = false,
+            activeSpeechMs = preparedAudioResult.activeSpeechMs,
+            peakRms = preparedAudioResult.peakRms,
+            noiseFloorRms = preparedAudioResult.noiseFloorRms,
+            activeThresholdRms = preparedAudioResult.activeThresholdRms,
+            rejectReason = preparedAudioResult.rejectReason,
+        )
         val candidateEmbedding = createEmbedding(context, preparedAudio)
-            ?: return Match(0f, accepted = false, activeSpeechMs = preparedAudio.activeSpeechMs)
+            ?: return Match(
+                score = 0f,
+                accepted = false,
+                activeSpeechMs = preparedAudio.activeSpeechMs,
+                peakRms = preparedAudio.peakRms,
+                noiseFloorRms = preparedAudio.noiseFloorRms,
+                activeThresholdRms = preparedAudio.activeThresholdRms,
+                rejectReason = RejectReason.EMBEDDING_NOT_READY,
+            )
         val score = cosineSimilarity(ownerEmbedding, candidateEmbedding)
         val accepted = score >= threshold
         return Match(
@@ -118,6 +174,10 @@ object OwnerVoiceEngine {
             activeSpeechMs = preparedAudio.activeSpeechMs,
             acceptance = if (accepted) Acceptance.STRICT else Acceptance.REJECTED,
             commandSamples = preparedAudio.samples,
+            peakRms = preparedAudio.peakRms,
+            noiseFloorRms = preparedAudio.noiseFloorRms,
+            activeThresholdRms = preparedAudio.activeThresholdRms,
+            rejectReason = if (accepted) null else RejectReason.LOW_SCORE,
         )
     }
 
@@ -182,6 +242,7 @@ object OwnerVoiceEngine {
                 return match.copy(
                     accepted = true,
                     acceptance = Acceptance.NEAR_CONSECUTIVE,
+                    rejectReason = null,
                 ) to ConsecutiveAcceptState()
             }
 
@@ -195,6 +256,7 @@ object OwnerVoiceEngine {
             return match.copy(
                 accepted = true,
                 acceptance = Acceptance.SOFT_WAKE_SINGLE,
+                rejectReason = null,
             ) to ConsecutiveAcceptState()
         }
 
@@ -207,6 +269,7 @@ object OwnerVoiceEngine {
                 return match.copy(
                     accepted = true,
                     acceptance = Acceptance.SOFT_WAKE_CONSECUTIVE,
+                    rejectReason = null,
                 ) to ConsecutiveAcceptState()
             }
 
@@ -318,29 +381,75 @@ object OwnerVoiceEngine {
     internal fun prepareSamplesForEmbedding(
         samples: FloatArray,
         requireSpeechContrast: Boolean = false,
-    ): PreparedAudio? {
-        val speechBounds = findSpeechBounds(samples, requireSpeechContrast) ?: return null
+    ): PreparedAudio? = prepareSamplesForEmbeddingResult(samples, requireSpeechContrast).audio
+
+    private fun prepareSamplesForEmbeddingResult(
+        samples: FloatArray,
+        requireSpeechContrast: Boolean = false,
+    ): PreparedAudioResult {
+        val speechBoundsResult = findSpeechBounds(samples, requireSpeechContrast)
+        val speechBounds = speechBoundsResult.bounds ?: return PreparedAudioResult(
+            rejectReason = speechBoundsResult.rejectReason,
+            activeSpeechMs = speechBoundsResult.activeSpeechMs,
+            peakRms = speechBoundsResult.peakRms,
+            noiseFloorRms = speechBoundsResult.noiseFloorRms,
+            activeThresholdRms = speechBoundsResult.activeThresholdRms,
+        )
         val activeSampleCount = speechBounds.activeSampleCount
-        if (activeSampleCount < SAMPLE_RATE_HZ * MIN_ACTIVE_SPEECH_MS / 1000L) return null
+        if (activeSampleCount < SAMPLE_RATE_HZ * MIN_ACTIVE_SPEECH_MS / 1000L) {
+            return PreparedAudioResult(
+                rejectReason = RejectReason.ACTIVE_SPEECH_TOO_SHORT,
+                activeSpeechMs = speechBoundsResult.activeSpeechMs,
+                peakRms = speechBoundsResult.peakRms,
+                noiseFloorRms = speechBoundsResult.noiseFloorRms,
+                activeThresholdRms = speechBoundsResult.activeThresholdRms,
+            )
+        }
 
         val trimmed = samples.copyOfRange(speechBounds.start, speechBounds.end)
         val minSamples = (SAMPLE_RATE_HZ * EMBEDDING_MIN_AUDIO_MS / 1000L).toInt()
         if (trimmed.size >= minSamples) {
-            return PreparedAudio(trimmed, activeSampleCount)
+            return PreparedAudioResult(
+                audio = PreparedAudio(
+                    samples = trimmed,
+                    activeSampleCount = activeSampleCount,
+                    peakRms = speechBoundsResult.peakRms,
+                    noiseFloorRms = speechBoundsResult.noiseFloorRms,
+                    activeThresholdRms = speechBoundsResult.activeThresholdRms,
+                ),
+                activeSpeechMs = speechBoundsResult.activeSpeechMs,
+                peakRms = speechBoundsResult.peakRms,
+                noiseFloorRms = speechBoundsResult.noiseFloorRms,
+                activeThresholdRms = speechBoundsResult.activeThresholdRms,
+            )
         }
 
         val padded = FloatArray(minSamples)
         val offset = (minSamples - trimmed.size) / 2
         trimmed.copyInto(padded, destinationOffset = offset)
-        return PreparedAudio(padded, activeSampleCount)
+        return PreparedAudioResult(
+            audio = PreparedAudio(
+                samples = padded,
+                activeSampleCount = activeSampleCount,
+                peakRms = speechBoundsResult.peakRms,
+                noiseFloorRms = speechBoundsResult.noiseFloorRms,
+                activeThresholdRms = speechBoundsResult.activeThresholdRms,
+            ),
+            activeSpeechMs = speechBoundsResult.activeSpeechMs,
+            peakRms = speechBoundsResult.peakRms,
+            noiseFloorRms = speechBoundsResult.noiseFloorRms,
+            activeThresholdRms = speechBoundsResult.activeThresholdRms,
+        )
     }
 
     private fun findSpeechBounds(
         samples: FloatArray,
         requireSpeechContrast: Boolean,
-    ): SpeechBounds? {
+    ): SpeechBoundsResult {
         val frameSamples = (SAMPLE_RATE_HZ * ENERGY_FRAME_MS / 1000L).toInt()
-        if (samples.size < frameSamples) return null
+        if (samples.size < frameSamples) {
+            return SpeechBoundsResult(rejectReason = RejectReason.INPUT_TOO_SHORT)
+        }
 
         val frameRms = mutableListOf<Pair<Int, Float>>()
         var start = 0
@@ -352,16 +461,30 @@ object OwnerVoiceEngine {
             peakRms = maxOf(peakRms, rms)
             start += frameSamples
         }
-        if (peakRms < MIN_PEAK_RMS) return null
+        val noiseFloorRms = noiseFloor(frameRms.map { it.second })
+        if (peakRms < MIN_PEAK_RMS) {
+            return SpeechBoundsResult(
+                rejectReason = RejectReason.PEAK_BELOW_MIN,
+                peakRms = peakRms,
+                noiseFloorRms = noiseFloorRms,
+                activeThresholdRms = MIN_PEAK_RMS,
+            )
+        }
 
         val activeThreshold = if (requireSpeechContrast) {
-            val noiseFloorRms = noiseFloor(frameRms.map { it.second })
             val minVerificationPeak = maxOf(
                 MIN_PEAK_RMS,
                 noiseFloorRms * VERIFY_MIN_PEAK_TO_FLOOR_RATIO,
                 noiseFloorRms + VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS,
             )
-            if (peakRms < minVerificationPeak) return null
+            if (peakRms < minVerificationPeak) {
+                return SpeechBoundsResult(
+                    rejectReason = RejectReason.PEAK_BELOW_FLOOR,
+                    peakRms = peakRms,
+                    noiseFloorRms = noiseFloorRms,
+                    activeThresholdRms = minVerificationPeak,
+                )
+            }
 
             maxOf(
                 MIN_ACTIVE_RMS,
@@ -378,13 +501,25 @@ object OwnerVoiceEngine {
                 lastActiveEnd = min(frameStart + frameSamples, samples.size)
             }
         }
-        if (firstActiveStart < 0 || lastActiveEnd <= firstActiveStart) return null
+        if (firstActiveStart < 0 || lastActiveEnd <= firstActiveStart) {
+            return SpeechBoundsResult(
+                rejectReason = RejectReason.NO_ACTIVE_SPEECH,
+                peakRms = peakRms,
+                noiseFloorRms = noiseFloorRms,
+                activeThresholdRms = activeThreshold,
+            )
+        }
 
         val marginSamples = (SAMPLE_RATE_HZ * SPEECH_EDGE_MARGIN_MS / 1000L).toInt()
-        return SpeechBounds(
-            start = (firstActiveStart - marginSamples).coerceAtLeast(0),
-            end = (lastActiveEnd + marginSamples).coerceAtMost(samples.size),
-            activeSampleCount = lastActiveEnd - firstActiveStart,
+        return SpeechBoundsResult(
+            bounds = SpeechBounds(
+                start = (firstActiveStart - marginSamples).coerceAtLeast(0),
+                end = (lastActiveEnd + marginSamples).coerceAtMost(samples.size),
+                activeSampleCount = lastActiveEnd - firstActiveStart,
+            ),
+            peakRms = peakRms,
+            noiseFloorRms = noiseFloorRms,
+            activeThresholdRms = activeThreshold,
         )
     }
 

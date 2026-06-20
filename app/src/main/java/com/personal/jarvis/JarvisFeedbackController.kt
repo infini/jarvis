@@ -33,7 +33,7 @@ class JarvisFeedbackController(
     }
 
     fun commandReady() {
-        signal(JarvisVoiceState.COMMAND_READY) {
+        signal(JarvisVoiceState.COMMAND_READY, force = true) {
             vibrate(longArrayOf(0L, 90L))
             tone(ToneGenerator.TONE_PROP_ACK, 90)
             handler.postDelayed({ tone(ToneGenerator.TONE_PROP_ACK, 90) }, 150L)

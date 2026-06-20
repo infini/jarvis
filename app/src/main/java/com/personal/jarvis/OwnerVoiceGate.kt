@@ -63,7 +63,10 @@ class OwnerVoiceGate(
                         Log.d(
                             TAG,
                             "Owner voice ${statusFor(candidate)}: " +
-                                "score=${candidate.score}, speech=${candidate.activeSpeechMs}ms",
+                                "score=${candidate.score}, speech=${candidate.activeSpeechMs}ms, " +
+                                "peakRms=${candidate.peakRms}, noiseRms=${candidate.noiseFloorRms}, " +
+                                "thresholdRms=${candidate.activeThresholdRms}, " +
+                                "reason=${candidate.rejectReason ?: "none"}",
                         )
                     },
                 )

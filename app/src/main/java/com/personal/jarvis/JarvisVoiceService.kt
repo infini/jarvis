@@ -1,6 +1,7 @@
 package com.personal.jarvis
 
 import android.app.Service
+import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -30,7 +31,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     startLatencyTrace(
                         "owner_authorized",
                         "windowMs=$OWNER_AUTH_WINDOW_MS acceptance=${match.acceptance} " +
-                            "speechMs=${match.activeSpeechMs}",
+                            "speechMs=${match.activeSpeechMs} score=${match.score} " +
+                            "peakRms=${match.peakRms} reason=${match.rejectReason ?: "none"}",
                     )
                     openCommandWindow(OWNER_AUTH_WINDOW_MS)
                     signalCommandReady()
@@ -73,6 +75,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
         markLatency("listen_timeout", "commandWindow=$currentListeningAllowsCommandWithoutWake")
         Log.w(TAG, "Listening timed out; restarting recognizer")
         val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
+        if (wasListeningForCommand && speechStartedInCurrentListen) {
+            markLatency("listen_timeout_waiting_for_speech")
+            handler.postDelayed(listeningTimeout, ACTIVE_SPEECH_DEADLINE_RECHECK_MS)
+            return@Runnable
+        }
         listening = false
         currentListeningAllowsCommandWithoutWake = false
         androidListenAfterLocal = false
@@ -212,10 +219,22 @@ class JarvisVoiceService : Service(), RecognitionListener {
             Log.w(TAG, "Speech recognition is not available; keeping service alive for owner gate/local fallback")
             return
         }
-        recognizer = SpeechRecognizer.createSpeechRecognizer(this).also {
+        val recognitionService = AIAI_RECOGNITION_SERVICE
+        var recognitionServiceName = recognitionService.flattenToShortString()
+        recognizer = runCatching {
+            SpeechRecognizer.createSpeechRecognizer(this, recognitionService)
+        }.getOrElse { error ->
+            Log.w(
+                TAG,
+                "AiAi speech recognizer unavailable: " +
+                    "${recognitionService.flattenToShortString()} ${error.message}",
+            )
+            recognitionServiceName = "default"
+            SpeechRecognizer.createSpeechRecognizer(this)
+        }.also {
             it.setRecognitionListener(this)
         }
-        Log.d(TAG, "Speech recognizer created")
+        Log.d(TAG, "Speech recognizer created: $recognitionServiceName")
     }
 
     private fun resetRecognizer() {
@@ -681,11 +700,14 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     private fun signalCommandReady() {
         notificationController.update("소유자 확인됨. 명령을 말하세요.")
-        feedbackController.commandReady()
+        feedbackController.commandListening()
     }
 
     override fun onReadyForSpeech(params: Bundle?) {
         markLatency("ready_for_speech")
+        if (currentListeningAllowsCommandWithoutWake || isCommandWindowOpen()) {
+            feedbackController.commandReady()
+        }
         Log.d(TAG, "Ready for speech")
     }
 
@@ -707,6 +729,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     override fun onError(error: Int) {
         val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
         val wasAndroidFallbackAfterLocal = androidListenAfterLocal
+        val hadSpeechInCurrentListen = speechStartedInCurrentListen
         listening = false
         androidListenAfterLocal = false
         speechStartedInCurrentListen = false
@@ -714,7 +737,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         markLatency(
             "speech_error",
             "code=$error commandWindow=$wasListeningForCommand " +
-                "fallbackAfterLocal=$wasAndroidFallbackAfterLocal",
+                "fallbackAfterLocal=$wasAndroidFallbackAfterLocal " +
+                "speechDetected=$hadSpeechInCurrentListen",
         )
         Log.w(TAG, "Speech error: $error")
         if (completePartialCommandRun("speech error $error")) return
@@ -726,7 +750,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
             scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
             return
         }
-        if (wasListeningForCommand && !wasAndroidFallbackAfterLocal && localCommandSession.canStart()) {
+        if (
+            wasListeningForCommand &&
+            !wasAndroidFallbackAfterLocal &&
+            shouldFallbackToLocalCommand(error, hadSpeechInCurrentListen) &&
+            localCommandSession.canStart()
+        ) {
             Log.w(TAG, "Speech recognizer failed in command window; falling back to local command recognizer")
             markLatency("fallback_to_local", "reason=speech_error code=$error")
             if (shouldUseOwnerGate()) {
@@ -745,14 +774,17 @@ class JarvisVoiceService : Service(), RecognitionListener {
         val delay = when (error) {
             SpeechRecognizer.ERROR_NO_MATCH,
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                if (wasListeningForCommand || isCommandWindowOpen()) {
+                if ((wasListeningForCommand || isCommandWindowOpen()) && hadSpeechInCurrentListen) {
                     feedbackController.commandFailed()
                 }
-                if (wasListeningForCommand && shouldUseOwnerGate()) {
+                if (wasListeningForCommand && hadSpeechInCurrentListen && shouldUseOwnerGate()) {
                     extendCommandWindowWithinDeadline(COMMAND_RETRY_GRACE_MS)
                 }
                 if (!forceLocalCommandOnce) {
-                    finishLatency("speech_error_retry", "code=$error delayMs=$COMMAND_RETRY_DELAY_MS")
+                    finishLatency(
+                        if (hadSpeechInCurrentListen) "speech_error_retry" else "speech_idle_retry",
+                        "code=$error delayMs=$COMMAND_RETRY_DELAY_MS",
+                    )
                 }
                 if (wasListeningForCommand || isCommandWindowOpen()) COMMAND_RETRY_DELAY_MS else OWNER_VERIFY_RETRY_MS
             }
@@ -762,6 +794,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
             }
         }
         scheduleNextCapture(delay)
+    }
+
+    private fun shouldFallbackToLocalCommand(error: Int, hadSpeechInCurrentListen: Boolean): Boolean {
+        if (!hadSpeechInCurrentListen) return false
+
+        return error == SpeechRecognizer.ERROR_NO_MATCH ||
+            error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
     }
 
     override fun onResults(results: Bundle?) {
@@ -868,8 +907,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val LOCAL_COMMAND_TIMEOUT_MS = 6000L
         private const val LOCAL_FALLBACK_AUTH_EXTENSION_MS = 6000L
         private const val LOCAL_ANDROID_FALLBACK_MIN_SPEECH_MS = 360L
-        private const val OWNER_VERIFY_AUDIO_MS = 1600L
-        private const val OWNER_VERIFY_INTERVAL_MS = 180L
+        private const val OWNER_VERIFY_AUDIO_MS = 1200L
+        private const val OWNER_VERIFY_INTERVAL_MS = 120L
         private const val OWNER_VERIFY_RETRY_MS = 200L
         private const val DEFAULT_RETRY_DELAY_MS = 300L
         private const val OWNER_READY_LISTEN_DELAY_MS = 260L
@@ -877,9 +916,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val FALLBACK_LISTEN_DELAY_MS = 0L
         private const val COMMAND_RETRY_DELAY_MS = 25L
         private const val ACTIVE_SPEECH_DEADLINE_RECHECK_MS = 500L
-        private const val ACTIVE_SPEECH_DEADLINE_GRACE_MS = 1800L
+        private const val ACTIVE_SPEECH_DEADLINE_GRACE_MS = 3500L
         private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 100L
         private const val DEFAULT_NOTIFICATION_TEXT = "소유자 목소리 확인 후 음성 명령을 듣습니다."
+        private val AIAI_RECOGNITION_SERVICE = ComponentName(
+            "com.google.android.as",
+            "com.google.android.apps.miphone.aiai.app.AiAiSpeechRecognitionService",
+        )
     }
 
     private enum class SpeechOutcome {

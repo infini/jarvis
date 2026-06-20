@@ -44,6 +44,11 @@ function millis(raw) {
   return raw + 0
 }
 
+function displayMs(raw) {
+  if (raw == "") return "-"
+  return raw "ms"
+}
+
 function addPath(id, name, key) {
   if (id == "" || name == "") return
 
@@ -71,7 +76,11 @@ function printTrace(id) {
   if (displayCommand == "") displayCommand = "-"
   displayStatus = status
   if (displayStatus == "") displayStatus = "-"
-  printf "trace=%s total=%dms path=%s command=%s status=%s parsed=%dms access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, parsed[id], access[id], bus[id]
+  speechParse = 0
+  if (parsed[id] > 0 && androidSpeechBegin[id] > 0 && parsed[id] >= androidSpeechBegin[id]) {
+    speechParse = parsed[id] - androidSpeechBegin[id]
+  }
+  printf "trace=%s total=%dms path=%s command=%s status=%s parsed=%dms speech_parse=%dms access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, parsed[id], speechParse, access[id], bus[id]
 
   if (ownerAcceptance[id] != "") {
     printf "  owner_acceptance=%s owner_auth_speech=%sms\n", ownerAcceptance[id], ownerAuthSpeech[id]
@@ -91,6 +100,11 @@ function printTrace(id) {
     printf "  local_endpoint=%s local_elapsed=%sms speech=%sms silence=%sms", localEndpoint[id], localElapsed[id], localSpeech[id], localSilence[id]
     if (localPeakRms[id] != "") printf " peak_rms=%s mean_rms=%s asr_gain=%s", localPeakRms[id], localMeanRms[id], localAsrGain[id]
     printf "\n"
+  }
+  if (androidReady[id] != "" || androidSpeechBegin[id] != "" || androidError[id] != "") {
+    displayError = androidError[id]
+    if (displayError == "") displayError = "-"
+    printf "  android_ready=%s speech_begin=%s speech_end=%s error=%s\n", displayMs(androidReady[id]), displayMs(androidSpeechBegin[id]), displayMs(androidSpeechEnd[id]), displayError
   }
   if (androidText[id] != "") {
     printf("  android_text=%s\n", androidText[id])
@@ -150,6 +164,10 @@ function printTrace(id) {
     text = tailValue($0, "text")
     if (text != "") localText[trace] = text
   }
+  if (event == "ready_for_speech" && totalRaw != "" && androidReady[trace] == "") androidReady[trace] = millis(totalRaw)
+  if (event == "speech_begin" && totalRaw != "" && androidSpeechBegin[trace] == "") androidSpeechBegin[trace] = millis(totalRaw)
+  if (event == "speech_end" && totalRaw != "" && androidSpeechEnd[trace] == "") androidSpeechEnd[trace] = millis(totalRaw)
+  if (event == "speech_error") androidError[trace] = value($0, "code")
   if (event == "partial_results" || event == "final_results") androidText[trace] = $0
 
   if (event == "command_parsed" && totalRaw != "") parsed[trace] = millis(totalRaw)
