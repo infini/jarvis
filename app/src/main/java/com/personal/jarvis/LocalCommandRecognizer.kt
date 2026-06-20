@@ -12,11 +12,16 @@ import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import kotlin.math.sqrt
 
 object LocalCommandRecognizer {
     private const val TAG = "JarvisLocalCommand"
     private const val SAMPLE_RATE_HZ = 16000
     private const val READ_INTERVAL_MS = 40L
+    private const val LOCAL_SPEECH_RMS_THRESHOLD = 0.012f
+    private const val LOCAL_MIN_ACTIVE_SPEECH_MS = 160L
+    private const val LOCAL_TRAILING_SILENCE_MS = 320L
+    private const val LOCAL_EARLY_ENDPOINT_MIN_LISTEN_MS = 720L
     private const val MODEL_DIR = "sherpa-korean-streaming"
     private const val ENCODER = "$MODEL_DIR/encoder-epoch-99-avg-1.int8.onnx"
     private const val DECODER = "$MODEL_DIR/decoder-epoch-99-avg-1.onnx"
@@ -70,12 +75,22 @@ object LocalCommandRecognizer {
         val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
         val buffer = ShortArray(readSize)
         var lastText = ""
+        var speechSeen = false
+        var activeSpeechMs = 0L
+        var lastSpeechAtMs = 0L
 
         try {
             recorder.startRecording()
             while (shouldContinue() && SystemClock.elapsedRealtime() - startedAt < timeoutMs) {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read <= 0) continue
+                val now = SystemClock.elapsedRealtime()
+
+                if (frameRms(buffer, read) >= LOCAL_SPEECH_RMS_THRESHOLD) {
+                    speechSeen = true
+                    activeSpeechMs += READ_INTERVAL_MS
+                    lastSpeechAtMs = now
+                }
 
                 val samples = FloatArray(read) { index -> buffer[index] / 32768.0f }
                 stream.acceptWaveform(samples, SAMPLE_RATE_HZ)
@@ -92,6 +107,22 @@ object LocalCommandRecognizer {
                 }
                 if (command != null) {
                     return Result(command, text, SystemClock.elapsedRealtime() - startedAt)
+                }
+
+                val elapsedMs = now - startedAt
+                val trailingSilenceMs = if (lastSpeechAtMs > 0L) now - lastSpeechAtMs else 0L
+                if (
+                    speechSeen &&
+                    activeSpeechMs >= LOCAL_MIN_ACTIVE_SPEECH_MS &&
+                    elapsedMs >= LOCAL_EARLY_ENDPOINT_MIN_LISTEN_MS &&
+                    trailingSilenceMs >= LOCAL_TRAILING_SILENCE_MS
+                ) {
+                    Log.d(
+                        TAG,
+                        "Local command endpoint: elapsed=${elapsedMs}ms, " +
+                            "speech=${activeSpeechMs}ms, silence=${trailingSilenceMs}ms",
+                    )
+                    break
                 }
             }
 
@@ -116,6 +147,17 @@ object LocalCommandRecognizer {
     private fun commandFromText(text: String): String? {
         if (text.isBlank()) return null
         return CommandInterpreter.parse(text = text, requireWakeWord = false)
+    }
+
+    private fun frameRms(buffer: ShortArray, read: Int): Float {
+        if (read <= 0) return 0f
+
+        var sumSquares = 0.0
+        for (index in 0 until read) {
+            val sample = buffer[index] / 32768.0
+            sumSquares += sample * sample
+        }
+        return sqrt(sumSquares / read).toFloat()
     }
 
     private fun getRecognizer(context: Context): OnlineRecognizer {
