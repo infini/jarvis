@@ -22,6 +22,7 @@ android {
 
 dependencies {
     implementation(files("libs/sherpa-onnx-1.13.3.jar"))
+    testImplementation(kotlin("test"))
 }
 
 kotlin {
