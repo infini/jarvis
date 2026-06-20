@@ -68,6 +68,8 @@ object OwnerVoiceEngine {
         val noiseFloorRms: Float = 0f,
         val activeThresholdRms: Float = 0f,
         val rejectReason: RejectReason? = null,
+        val verificationElapsedMs: Long = 0L,
+        val verificationAttempts: Int = 0,
     )
 
     internal data class PreparedAudio(
@@ -197,6 +199,8 @@ object OwnerVoiceEngine {
         val chunks = ArrayDeque<FloatArray>()
         var totalSamples = 0
         var lastVerificationAt = 0L
+        val startedAt = System.currentTimeMillis()
+        var verificationAttempts = 0
         var consecutiveAcceptState = ConsecutiveAcceptState()
 
         try {
@@ -216,12 +220,17 @@ object OwnerVoiceEngine {
                 val now = System.currentTimeMillis()
                 if (totalSamples >= maxWindowSamples && now - lastVerificationAt >= verificationIntervalMs) {
                     lastVerificationAt = now
+                    verificationAttempts += 1
                     val match = verifyOwner(context, flattenLastSamples(chunks, maxWindowSamples, totalSamples))
                     val adjustedMatch = applyConsecutiveAcceptPolicy(match, consecutiveAcceptState)
                     consecutiveAcceptState = adjustedMatch.second
-                    onMatch(adjustedMatch.first)
-                    if (adjustedMatch.first.accepted && shouldAccept(adjustedMatch.first)) {
-                        return adjustedMatch.first
+                    val timedMatch = adjustedMatch.first.copy(
+                        verificationElapsedMs = now - startedAt,
+                        verificationAttempts = verificationAttempts,
+                    )
+                    onMatch(timedMatch)
+                    if (timedMatch.accepted && shouldAccept(timedMatch)) {
+                        return timedMatch
                     }
                 }
             }

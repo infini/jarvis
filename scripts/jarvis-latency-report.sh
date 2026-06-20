@@ -87,7 +87,10 @@ function printTrace(id) {
   printf "trace=%s total=%dms path=%s command=%s status=%s listen=%dms listen_ready=%dms parsed=%dms speech_parse=%dms access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, androidListenStart[id], listenReady, parsed[id], speechParse, access[id], bus[id]
 
   if (ownerAcceptance[id] != "") {
-    printf "  owner_acceptance=%s owner_auth_speech=%sms\n", ownerAcceptance[id], ownerAuthSpeech[id]
+    printf "  owner_acceptance=%s owner_auth_speech=%sms", ownerAcceptance[id], ownerAuthSpeech[id]
+    if (ownerGateElapsed[id] != "") printf " owner_gate_elapsed=%sms", ownerGateElapsed[id]
+    if (ownerAttempts[id] != "") printf " owner_attempts=%s", ownerAttempts[id]
+    printf "\n"
   }
   if (ownerEndpoint[id] != "") {
     printf "  owner_endpoint=%s owner_elapsed=%sms speech=%sms samples=%sms", ownerEndpoint[id], ownerElapsed[id], ownerSpeech[id], ownerSamples[id]
@@ -142,6 +145,8 @@ function printTrace(id) {
   if (event == "owner_authorized") {
     ownerAcceptance[trace] = value($0, "acceptance")
     ownerAuthSpeech[trace] = value($0, "speechMs")
+    ownerGateElapsed[trace] = value($0, "ownerElapsedMs")
+    ownerAttempts[trace] = value($0, "ownerAttempts")
   }
   if (event == "owner_audio_asr_start") {
     ownerSamples[trace] = value($0, "samplesMs")
