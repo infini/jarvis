@@ -86,30 +86,35 @@ class OwnerVoiceEngineTest {
     }
 
     @Test
-    fun acceptsSoftWakeAfterThreeConsecutiveLowOwnerScores() {
+    fun acceptsSoftWakeAfterFourConsecutiveLowOwnerScores() {
         val first = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.11f, activeSpeechMs = 500L),
+            match = ownerMatch(score = 0.15f, activeSpeechMs = 500L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
         val second = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.12f, activeSpeechMs = 500L),
+            match = ownerMatch(score = 0.16f, activeSpeechMs = 500L),
             previousState = first.second,
         )
         val third = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.13f, activeSpeechMs = 500L),
+            match = ownerMatch(score = 0.17f, activeSpeechMs = 500L),
             previousState = second.second,
+        )
+        val fourth = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
+            match = ownerMatch(score = 0.18f, activeSpeechMs = 500L),
+            previousState = third.second,
         )
 
         assertFalse(first.first.accepted)
         assertFalse(second.first.accepted)
-        assertTrue(third.first.accepted)
-        assertEquals(OwnerVoiceEngine.Acceptance.SOFT_WAKE_CONSECUTIVE, third.first.acceptance)
+        assertFalse(third.first.accepted)
+        assertTrue(fourth.first.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.SOFT_WAKE_CONSECUTIVE, fourth.first.acceptance)
     }
 
     @Test
     fun acceptsSingleSoftWakeWhenScoreAndSpeechAreEnough() {
         val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.21f, activeSpeechMs = 1000L),
+            match = ownerMatch(score = 0.25f, activeSpeechMs = 1000L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
 
@@ -118,14 +123,13 @@ class OwnerVoiceEngineTest {
     }
 
     @Test
-    fun acceptsSingleSoftWakeForShortWakeWordWhenScoreAndSpeechAreEnough() {
+    fun rejectsWeakSingleSoftWakeUntilScoresAreConsecutive() {
         val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
             match = ownerMatch(score = 0.17f, activeSpeechMs = 675L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
 
-        assertTrue(result.first.accepted)
-        assertEquals(OwnerVoiceEngine.Acceptance.SOFT_WAKE_SINGLE, result.first.acceptance)
+        assertFalse(result.first.accepted)
     }
 
     @Test
@@ -141,45 +145,50 @@ class OwnerVoiceEngineTest {
     @Test
     fun acceptsSoftWakeAcrossOneBridgeScore() {
         val first = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.11f, activeSpeechMs = 700L),
+            match = ownerMatch(score = 0.15f, activeSpeechMs = 700L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
         val bridge = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.09f, activeSpeechMs = 700L),
+            match = ownerMatch(score = 0.11f, activeSpeechMs = 700L),
             previousState = first.second,
         )
         val second = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.12f, activeSpeechMs = 700L),
+            match = ownerMatch(score = 0.16f, activeSpeechMs = 700L),
             previousState = bridge.second,
         )
         val third = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.13f, activeSpeechMs = 700L),
+            match = ownerMatch(score = 0.17f, activeSpeechMs = 700L),
             previousState = second.second,
+        )
+        val fourth = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
+            match = ownerMatch(score = 0.18f, activeSpeechMs = 700L),
+            previousState = third.second,
         )
 
         assertFalse(first.first.accepted)
         assertFalse(bridge.first.accepted)
         assertFalse(second.first.accepted)
-        assertTrue(third.first.accepted)
-        assertEquals(OwnerVoiceEngine.Acceptance.SOFT_WAKE_CONSECUTIVE, third.first.acceptance)
+        assertFalse(third.first.accepted)
+        assertTrue(fourth.first.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.SOFT_WAKE_CONSECUTIVE, fourth.first.acceptance)
     }
 
     @Test
     fun resetsSoftWakeCountAfterTwoBridgeScores() {
         val first = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.11f, activeSpeechMs = 700L),
+            match = ownerMatch(score = 0.15f, activeSpeechMs = 700L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
         val bridge = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.09f, activeSpeechMs = 700L),
+            match = ownerMatch(score = 0.11f, activeSpeechMs = 700L),
             previousState = first.second,
         )
         val reset = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.09f, activeSpeechMs = 700L),
+            match = ownerMatch(score = 0.11f, activeSpeechMs = 700L),
             previousState = bridge.second,
         )
         val secondAfterReset = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.12f, activeSpeechMs = 700L),
+            match = ownerMatch(score = 0.15f, activeSpeechMs = 700L),
             previousState = reset.second,
         )
 
@@ -189,15 +198,15 @@ class OwnerVoiceEngineTest {
     @Test
     fun resetsSoftWakeCountWhenScoreDrops() {
         val first = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.11f, activeSpeechMs = 500L),
+            match = ownerMatch(score = 0.15f, activeSpeechMs = 500L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
         val reset = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.07f, activeSpeechMs = 500L),
+            match = ownerMatch(score = 0.09f, activeSpeechMs = 500L),
             previousState = first.second,
         )
         val secondAfterReset = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.11f, activeSpeechMs = 500L),
+            match = ownerMatch(score = 0.15f, activeSpeechMs = 500L),
             previousState = reset.second,
         )
 

@@ -13,6 +13,7 @@ class OwnerVoiceGate(
 ) {
     @Volatile private var verifying = false
     @Volatile private var authorizedUntil = 0L
+    @Volatile private var nonStrictSuppressedUntil = 0L
     private var verificationThread: Thread? = null
 
     val isVerifying: Boolean
@@ -34,6 +35,10 @@ class OwnerVoiceGate(
 
     fun extendAuthorization(durationMs: Long) {
         authorizedUntil = authorizedUntil.coerceAtLeast(System.currentTimeMillis() + durationMs)
+    }
+
+    fun suppressNonStrictFor(durationMs: Long) {
+        nonStrictSuppressedUntil = System.currentTimeMillis() + durationMs
     }
 
     fun startVerification(
@@ -68,6 +73,9 @@ class OwnerVoiceGate(
                                 "thresholdRms=${candidate.activeThresholdRms}, " +
                                 "reason=${candidate.rejectReason ?: "none"}",
                         )
+                    },
+                    shouldAccept = { candidate ->
+                        !isNonStrictSuppressed(candidate)
                     },
                 )
                 if (!verifying || Thread.currentThread().isInterrupted) return@Thread
@@ -105,6 +113,8 @@ class OwnerVoiceGate(
     }
 
     private fun statusFor(match: OwnerVoiceEngine.Match): String {
+        if (match.accepted && isNonStrictSuppressed(match)) return "suppressed-non-strict"
+
         return when (match.acceptance) {
             OwnerVoiceEngine.Acceptance.STRICT -> "accepted"
             OwnerVoiceEngine.Acceptance.NEAR_CONSECUTIVE -> "accepted-near"
@@ -112,6 +122,12 @@ class OwnerVoiceGate(
             OwnerVoiceEngine.Acceptance.SOFT_WAKE_CONSECUTIVE -> "accepted-soft-wake"
             OwnerVoiceEngine.Acceptance.REJECTED -> "rejected"
         }
+    }
+
+    private fun isNonStrictSuppressed(match: OwnerVoiceEngine.Match): Boolean {
+        if (!match.accepted || match.acceptance == OwnerVoiceEngine.Acceptance.STRICT) return false
+
+        return System.currentTimeMillis() < nonStrictSuppressedUntil
     }
 
     companion object {

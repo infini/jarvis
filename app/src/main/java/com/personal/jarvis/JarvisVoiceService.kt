@@ -35,7 +35,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
                             "peakRms=${match.peakRms} reason=${match.rejectReason ?: "none"}",
                     )
                     openCommandWindow(OWNER_AUTH_WINDOW_MS)
-                    signalCommandReady()
+                    commandWindowOpenedByNonStrictOwnerGate =
+                        match.acceptance != OwnerVoiceEngine.Acceptance.STRICT
+                    commandFeedbackEnabled = !commandWindowOpenedByNonStrictOwnerGate
+                    if (commandFeedbackEnabled) signalCommandReady()
                     if (!startOwnerAudioCommandRecognition(match)) {
                         scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
                     }
@@ -61,6 +64,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var currentListeningAllowsCommandWithoutWake = false
     private var partialCommandHandled = false
     private var partialCommandKeepsWindowOpen = false
+    private var commandWindowOpenedByNonStrictOwnerGate = false
+    private var commandFeedbackEnabled = false
     private var forceLocalCommandOnce = false
     private var forceAndroidCommandOnce = false
     private var androidListenAfterLocal = false
@@ -305,7 +310,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 )
             }
             if (commandWindowOpen) {
-                feedbackController.commandListening()
+                if (commandFeedbackEnabled) {
+                    feedbackController.commandListening()
+                } else {
+                    feedbackController.showOwnerVerifying()
+                }
             } else {
                 feedbackController.showWakeWaiting()
             }
@@ -614,6 +623,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         forceLocalCommandOnce = false
         forceAndroidCommandOnce = false
         androidListenAfterLocal = false
+        commandWindowOpenedByNonStrictOwnerGate = false
+        commandFeedbackEnabled = false
         commandWindowSpeechGraceUntil = 0L
         ownerVoiceGate.clearAuthorization()
         handler.removeCallbacks(commandWindowTimeout)
@@ -661,6 +672,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
             Log.d(TAG, "Wake phrase recognized; keeping command window open")
             markLatency("wake_only")
             openCommandWindow(OWNER_AUTH_WINDOW_MS)
+            commandWindowOpenedByNonStrictOwnerGate = false
+            commandFeedbackEnabled = true
             signalCommandReady()
             return SpeechOutcome.WAKE_ONLY
         }
@@ -673,6 +686,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (destroyed) return
         if (keepCommandWindowOpen) {
             openCommandWindow(CAMERA_SESSION_AUTH_WINDOW_MS)
+            commandWindowOpenedByNonStrictOwnerGate = false
+            commandFeedbackEnabled = true
             notificationController.update("명령 처리됨. 다음 명령을 말하세요.")
             feedbackController.commandHandled()
             finishLatency("command_complete", "keepWindow=true nextWindowMs=$CAMERA_SESSION_AUTH_WINDOW_MS")
@@ -705,7 +720,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     override fun onReadyForSpeech(params: Bundle?) {
         markLatency("ready_for_speech")
-        if (currentListeningAllowsCommandWithoutWake || isCommandWindowOpen()) {
+        if (commandFeedbackEnabled && (currentListeningAllowsCommandWithoutWake || isCommandWindowOpen())) {
             feedbackController.commandReady()
         }
         Log.d(TAG, "Ready for speech")
@@ -747,6 +762,16 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (wasListeningForCommand && isCommandWindowExpired()) {
             closeCommandWindow(playFeedback = false)
             finishLatency("command_window_expired_after_speech_error", "code=$error")
+            scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
+            return
+        }
+        if (shouldSuppressIdleNonStrictWake(wasListeningForCommand, error, hadSpeechInCurrentListen)) {
+            ownerVoiceGate.suppressNonStrictFor(NON_STRICT_IDLE_SUPPRESS_MS)
+            closeCommandWindow(playFeedback = false)
+            finishLatency(
+                "non_strict_wake_idle_suppressed",
+                "code=$error suppressMs=$NON_STRICT_IDLE_SUPPRESS_MS",
+            )
             scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
             return
         }
@@ -798,6 +823,19 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     private fun shouldFallbackToLocalCommand(error: Int, hadSpeechInCurrentListen: Boolean): Boolean {
         if (!hadSpeechInCurrentListen) return false
+
+        return error == SpeechRecognizer.ERROR_NO_MATCH ||
+            error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+    }
+
+    private fun shouldSuppressIdleNonStrictWake(
+        wasListeningForCommand: Boolean,
+        error: Int,
+        hadSpeechInCurrentListen: Boolean,
+    ): Boolean {
+        if (!wasListeningForCommand || hadSpeechInCurrentListen || !commandWindowOpenedByNonStrictOwnerGate) {
+            return false
+        }
 
         return error == SpeechRecognizer.ERROR_NO_MATCH ||
             error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
@@ -915,6 +953,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val COMMAND_CHAIN_LISTEN_DELAY_MS = 120L
         private const val FALLBACK_LISTEN_DELAY_MS = 0L
         private const val COMMAND_RETRY_DELAY_MS = 25L
+        private const val NON_STRICT_IDLE_SUPPRESS_MS = 8000L
         private const val ACTIVE_SPEECH_DEADLINE_RECHECK_MS = 500L
         private const val ACTIVE_SPEECH_DEADLINE_GRACE_MS = 3500L
         private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 100L

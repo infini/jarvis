@@ -27,7 +27,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 즉시 실행으로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
 - owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 1.2초 window를 120ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
 - 짧은 `자비스` 호출어가 2초 window 안의 무음에 묻히지 않도록 owner voice gate에서 RMS 기반 말소리 구간 정리와 근접 점수 2회 연속 통과 정책을 추가함
-- Xiaomi 15 Ultra 실기기 로그에서 짧은 `자비스` 호출 점수가 0.16 전후에 머무르는 케이스가 확인되어, 650ms 이상 말소리에서 similarity `0.16` 이상이 1회 나오거나 400ms 이상 말소리에서 `0.10` 이상이 3회 나오면 soft wake로 통과시키도록 보정함. 짧은 호출어의 점수 흔들림을 흡수하기 위해 soft wake 연속 판정 중간에 similarity `0.08` 이상 애매한 점수 1회까지 허용함
+- Xiaomi 15 Ultra 실기기 로그에서 짧은 `자비스` 호출 점수가 낮게 나오는 케이스가 확인되어 soft wake 보조 경로를 유지하되, idle trace에서 단발 `0.16~0.21` soft wake false accept가 반복되어 650ms 이상 말소리의 단발 soft wake는 similarity `0.24` 이상으로 올리고, 낮은 점수 경로는 400ms 이상 말소리에서 similarity `0.14` 이상 4회 연속일 때만 통과시키도록 보정함. 짧은 호출어의 점수 흔들림을 흡수하기 위해 soft wake 연속 판정 중간에 similarity `0.10` 이상 애매한 점수 1회까지 허용함
 - owner voice gate가 일정한 배경음을 계속 말소리로 판단하지 않도록, 인증 시에는 noise floor 대비 피크가 충분한 음성 구간만 speaker embedding으로 계산하도록 보정함
 - owner gate 직전 1.2초 음성 window는 sherpa-onnx 한국어 streaming ASR로 즉시 해석하고, live command window는 Android System Intelligence(AiAi) `SpeechRecognizer` partial/final 결과를 우선 사용하도록 변경
 - Android `SpeechRecognizer`가 command window 안에서 실패하거나 사용할 수 없으면 local command ASR fallback을 1회 시도하도록 변경
@@ -51,6 +51,8 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 2026-06-21 실기기 trace에서 AiAi STT partial `카메라 실행해 줘`가 `open_camera`로 파싱되고 카메라 foreground 실행이 확인되었다. 해당 trace의 `speech_parse`는 648ms였다.
 - 사용자 준비음/진동은 owner authorization 직후가 아니라 Android STT `ready_for_speech` callback 시점에 낸다. owner authorization 직후에는 초록 command-ready 표시만 띄운다.
 - command listening timeout이 발화 진행 중인 Android STT를 먼저 취소하지 않도록, `speech_begin` 이후에는 active speech deadline grace가 command window 종료를 담당한다. active speech grace는 3.5초다.
+- near/soft wake로 열린 command window는 provisional 상태로 보고 초록 overlay와 준비음을 내지 않는다. 이 상태에서 Android STT가 발화 시작 없이 `NO_MATCH`/timeout을 반환하면 `non_strict_wake_idle_suppressed`로 window를 즉시 닫고 8초 동안 non-strict wake를 억제한다.
+- 2026-06-21 idle trace에서 non-strict false wake가 `non_strict_wake_idle_suppressed`로 닫히고, Jarvis 앱의 준비음 `AudioTrack` 및 `fallback_to_local`이 발생하지 않는 것을 확인했다.
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 - 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
 - 명령 가능 여부를 사용자가 확실히 알 수 있도록 소리, 진동, 접근성 overlay 기반 Jarvis 상태 표시를 추가했다.
@@ -207,6 +209,7 @@ JarvisAccessibilityService
 | `JarvisBootReceiver.kt` | 부팅/앱 업데이트 후 Jarvis 시작 알림 표시 |
 | `JarvisVoiceService.kt` | 포그라운드 음성 인식 서비스의 상태 전환 orchestration |
 | `JarvisVoiceServiceStarter.kt` | 앱 UI와 접근성 watchdog에서 공통으로 쓰는 음성 서비스 시작 helper |
+| `debug/JarvisDebugStartActivity.kt` | debug APK 전용 ADB service start 진입점 |
 | `OwnerVoiceGate.kt` | owner voice verification 스레드, 인증 window 상태 관리 |
 | `OwnerVoiceEngine.kt` | sherpa-onnx speaker embedding 생성, 녹음, cosine 검증 |
 | `OwnerVoiceStore.kt` | 소유자 음성 embedding 저장 |
@@ -297,7 +300,7 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-command-trace.sh 45
 ```
 
-스크립트는 `trace`, `total`, `path`, `command`, `status`, `parsed`, `speech_parse`, `access`, `bus`를 한 줄로 출력한다. 하위 줄에는 `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `owner_text`, `local_endpoint`, `local_elapsed`, `local_text`, `android_ready`, `speech_begin`, `speech_end`, `error`, `peak_rms`, `mean_rms`, `asr_gain`을 출력해 owner gate, owner audio ASR, live Android STT, local fallback 병목을 분리한다. `parsed`는 trace 시작부터 명령 파싱까지의 누적 시간이고, `speech_parse`는 Android STT가 발화를 감지한 뒤 명령 파싱까지의 시간이다. `jarvis-command-trace.sh`는 `status=command_complete`가 하나도 없으면 실패 종료하고, `speech_begin`이 있는 trace에서는 기본 기준 `speech_parse<=2500ms`, `speech_begin`이 없는 trace에서는 `parsed<=2500ms`, 접근성 실행이 있는 경우 `access<=4000ms`도 함께 검사한다. 기준은 `JARVIS_MAX_SPEECH_PARSED_MS`, `JARVIS_MAX_PARSED_MS`, `JARVIS_MAX_ACCESS_MS` 환경 변수로 조정한다. 목표는 command window 안의 정상 명령이 `path=owner_audio_asr`, `path=owner_audio_asr->android_stt`, 또는 `path=android_stt`, `status=command_complete`로 끝나고, `speech_parse`와 `access`가 체감 지연을 설명할 수 있는 낮은 값으로 유지되는 것이다. `fallback_to_local` 또는 `local_asr`가 포함된 live trace는 Android STT가 발화를 감지한 뒤 실패해 local fallback을 탔다는 뜻이므로 별도 튜닝 대상으로 본다. `speech_idle_retry`는 command window 안에서 아무 발화가 감지되지 않아 조용히 다시 듣는 정상 idle retry로 본다.
+스크립트는 `trace`, `total`, `path`, `command`, `status`, `parsed`, `speech_parse`, `access`, `bus`를 한 줄로 출력한다. 하위 줄에는 `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `owner_text`, `local_endpoint`, `local_elapsed`, `local_text`, `android_ready`, `speech_begin`, `speech_end`, `error`, `peak_rms`, `mean_rms`, `asr_gain`을 출력해 owner gate, owner audio ASR, live Android STT, local fallback 병목을 분리한다. `parsed`는 trace 시작부터 명령 파싱까지의 누적 시간이고, `speech_parse`는 Android STT가 발화를 감지한 뒤 명령 파싱까지의 시간이다. `jarvis-command-trace.sh`는 debug APK의 no-display `JarvisDebugStartActivity`를 먼저 호출해 Jarvis 서비스를 올리려고 시도한다. release APK에는 이 Activity가 포함되지 않으며, 자동 시작은 `JARVIS_START_DEBUG_ACTIVITY=0`으로 끌 수 있다. 이 스크립트는 `status=command_complete`가 하나도 없으면 실패 종료하고, `speech_begin`이 있는 trace에서는 기본 기준 `speech_parse<=2500ms`, `speech_begin`이 없는 trace에서는 `parsed<=2500ms`, 접근성 실행이 있는 경우 `access<=4000ms`도 함께 검사한다. 기준은 `JARVIS_MAX_SPEECH_PARSED_MS`, `JARVIS_MAX_PARSED_MS`, `JARVIS_MAX_ACCESS_MS` 환경 변수로 조정한다. 목표는 command window 안의 정상 명령이 `path=owner_audio_asr`, `path=owner_audio_asr->android_stt`, 또는 `path=android_stt`, `status=command_complete`로 끝나고, `speech_parse`와 `access`가 체감 지연을 설명할 수 있는 낮은 값으로 유지되는 것이다. `fallback_to_local` 또는 `local_asr`가 포함된 live trace는 Android STT가 발화를 감지한 뒤 실패해 local fallback을 탔다는 뜻이므로 별도 튜닝 대상으로 본다. `speech_idle_retry`는 command window 안에서 아무 발화가 감지되지 않아 조용히 다시 듣는 정상 idle retry로 본다.
 
 주요 이벤트:
 
@@ -355,7 +358,7 @@ scripts/jarvis-command-trace.sh 45
 - Runtime: `sherpa-onnx` 공식 Android AAR `v1.13.3`의 Kotlin API jar와 `arm64-v8a` native libraries
 - Model: `3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`
 - 저장 방식: 소유자 embedding `FloatArray`를 little-endian bytes로 변환한 뒤 Base64 인코딩하여 앱 private `SharedPreferences`에 저장한다.
-- 기본 허용 threshold는 `0.50`이다. 짧은 호출어 보정을 위해 말소리 구간이 450ms 이상이고 similarity `0.28` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. Xiaomi 15 Ultra 실기기 로그에서 등록 사용자 `자비스` 발화가 0.16 전후에 머무르는 케이스가 있어, 650ms 이상 말소리에서 similarity `0.16` 이상인 soft wake 점수가 1회 나오거나 400ms 이상 말소리에서 similarity `0.10` 이상인 soft wake 점수가 3회 나오면 보조 경로로 통과시킨다. soft wake 연속 판정은 중간에 similarity `0.08` 이상 애매한 점수 1회까지 허용한다. 인증 중에는 1.2초 rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다.
+- 기본 허용 threshold는 `0.50`이다. 짧은 호출어 보정을 위해 말소리 구간이 450ms 이상이고 similarity `0.28` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. 단발 soft wake는 650ms 이상 말소리에서 similarity `0.24` 이상일 때만 허용하고, 낮은 점수 soft wake는 400ms 이상 말소리에서 similarity `0.14` 이상이 4회 연속 나와야 보조 경로로 통과시킨다. soft wake 연속 판정은 중간에 similarity `0.10` 이상 애매한 점수 1회까지 허용한다. near/soft wake로 열린 command window는 사용자 피드백을 보류하고, Android STT가 실제 발화를 감지하지 못하면 8초 동안 non-strict wake를 억제해 idle false accept 반복을 줄인다. 인증 중에는 1.2초 rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다.
 - 현재 APK는 Xiaomi 15 Ultra를 우선해 `arm64-v8a` ABI만 패키징한다.
 
 현재 구현 흐름:

@@ -9,6 +9,7 @@ TEMP_LOG_FILE=""
 MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSED_MS="${JARVIS_MAX_SPEECH_PARSED_MS:-2500}"
 MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
+START_DEBUG_ACTIVITY="${JARVIS_START_DEBUG_ACTIVITY:-1}"
 
 case "$DURATION_SECONDS" in
   ''|*[!0-9]*)
@@ -40,6 +41,10 @@ esac
 
 echo "Clearing Jarvis logcat and recording for ${DURATION_SECONDS}s."
 adb logcat -c
+if [[ "$START_DEBUG_ACTIVITY" == "1" ]]; then
+  adb shell am start -n com.personal.jarvis/.debug.JarvisDebugStartActivity >/dev/null 2>&1 || true
+  sleep 1
+fi
 echo "Speak now: say '자비스', wait for the ready tone, say one command such as '카메라 실행', then wait for the handled tone before the next command: '후면', '전면', '찍어', '종료'."
 sleep "$DURATION_SECONDS"
 
