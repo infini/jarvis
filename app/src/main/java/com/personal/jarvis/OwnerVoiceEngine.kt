@@ -32,6 +32,8 @@ object OwnerVoiceEngine {
     private const val ENROLLMENT_DUPLICATE_SIMILARITY = 0.995f
     const val MIN_OWNER_EMBEDDINGS = 2
     const val MAX_OWNER_EMBEDDINGS = 8
+    const val HIGH_CONFIDENCE_ACCEPT_THRESHOLD = 0.36f
+    private const val HIGH_CONFIDENCE_ACCEPT_MIN_SPEECH_MS = 450L
     const val NEAR_ACCEPT_THRESHOLD = 0.28f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
     private const val NEAR_ACCEPT_MIN_SPEECH_MS = 450L
@@ -49,6 +51,7 @@ object OwnerVoiceEngine {
     enum class Acceptance {
         REJECTED,
         STRICT,
+        HIGH_CONFIDENCE_SINGLE,
         NEAR_CONSECUTIVE,
         SOFT_WAKE_SINGLE,
         SOFT_WAKE_CONSECUTIVE,
@@ -287,6 +290,18 @@ object OwnerVoiceEngine {
         previousState: ConsecutiveAcceptState,
     ): Pair<Match, ConsecutiveAcceptState> {
         if (match.accepted) return match to ConsecutiveAcceptState()
+
+        if (
+            match.ownerEmbeddingCount >= OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS &&
+            match.score >= HIGH_CONFIDENCE_ACCEPT_THRESHOLD &&
+            match.activeSpeechMs >= HIGH_CONFIDENCE_ACCEPT_MIN_SPEECH_MS
+        ) {
+            return match.copy(
+                accepted = true,
+                acceptance = Acceptance.HIGH_CONFIDENCE_SINGLE,
+                rejectReason = null,
+            ) to ConsecutiveAcceptState()
+        }
 
         if (match.score >= NEAR_ACCEPT_THRESHOLD && match.activeSpeechMs >= NEAR_ACCEPT_MIN_SPEECH_MS) {
             val nearAcceptCount = previousState.nearCount + 1

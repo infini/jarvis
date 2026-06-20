@@ -84,7 +84,8 @@ function printTrace(id) {
   if (androidReady[id] > 0 && androidListenStart[id] > 0 && androidReady[id] >= androidListenStart[id]) {
     listenReady = androidReady[id] - androidListenStart[id]
   }
-  printf "trace=%s total=%dms path=%s command=%s status=%s listen=%dms listen_ready=%dms parsed=%dms speech_parse=%dms access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, androidListenStart[id], listenReady, parsed[id], speechParse, access[id], bus[id]
+  ownerGate = ownerGateElapsed[id] + 0
+  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms speech_parse=%dms access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], speechParse, access[id], bus[id]
 
   if (ownerAcceptance[id] != "") {
     printf "  owner_acceptance=%s owner_auth_speech=%sms", ownerAcceptance[id], ownerAuthSpeech[id]

@@ -10,6 +10,7 @@ DIAGNOSTIC_LOG_FILE=""
 MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSED_MS="${JARVIS_MAX_SPEECH_PARSED_MS:-2500}"
 MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
+MAX_OWNER_GATE_MS="${JARVIS_MAX_OWNER_GATE_MS:-2500}"
 START_DEBUG_ACTIVITY="${JARVIS_START_DEBUG_ACTIVITY:-1}"
 SKIP_PROFILE_CHECK="${JARVIS_SKIP_PROFILE_CHECK:-0}"
 
@@ -30,6 +31,13 @@ esac
 case "$MAX_ACCESS_MS" in
   ''|*[!0-9]*)
     echo "JARVIS_MAX_ACCESS_MS must be an integer" >&2
+    exit 2
+    ;;
+esac
+
+case "$MAX_OWNER_GATE_MS" in
+  ''|*[!0-9]*)
+    echo "JARVIS_MAX_OWNER_GATE_MS must be an integer" >&2
     exit 2
     ;;
 esac
@@ -107,7 +115,8 @@ SLOW_LINES="$(
   printf '%s\n' "$COMMAND_COMPLETE_LINES" | awk \
     -v maxParsed="$MAX_PARSED_MS" \
     -v maxSpeechParsed="$MAX_SPEECH_PARSED_MS" \
-    -v maxAccess="$MAX_ACCESS_MS" '
+    -v maxAccess="$MAX_ACCESS_MS" \
+    -v maxOwnerGate="$MAX_OWNER_GATE_MS" '
       function fieldValue(key, i, pair) {
         for (i = 1; i <= NF; i++) {
           split($i, pair, "=")
@@ -119,16 +128,17 @@ SLOW_LINES="$(
         parsed = fieldValue("parsed")
         speechParsed = fieldValue("speech_parse")
         access = fieldValue("access")
+        ownerGate = fieldValue("owner_gate")
         parseBudget = speechParsed > 0 ? maxSpeechParsed : maxParsed
         parseLatency = speechParsed > 0 ? speechParsed : parsed
-        if (parseLatency <= 0 || parseLatency > parseBudget || (access > 0 && access > maxAccess)) print
+        if (parseLatency <= 0 || parseLatency > parseBudget || (access > 0 && access > maxAccess) || (ownerGate > 0 && ownerGate > maxOwnerGate)) print
       }
     '
 )"
 
 if [[ -n "$SLOW_LINES" ]]; then
   echo "FAIL: command_complete trace exceeded latency threshold." >&2
-  echo "Thresholds: speech_parse<=${MAX_SPEECH_PARSED_MS}ms when speech_begin is present; otherwise parsed<=${MAX_PARSED_MS}ms. access<=${MAX_ACCESS_MS}ms when access is present." >&2
+  echo "Thresholds: owner_gate<=${MAX_OWNER_GATE_MS}ms; speech_parse<=${MAX_SPEECH_PARSED_MS}ms when speech_begin is present; otherwise parsed<=${MAX_PARSED_MS}ms. access<=${MAX_ACCESS_MS}ms when access is present." >&2
   printf '%s\n' "$SLOW_LINES" >&2
   exit 1
 fi

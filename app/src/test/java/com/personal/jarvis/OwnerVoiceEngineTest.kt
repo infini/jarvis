@@ -96,7 +96,7 @@ class OwnerVoiceEngineTest {
     @Test
     fun preparesSubSecondWakeWindowForVerification() {
         val sampleRate = OwnerVoiceEngine.SAMPLE_RATE_HZ
-        val samples = FloatArray(sampleRate * 960 / 1000)
+        val samples = FloatArray(sampleRate * 800 / 1000)
         val speechStart = sampleRate * 180 / 1000
         val speechSamples = sampleRate * 520 / 1000
 
@@ -140,6 +140,31 @@ class OwnerVoiceEngineTest {
         segments.forEach { segment ->
             assertEquals(sampleRate * 1400 / 1000, segment.size)
         }
+    }
+
+    @Test
+    fun acceptsHighConfidenceSingleScoreWhenOwnerProfileHasMultipleEmbeddings() {
+        val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
+            match = ownerMatch(
+                score = 0.37f,
+                activeSpeechMs = 520L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+            ),
+            previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
+        )
+
+        assertTrue(result.first.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.HIGH_CONFIDENCE_SINGLE, result.first.acceptance)
+    }
+
+    @Test
+    fun rejectsHighConfidenceSingleScoreWhenOwnerProfileIsLegacy() {
+        val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
+            match = ownerMatch(score = 0.37f, activeSpeechMs = 520L, ownerEmbeddingCount = 1),
+            previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
+        )
+
+        assertFalse(result.first.accepted)
     }
 
     @Test
@@ -286,11 +311,16 @@ class OwnerVoiceEngineTest {
         assertFalse(secondAfterReset.first.accepted)
     }
 
-    private fun ownerMatch(score: Float, activeSpeechMs: Long): OwnerVoiceEngine.Match {
+    private fun ownerMatch(
+        score: Float,
+        activeSpeechMs: Long,
+        ownerEmbeddingCount: Int = 0,
+    ): OwnerVoiceEngine.Match {
         return OwnerVoiceEngine.Match(
             score = score,
             accepted = false,
             activeSpeechMs = activeSpeechMs,
+            ownerEmbeddingCount = ownerEmbeddingCount,
         )
     }
 }

@@ -293,7 +293,7 @@ class MainActivity : Activity() {
             }
             appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++ / Korean streaming ASR")
             appendLine("기본 threshold: ${OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD}")
-            appendLine("짧은 호출어 보정: ${OwnerVoiceEngine.NEAR_ACCEPT_THRESHOLD} 이상 2회 또는 soft wake")
+            appendLine("짧은 호출어 보정: 고신뢰 1회, 근접 2회 또는 soft wake")
             append("등록이 완료되면 Jarvis는 소유자 목소리 확인 후 명령을 받습니다.")
         }
     }

@@ -6,6 +6,7 @@ REPORT_SCRIPT="$SCRIPT_DIR/jarvis-latency-report.sh"
 MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSED_MS="${JARVIS_MAX_SPEECH_PARSED_MS:-2500}"
 MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
+MAX_OWNER_GATE_MS="${JARVIS_MAX_OWNER_GATE_MS:-2500}"
 
 usage() {
   echo "usage: $0 <jarvis_latency_log> [...]" >&2
@@ -43,7 +44,8 @@ slow_command_lines() {
   printf '%s\n' "$lines" | awk \
     -v maxParsed="$MAX_PARSED_MS" \
     -v maxSpeechParsed="$MAX_SPEECH_PARSED_MS" \
-    -v maxAccess="$MAX_ACCESS_MS" '
+    -v maxAccess="$MAX_ACCESS_MS" \
+    -v maxOwnerGate="$MAX_OWNER_GATE_MS" '
       function fieldValue(key, i, pair) {
         for (i = 1; i <= NF; i++) {
           split($i, pair, "=")
@@ -55,9 +57,10 @@ slow_command_lines() {
         parsed = fieldValue("parsed")
         speechParsed = fieldValue("speech_parse")
         access = fieldValue("access")
+        ownerGate = fieldValue("owner_gate")
         parseBudget = speechParsed > 0 ? maxSpeechParsed : maxParsed
         parseLatency = speechParsed > 0 ? speechParsed : parsed
-        if (parseLatency <= 0 || parseLatency > parseBudget || (access > 0 && access > maxAccess)) print
+        if (parseLatency <= 0 || parseLatency > parseBudget || (access > 0 && access > maxAccess) || (ownerGate > 0 && ownerGate > maxOwnerGate)) print
       }
     '
 }
@@ -288,6 +291,7 @@ audit_file() {
 require_integer JARVIS_MAX_PARSED_MS "$MAX_PARSED_MS"
 require_integer JARVIS_MAX_SPEECH_PARSED_MS "$MAX_SPEECH_PARSED_MS"
 require_integer JARVIS_MAX_ACCESS_MS "$MAX_ACCESS_MS"
+require_integer JARVIS_MAX_OWNER_GATE_MS "$MAX_OWNER_GATE_MS"
 
 if [[ "$#" -eq 0 ]]; then
   usage
