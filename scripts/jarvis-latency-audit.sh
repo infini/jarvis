@@ -123,6 +123,34 @@ owner_gate_stats() {
   ' "$diagnostic_file"
 }
 
+max_profile_embeddings() {
+  local log_file="$1"
+  local diagnostic_file="$2"
+  local files=()
+
+  [[ -f "$log_file" ]] && files+=("$log_file")
+  [[ -f "$diagnostic_file" ]] && files+=("$diagnostic_file")
+  if [[ "${#files[@]}" -eq 0 ]]; then
+    return
+  fi
+
+  awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        split($i, pair, "=")
+        if (pair[1] == "profileEmbeddings" || pair[1] == "profile_embeddings") {
+          value = pair[2] + 0
+          seen = 1
+          if (value > maxValue) maxValue = value
+        }
+      }
+    }
+    END {
+      if (seen) print maxValue + 0
+    }
+  ' "${files[@]}"
+}
+
 status_hint() {
   local status="$1"
   case "$status" in
@@ -134,6 +162,9 @@ status_hint() {
       ;;
     FAIL_NO_OWNER_WAKE)
       echo "hint=Owner voice gate did not authorize wake. Check peak RMS, reject reasons, distance, and owner voice enrollment."
+      ;;
+    FAIL_LEGACY_PROFILE)
+      echo "hint=Owner profile has fewer than 2 embeddings. Re-register owner voice before judging wake or command latency."
       ;;
     FAIL_NO_SPEECH)
       echo "hint=Jarvis opened a command window, but command STT did not detect speech."
@@ -184,6 +215,7 @@ audit_file() {
   local owner_accepted
   local owner_rejected
   local owner_suppressed
+  local profile_embeddings
 
   owner_authorized="$(count_event "$log_file" owner_authorized)"
   ready_for_speech="$(count_event "$log_file" ready_for_speech)"
@@ -200,8 +232,11 @@ audit_file() {
   owner_accepted="$(count_pattern "$diagnostic_file" "Owner voice accepted")"
   owner_rejected="$(count_pattern "$diagnostic_file" "Owner voice rejected")"
   owner_suppressed="$(count_pattern "$diagnostic_file" "Owner voice suppressed")"
+  profile_embeddings="$(max_profile_embeddings "$log_file" "$diagnostic_file")"
 
-  if [[ "$command_complete_count" -gt 0 ]]; then
+  if [[ -n "$profile_embeddings" && "$profile_embeddings" -gt 0 && "$profile_embeddings" -lt 2 ]]; then
+    status="FAIL_LEGACY_PROFILE"
+  elif [[ "$command_complete_count" -gt 0 ]]; then
     if [[ -n "$slow_lines" ]]; then
       status="FAIL_SLOW"
     else
@@ -220,6 +255,9 @@ audit_file() {
   echo "== $log_file =="
   printf '%s\n' "$report_output"
   echo "events: owner_authorized=${owner_authorized}, ready_for_speech=${ready_for_speech}, speech_begin=${speech_begin}, partial_results=${partial_results}, command_parsed=${command_parsed}, wake_only_partial=${wake_only_partial}, owner_audio_wake_only=${owner_audio_wake_only}, non_strict_wake_idle_suppressed=${non_strict_idle_suppressed}, fallback_to_local=${fallback_to_local}"
+  if [[ -n "$profile_embeddings" ]]; then
+    echo "profile_embeddings=${profile_embeddings}"
+  fi
   echo "owner_gate: accepted=${owner_accepted}, rejected=${owner_rejected}, suppressed=${owner_suppressed}"
   if [[ -f "$diagnostic_file" ]]; then
     echo "diagnostic=$diagnostic_file"
