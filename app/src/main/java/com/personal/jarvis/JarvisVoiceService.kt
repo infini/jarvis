@@ -64,6 +64,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var currentListeningAllowsCommandWithoutWake = false
     private var partialCommandHandled = false
     private var partialCommandKeepsWindowOpen = false
+    private var partialWakeHandled = false
     private var commandWindowOpenedByNonStrictOwnerGate = false
     private var commandFeedbackEnabled = false
     private var forceLocalCommandOnce = false
@@ -297,6 +298,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             androidListenAfterLocal = isAndroidFallbackAfterLocal
             partialCommandHandled = false
             partialCommandKeepsWindowOpen = false
+            partialWakeHandled = false
             speechStartedInCurrentListen = false
             recognizer?.startListening(intent)
             if (commandWindowOpen) {
@@ -327,6 +329,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             androidListenAfterLocal = false
             partialCommandHandled = false
             partialCommandKeepsWindowOpen = false
+            partialWakeHandled = false
             speechStartedInCurrentListen = false
             handler.removeCallbacks(listeningTimeout)
             Log.w(TAG, "Failed to start listening")
@@ -344,6 +347,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         androidListenAfterLocal = false
         partialCommandHandled = false
         partialCommandKeepsWindowOpen = false
+        partialWakeHandled = false
         speechStartedInCurrentListen = false
         ensureLatencyTrace("listen_cycle_start", "engine=local_asr mode=$mode")
             .mark("listen_start", "engine=local_asr mode=$mode timeoutMs=$LOCAL_COMMAND_TIMEOUT_MS")
@@ -625,6 +629,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         androidListenAfterLocal = false
         commandWindowOpenedByNonStrictOwnerGate = false
         commandFeedbackEnabled = false
+        partialWakeHandled = false
         commandWindowSpeechGraceUntil = 0L
         ownerVoiceGate.clearAuthorization()
         handler.removeCallbacks(commandWindowTimeout)
@@ -757,6 +762,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         )
         Log.w(TAG, "Speech error: $error")
         if (completePartialCommandRun("speech error $error")) return
+        if (completePartialWake("speech error $error")) return
 
         currentListeningAllowsCommandWithoutWake = false
         if (wasListeningForCommand && isCommandWindowExpired()) {
@@ -853,6 +859,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         Log.d(TAG, "Final speech results received")
         val wasListeningForCommand = currentListeningAllowsCommandWithoutWake
         if (completePartialCommandRun("final result")) return
+        if (completePartialWake("final result")) return
 
         val outcome = handleSpeech(results)
         currentListeningAllowsCommandWithoutWake = false
@@ -891,6 +898,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             markLatency("partial_results", "count=${results.size} first=${results.first()}")
         }
         if (results.isNotEmpty()) Log.d(TAG, "Partial speech results: $results")
+        if (runFastPartialWake(results)) return
         runFastPartialCommand(results)
     }
 
@@ -921,6 +929,35 @@ class JarvisVoiceService : Service(), RecognitionListener {
             return true
         }
         return false
+    }
+
+    private fun runFastPartialWake(results: List<String>): Boolean {
+        if (partialWakeHandled || partialCommandHandled || results.isEmpty()) return false
+        if (!currentListeningAllowsCommandWithoutWake && !isCommandWindowOpen()) return false
+        val wakeText = results.firstOrNull(CommandInterpreter::isWakeOnly) ?: return false
+
+        markLatency("wake_only_partial", "text=$wakeText")
+        Log.d(TAG, "Parsed fast partial wake phrase from '$wakeText'")
+        partialWakeHandled = true
+        commandWindowOpenedByNonStrictOwnerGate = false
+        commandFeedbackEnabled = true
+        openCommandWindow(OWNER_AUTH_WINDOW_MS)
+        signalCommandReady()
+        handler.removeCallbacks(listeningTimeout)
+        runCatching { recognizer?.cancel() }
+        return true
+    }
+
+    private fun completePartialWake(reason: String): Boolean {
+        if (!partialWakeHandled) return false
+
+        partialWakeHandled = false
+        currentListeningAllowsCommandWithoutWake = false
+        markLatency("partial_wake_complete", "reason=$reason")
+        Log.d(TAG, "Completing partial wake: $reason")
+        finishLatency("wake_only_complete", "source=partial reason=$reason")
+        scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
+        return true
     }
 
     private fun listeningTimeoutMs(): Long {

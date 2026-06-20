@@ -48,6 +48,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - owner gate 통과 직전 1.2초 음성 window를 즉시 local ASR에 넣어 `자비스 카메라 실행`처럼 같은 문장 안에 들어온 명령을 먼저 해석하도록 변경
 - live command는 Android System Intelligence(AiAi) STT가 먼저 듣고 partial 결과에서 빠른 명령을 즉시 실행한다. Android STT가 실제 발화를 감지한 뒤 실패했을 때만 local ASR fallback이 6초 동안 첫 명령 발화를 기다리고, 아무 말이 없거나 텍스트 없는 360ms 미만의 짧은 소리만 있으면 local 대기를 이어간다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패 피드백 없이 command window 안에서 다시 듣는다.
 - Android STT command window는 짧은 명령 구문에 맞춰 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 1000ms, possibly-complete silence 800ms, complete silence 1400ms를 사용한다. 빠른 실행은 final보다 partial command path로 우선 달성한다.
+- partial STT에서 `자비스` wake-only를 먼저 잡으면 final 결과를 기다리지 않고 `wake_only_partial` 경로로 다음 command listening을 시작한다.
 - 2026-06-21 실기기 trace에서 AiAi STT partial `카메라 실행해 줘`가 `open_camera`로 파싱되고 카메라 foreground 실행이 확인되었다. 해당 trace의 `speech_parse`는 648ms였다.
 - 사용자 준비음/진동은 owner authorization 직후가 아니라 Android STT `ready_for_speech` callback 시점에 낸다. owner authorization 직후에는 초록 command-ready 표시만 띄운다.
 - command listening timeout이 발화 진행 중인 Android STT를 먼저 취소하지 않도록, `speech_begin` 이후에는 active speech deadline grace가 command window 종료를 담당한다. active speech grace는 3.5초다.
@@ -313,6 +314,8 @@ scripts/jarvis-command-trace.sh 45
 - `ready_for_speech`: Android `SpeechRecognizer` 준비 완료 callback. 사용자 준비음/진동은 이 시점에 발생
 - `speech_begin` / `speech_end`: Android `SpeechRecognizer` 발화 시작/끝 callback
 - `partial_results`: partial STT 결과 수신
+- `wake_only_partial`: partial STT에서 wake-only 발화가 파싱되어 final 결과를 기다리지 않고 다음 command listening으로 전환
+- `partial_wake_complete`: partial wake 처리 완료
 - `final_results`: final STT 결과 수신
 - `command_parsed`: 명령 파싱 완료
 - `command_execute_start` / `command_execute_return`: `JarvisCommandExecutor` 실행 진입/반환
