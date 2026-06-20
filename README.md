@@ -12,7 +12,7 @@
 - `OwnerVoiceEngine`: sherpa-onnx와 3D-Speaker CAM++ 모델로 소유자 목소리 embedding을 만들고 검증합니다.
 - `OwnerVoiceStore`: 등록된 소유자 목소리 embedding을 앱 private storage에 저장합니다.
 - `OwnerVoiceEnrollmentController`: 앱 UI에서 실행되는 소유자 목소리 등록 workflow를 담당합니다.
-- `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 command window 안의 짧은 명령을 우선 인식합니다.
+- `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 owner gate 직전 음성 window와 Android STT 실패 fallback을 인식합니다.
 - `LocalCommandSession`: 로컬 명령 ASR 스레드 상태를 관리합니다.
 - `SpeechRecognitionIntentFactory`: Android `SpeechRecognizer` 실행 옵션을 한곳에서 생성합니다.
 - `JarvisCommandExecutor`: 내부 명령 실행, 중복 실행 방지, 카메라 세션 window 유지 정책을 담당합니다.
@@ -55,7 +55,7 @@
 
 소유자 목소리 확인을 통과한 직후에는 12초 동안 명령 대기 상태가 됩니다. 이때는 `자비스` 또는 `헤이 자비스`만 먼저 말한 뒤 이어서 `카메라 셀피 모드로 실행해`처럼 호출어 없이 명령만 말해도 됩니다. `자비스 카메라 실행`처럼 한 문장에 명령이 같이 들어간 경우에는 owner gate가 방금 들은 1.6초 음성 window를 즉시 로컬 ASR에 넣어 먼저 해석합니다. Jarvis가 깨어나면 짧은 확인음과 함께 알림 문구가 `소유자 확인됨. 명령을 말하세요.`로 바뀌고, 필요한 경우 바로 다음 명령 인식으로 넘어갑니다.
 
-카메라 관련 명령은 처리 후에도 30초 명령 대기 상태를 유지합니다. 예를 들어 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 이어서 말할 수 있습니다. 30초 안에 다음 명령이 없으면 Jarvis는 조용히 소유자 확인 대기로 돌아가며, 로컬 ASR이나 Android STT 재시도는 이 시간을 넘겨 명령 대기 상태를 연장하지 않습니다. 카메라 세션 안에서는 sherpa-onnx 한국어 streaming ASR을 먼저 사용해 짧은 명령을 바로 실행하고, 말이 끝난 뒤 짧은 무음이 감지되면 6초 live listen timeout 전에도 final decode로 넘어갑니다. 아무 말도 없거나 텍스트 없는 360ms 미만의 짧은 소리만 잡히면 Android STT fallback을 타지 않고 로컬 대기를 다시 이어가며, 충분한 말소리는 있었지만 명령을 못 잡은 경우에만 Android `SpeechRecognizer`를 fallback으로 사용합니다. Jarvis 자체 확인음이 마이크에 들어가 첫 명령을 망치지 않도록 소유자 확인 직후에는 260ms, 명령 처리 직후에는 120ms 뒤에 다음 명령 리스닝을 시작합니다. `종료`, `홈`, `뒤로`는 현재 앱만 제어하고 Jarvis 명령 대기 상태는 유지합니다. `멈춰`는 현재 명령 대기만 닫고 소유자 호출 대기로 돌아갑니다. Jarvis 서비스는 한 번 시작되면 재부팅 전까지 foreground service로 유지하는 것을 원칙으로 하며, 접근성 서비스가 켜져 있고 소유자 목소리와 마이크 권한이 준비되어 있으면 watchdog이 꺼진 음성 서비스를 다시 시작합니다.
+카메라 관련 명령은 처리 후에도 30초 명령 대기 상태를 유지합니다. 예를 들어 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 이어서 말할 수 있습니다. 30초 안에 다음 명령이 없으면 Jarvis는 조용히 소유자 확인 대기로 돌아가며, 로컬 ASR이나 Android STT 재시도는 이 시간을 넘겨 명령 대기 상태를 연장하지 않습니다. 카메라 세션 안에서는 owner gate 직전 1.6초 음성 window를 sherpa-onnx 한국어 streaming ASR로 먼저 해석하고, live command는 Android STT partial/final 결과를 우선 사용해 실행합니다. Android STT가 command window 안에서 실패하거나 사용할 수 없을 때는 local ASR fallback을 사용합니다. local ASR fallback은 `0.0035` RMS 이상의 말소리를 기준으로 잡고, 최소 청취 560ms 이후 240ms trailing silence가 감지되면 빠르게 final decode로 넘어갑니다. 입력 음량이 낮아 ASR 텍스트가 비는 문제를 줄이기 위해 원본 RMS가 `0.0025` 이상인 구간은 ASR 입력에서 목표 RMS `0.04`, 최대 `10x`까지 증폭합니다. Jarvis 자체 확인음이 마이크에 들어가 첫 명령을 망치지 않도록 소유자 확인 직후에는 260ms, 명령 처리 직후에는 120ms 뒤에 다음 명령 리스닝을 시작합니다. `종료`, `홈`, `뒤로`는 현재 앱만 제어하고 Jarvis 명령 대기 상태는 유지합니다. `멈춰`는 현재 명령 대기만 닫고 소유자 호출 대기로 돌아갑니다. Jarvis 서비스는 한 번 시작되면 재부팅 전까지 foreground service로 유지하는 것을 원칙으로 하며, 접근성 서비스가 켜져 있고 소유자 목소리와 마이크 권한이 준비되어 있으면 watchdog이 꺼진 음성 서비스를 다시 시작합니다.
 
 Jarvis 상태 overlay는 사용자가 바로 판단해야 하는 순간에만 표시됩니다. 화면에는 노치/상태바 아래의 작은 iPhone-style pill 형태로 `JARVIS`만 표시하고, 상태는 작은 컬러 점과 소리/진동 패턴으로 전달합니다. 초록 점은 명령 대기/인식 중, 빨간 점은 방금 명령 인식에 실패했다는 뜻입니다. idle/소유자 확인/호출어 대기 상태에서는 화면을 가리지 않도록 overlay를 숨깁니다. 명령 가능 상태에 들어갈 때는 확인음 2회와 짧은 진동이 함께 발생합니다.
 
@@ -67,7 +67,7 @@ Jarvis 상태 overlay는 사용자가 바로 판단해야 하는 순간에만 �
 adb logcat -v time -s JarvisLatency
 ```
 
-주요 이벤트는 `owner_audio_asr_start`, `owner_audio_asr_complete`, `listen_start`, `local_partial`, `local_complete`, `fallback_to_android`, `ready_for_speech`, `partial_results`, `final_results`, `command_parsed`, `command_execute_start`, `command_execute_return`, `accessibility_command_received`, `accessibility_command_dispatch_return`, `command_complete`입니다. 음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후 걸린 시간입니다. `owner_audio_asr_complete`는 owner gate 통과 직전 음성 window의 즉시 ASR 결과를 기록하고, `local_complete`는 live local ASR 종료 이유, local ASR 자체 elapsed, active speech, trailing silence를 함께 기록합니다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 명령을 보낸 뒤 접근성 서비스가 받은 지연입니다.
+주요 이벤트는 `owner_audio_asr_start`, `owner_audio_asr_complete`, `listen_start`, `local_partial`, `local_complete`, `fallback_to_android`, `ready_for_speech`, `partial_results`, `final_results`, `command_parsed`, `command_execute_start`, `command_execute_return`, `accessibility_command_received`, `accessibility_command_dispatch_return`, `command_complete`입니다. 음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후 걸린 시간입니다. `owner_audio_asr_complete`는 owner gate 통과 직전 음성 window의 즉시 ASR 결과를 기록하고, `local_complete`는 live local ASR 종료 이유, local ASR 자체 elapsed, active speech, trailing silence, peak/mean RMS, ASR gain을 함께 기록합니다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 명령을 보낸 뒤 접근성 서비스가 받은 지연입니다.
 
 trace별 요약은 다음 스크립트로 확인합니다.
 
@@ -81,7 +81,7 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-command-trace.sh 45
 ```
 
-출력의 `path`는 `owner_audio_asr`, `owner_audio_asr->local_asr`, `local_asr->android_stt` 같은 실제 인식 경로이고, `total`은 마지막 trace 이벤트까지의 누적 시간입니다. `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `local_endpoint`를 함께 보면 owner gate와 명령 ASR 중 어느 단계가 병목인지 분리할 수 있습니다. 정상적인 빠른 명령은 `command_parsed`, `command_execute_start`, `accessibility_command_received`, `command_complete`가 같은 trace 안에 이어져야 합니다. `jarvis-command-trace.sh`는 `status=command_complete`가 없거나 기본 기준 `parsed<=2500ms`, 접근성 실행이 있는 경우 `access<=4000ms`를 넘으면 실패로 종료합니다. 기준은 `JARVIS_MAX_PARSED_MS`, `JARVIS_MAX_ACCESS_MS` 환경 변수로 조정할 수 있습니다.
+출력의 `path`는 `owner_audio_asr`, `owner_audio_asr->local_asr`, `local_asr->android_stt` 같은 실제 인식 경로이고, `total`은 마지막 trace 이벤트까지의 누적 시간입니다. `owner_acceptance`, `owner_auth_speech`, `owner_endpoint`, `owner_elapsed`, `local_endpoint`, `peak_rms`, `mean_rms`, `asr_gain`을 함께 보면 owner gate와 명령 ASR 중 어느 단계가 병목인지 분리할 수 있습니다. 정상적인 빠른 명령은 `command_parsed`, `command_execute_start`, `accessibility_command_received`, `command_complete`가 같은 trace 안에 이어져야 합니다. `jarvis-command-trace.sh`는 `status=command_complete`가 없거나 기본 기준 `parsed<=2500ms`, 접근성 실행이 있는 경우 `access<=4000ms`를 넘으면 실패로 종료합니다. 기준은 `JARVIS_MAX_PARSED_MS`, `JARVIS_MAX_ACCESS_MS` 환경 변수로 조정할 수 있습니다.
 
 ## 폰에서 켜야 하는 것
 
@@ -123,6 +123,6 @@ scripts/jarvis-command-trace.sh 45
 
 `화면 켜`는 꺼진 디스플레이를 깨워 잠금화면을 보이게 하는 동작입니다. `화면 꺼`는 접근성 서비스의 잠금화면 전역 액션으로 기기를 잠그는 동작입니다. Android 보안 정책상 비밀번호, 지문, 얼굴인식 같은 잠금 해제는 자동으로 우회하지 않습니다.
 
-소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 마이크를 열어 둔 채 최근 1.6초 음성 window를 반복 검사하고, 통과한 짧은 시간 동안만 명령 인식 window를 엽니다. owner gate는 말소리 앞뒤의 무음을 줄여 embedding을 만들고, 기본 threshold `0.50`을 넘으면 즉시 통과합니다. 인증 중에는 일정한 배경음이 계속 말소리로 처리되지 않도록 배경음 floor 대비 피크가 충분한 구간만 embedding으로 계산합니다. 짧은 호출어를 보정하기 위해 active speech가 충분한 `0.28` 이상 근접 점수가 2회 연속 나오거나, 650ms 이상 말소리에서 `0.20` 이상 soft wake 점수가 1회 나오거나, 450ms 이상 말소리에서 `0.16` 이상 soft wake 점수가 2회 나오면 같은 소유자 발화로 보고 command window를 엽니다. soft wake 연속 판정은 짧은 `자비스` 발화의 점수 흔들림을 흡수하기 위해 중간에 `0.12` 이상 애매한 점수 1회까지 허용합니다. owner gate 통과 직전의 음성 window는 즉시 로컬 ASR로 재해석해 `자비스 카메라 실행`처럼 한 문장 안에 들어온 명령을 먼저 시도합니다. 이후 command window 안에서는 sherpa-onnx 한국어 streaming ASR을 먼저 사용하고, 로컬 ASR이 말소리는 들었지만 명령을 못 잡았을 때만 Android `SpeechRecognizer`를 fallback으로 사용합니다. 로컬 ASR은 짧은 명령 후 trailing silence를 감지하면 timeout 전에도 final decode를 실행합니다. 카메라 세션 command window는 서비스 레벨의 30초 deadline으로 닫히므로 fallback 재시도 때문에 무한히 유지되지 않습니다. 이 때문에 Jarvis 대기 중에는 Android의 초록색 마이크 표시가 켜져 있는 것이 정상입니다.
+소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 마이크를 열어 둔 채 최근 1.6초 음성 window를 반복 검사하고, 통과한 짧은 시간 동안만 명령 인식 window를 엽니다. owner gate는 말소리 앞뒤의 무음을 줄여 embedding을 만들고, 기본 threshold `0.50`을 넘으면 즉시 통과합니다. 인증 중에는 일정한 배경음이 계속 말소리로 처리되지 않도록 배경음 floor 대비 피크가 충분한 구간만 embedding으로 계산합니다. 짧은 호출어를 보정하기 위해 active speech가 충분한 `0.28` 이상 근접 점수가 2회 연속 나오거나, 650ms 이상 말소리에서 `0.20` 이상 soft wake 점수가 1회 나오거나, 450ms 이상 말소리에서 `0.16` 이상 soft wake 점수가 2회 나오면 같은 소유자 발화로 보고 command window를 엽니다. soft wake 연속 판정은 짧은 `자비스` 발화의 점수 흔들림을 흡수하기 위해 중간에 `0.12` 이상 애매한 점수 1회까지 허용합니다. owner gate 통과 직전의 음성 window는 즉시 로컬 ASR로 재해석해 `자비스 카메라 실행`처럼 한 문장 안에 들어온 명령을 먼저 시도합니다. 이후 live command window는 Android `SpeechRecognizer`를 먼저 사용하고, Android STT가 실패하거나 사용할 수 없을 때만 local ASR fallback을 사용합니다. 로컬 ASR fallback은 짧은 명령 후 trailing silence를 감지하면 timeout 전에도 final decode를 실행합니다. 카메라 세션 command window는 서비스 레벨의 30초 deadline으로 닫히므로 fallback 재시도 때문에 무한히 유지되지 않습니다. 이 때문에 Jarvis 대기 중에는 Android의 초록색 마이크 표시가 켜져 있는 것이 정상입니다.
 
 Android 14+ 정책상 `targetSdk=35` 앱은 재부팅 broadcast에서 microphone foreground service를 직접 시작할 수 없습니다. 대신 Jarvis는 재부팅 후 시작 알림을 띄우고, 사용자가 알림을 탭하면 마이크 서비스를 시작합니다. 소유자 목소리와 마이크 권한이 준비되어 있고 접근성 서비스가 연결되어 있으면 watchdog이 앱 업데이트나 서비스 종료 이후 음성 서비스를 다시 시작하려고 시도합니다. Android/HyperOS가 백그라운드 시작을 막는 경우에는 시작 알림을 탭하는 경로가 fallback입니다.

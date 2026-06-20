@@ -32,7 +32,7 @@ esac
 
 echo "Clearing Jarvis logcat and recording for ${DURATION_SECONDS}s."
 adb logcat -c
-echo "Speak the test cycle now: 자비스 카메라 실행, 후면, 전면, 찍어, 종료"
+echo "Speak now: say '자비스', wait for the green JARVIS indicator or ready tone, then say '카메라 실행', '후면', '전면', '찍어', '종료'."
 sleep "$DURATION_SECONDS"
 
 if [[ -z "$LOG_FILE" ]]; then

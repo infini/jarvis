@@ -18,10 +18,13 @@ object LocalCommandRecognizer {
     private const val TAG = "JarvisLocalCommand"
     private const val SAMPLE_RATE_HZ = 16000
     private const val READ_INTERVAL_MS = 40L
-    private const val LOCAL_SPEECH_RMS_THRESHOLD = 0.012f
+    private const val LOCAL_SPEECH_RMS_THRESHOLD = 0.0035f
     private const val LOCAL_MIN_ACTIVE_SPEECH_MS = 160L
-    private const val LOCAL_TRAILING_SILENCE_MS = 320L
-    private const val LOCAL_EARLY_ENDPOINT_MIN_LISTEN_MS = 720L
+    private const val LOCAL_TRAILING_SILENCE_MS = 240L
+    private const val LOCAL_EARLY_ENDPOINT_MIN_LISTEN_MS = 560L
+    private const val LOCAL_ASR_TARGET_RMS = 0.04f
+    private const val LOCAL_ASR_GAIN_MIN_RMS = 0.0025f
+    private const val LOCAL_ASR_MAX_GAIN = 10f
     private const val MODEL_DIR = "sherpa-korean-streaming"
     private const val ENCODER = "$MODEL_DIR/encoder-epoch-99-avg-1.int8.onnx"
     private const val DECODER = "$MODEL_DIR/decoder-epoch-99-avg-1.onnx"
@@ -41,6 +44,14 @@ object LocalCommandRecognizer {
         val endpoint: String = "",
         val activeSpeechMs: Long = 0L,
         val trailingSilenceMs: Long = 0L,
+        val peakRms: Float = 0f,
+        val meanRms: Float = 0f,
+        val asrGain: Float = 1f,
+    )
+
+    private data class AudioLevelStats(
+        val peakRms: Float,
+        val meanRms: Float,
     )
 
     fun isAvailable(context: Context): Boolean {
@@ -72,8 +83,11 @@ object LocalCommandRecognizer {
         val startedAt = SystemClock.elapsedRealtime()
         val localRecognizer = getRecognizer(context.applicationContext)
         val stream = localRecognizer.createStream()
+        val audioLevelStats = audioLevelStats(samples)
+        val asrGain = asrGainForRms(audioLevelStats.peakRms)
+        val asrSamples = applyAsrGain(samples, asrGain)
         return try {
-            stream.acceptWaveform(samples, SAMPLE_RATE_HZ)
+            stream.acceptWaveform(asrSamples, SAMPLE_RATE_HZ)
             stream.inputFinished()
             while (localRecognizer.isReady(stream)) {
                 localRecognizer.decode(stream)
@@ -88,6 +102,9 @@ object LocalCommandRecognizer {
                 elapsedMs = SystemClock.elapsedRealtime() - startedAt,
                 endpoint = endpoint,
                 activeSpeechMs = samples.size * 1000L / SAMPLE_RATE_HZ,
+                peakRms = audioLevelStats.peakRms,
+                meanRms = audioLevelStats.meanRms,
+                asrGain = asrGain,
             )
         } finally {
             stream.release()
@@ -117,6 +134,10 @@ object LocalCommandRecognizer {
         var lastSpeechAtMs = 0L
         var endpoint = "timeout"
         var finalTrailingSilenceMs = 0L
+        var peakRms = 0f
+        var rmsSum = 0.0
+        var rmsFrameCount = 0
+        var maxAsrGain = 1f
 
         try {
             recorder.startRecording()
@@ -124,15 +145,21 @@ object LocalCommandRecognizer {
                 val read = recorder.read(buffer, 0, buffer.size)
                 if (read <= 0) continue
                 val now = SystemClock.elapsedRealtime()
+                val rms = frameRms(buffer, read)
+                peakRms = maxOf(peakRms, rms)
+                rmsSum += rms
+                rmsFrameCount += 1
 
-                if (frameRms(buffer, read) >= LOCAL_SPEECH_RMS_THRESHOLD) {
+                if (rms >= LOCAL_SPEECH_RMS_THRESHOLD) {
                     speechSeen = true
                     activeSpeechMs += READ_INTERVAL_MS
                     lastSpeechAtMs = now
                 }
 
                 val samples = FloatArray(read) { index -> buffer[index] / 32768.0f }
-                stream.acceptWaveform(samples, SAMPLE_RATE_HZ)
+                val asrGain = asrGainForRms(rms)
+                maxAsrGain = maxOf(maxAsrGain, asrGain)
+                stream.acceptWaveform(applyAsrGain(samples, asrGain), SAMPLE_RATE_HZ)
                 while (localRecognizer.isReady(stream)) {
                     localRecognizer.decode(stream)
                 }
@@ -152,6 +179,9 @@ object LocalCommandRecognizer {
                         endpoint = "partial_command",
                         activeSpeechMs = activeSpeechMs,
                         trailingSilenceMs = trailingSilenceMs(lastSpeechAtMs),
+                        peakRms = peakRms,
+                        meanRms = meanRms(rmsSum, rmsFrameCount),
+                        asrGain = maxAsrGain,
                     )
                 }
 
@@ -201,6 +231,9 @@ object LocalCommandRecognizer {
                 endpoint = finalEndpoint,
                 activeSpeechMs = activeSpeechMs,
                 trailingSilenceMs = trailing,
+                peakRms = peakRms,
+                meanRms = meanRms(rmsSum, rmsFrameCount),
+                asrGain = maxAsrGain,
             )
         } finally {
             runCatching { recorder.stop() }
@@ -223,6 +256,58 @@ object LocalCommandRecognizer {
             sumSquares += sample * sample
         }
         return sqrt(sumSquares / read).toFloat()
+    }
+
+    private fun audioLevelStats(samples: FloatArray): AudioLevelStats {
+        val frameSamples = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
+        if (samples.isEmpty() || frameSamples <= 0) return AudioLevelStats(0f, 0f)
+
+        var start = 0
+        var peakRms = 0f
+        var rmsSum = 0.0
+        var frameCount = 0
+        while (start < samples.size) {
+            val end = minOf(start + frameSamples, samples.size)
+            val rms = frameRms(samples, start, end)
+            peakRms = maxOf(peakRms, rms)
+            rmsSum += rms
+            frameCount += 1
+            start += frameSamples
+        }
+
+        return AudioLevelStats(
+            peakRms = peakRms,
+            meanRms = meanRms(rmsSum, frameCount),
+        )
+    }
+
+    private fun frameRms(samples: FloatArray, start: Int, end: Int): Float {
+        if (end <= start) return 0f
+
+        var sumSquares = 0.0
+        for (index in start until end) {
+            val sample = samples[index].toDouble()
+            sumSquares += sample * sample
+        }
+        return sqrt(sumSquares / (end - start)).toFloat()
+    }
+
+    private fun meanRms(rmsSum: Double, frameCount: Int): Float {
+        return if (frameCount > 0) (rmsSum / frameCount).toFloat() else 0f
+    }
+
+    private fun asrGainForRms(rms: Float): Float {
+        if (rms < LOCAL_ASR_GAIN_MIN_RMS) return 1f
+
+        return (LOCAL_ASR_TARGET_RMS / rms).coerceIn(1f, LOCAL_ASR_MAX_GAIN)
+    }
+
+    private fun applyAsrGain(samples: FloatArray, gain: Float): FloatArray {
+        if (gain <= 1f) return samples
+
+        return FloatArray(samples.size) { index ->
+            (samples[index] * gain).coerceIn(-1f, 1f)
+        }
     }
 
     private fun trailingSilenceMs(

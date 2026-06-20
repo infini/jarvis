@@ -77,7 +77,9 @@ function printTrace(id) {
     printf "  owner_acceptance=%s owner_auth_speech=%sms\n", ownerAcceptance[id], ownerAuthSpeech[id]
   }
   if (ownerEndpoint[id] != "") {
-    printf "  owner_endpoint=%s owner_elapsed=%sms speech=%sms samples=%sms\n", ownerEndpoint[id], ownerElapsed[id], ownerSpeech[id], ownerSamples[id]
+    printf "  owner_endpoint=%s owner_elapsed=%sms speech=%sms samples=%sms", ownerEndpoint[id], ownerElapsed[id], ownerSpeech[id], ownerSamples[id]
+    if (ownerPeakRms[id] != "") printf " peak_rms=%s mean_rms=%s asr_gain=%s", ownerPeakRms[id], ownerMeanRms[id], ownerAsrGain[id]
+    printf "\n"
   }
   if (ownerText[id] != "") {
     printf("  owner_text=%s\n", ownerText[id])
@@ -86,7 +88,9 @@ function printTrace(id) {
     printf("  local_text=%s\n", localText[id])
   }
   if (localEndpoint[id] != "") {
-    printf "  local_endpoint=%s local_elapsed=%sms speech=%sms silence=%sms\n", localEndpoint[id], localElapsed[id], localSpeech[id], localSilence[id]
+    printf "  local_endpoint=%s local_elapsed=%sms speech=%sms silence=%sms", localEndpoint[id], localElapsed[id], localSpeech[id], localSilence[id]
+    if (localPeakRms[id] != "") printf " peak_rms=%s mean_rms=%s asr_gain=%s", localPeakRms[id], localMeanRms[id], localAsrGain[id]
+    printf "\n"
   }
   if (androidText[id] != "") {
     printf("  android_text=%s\n", androidText[id])
@@ -128,6 +132,9 @@ function printTrace(id) {
     ownerEndpoint[trace] = value($0, "endpoint")
     ownerElapsed[trace] = value($0, "elapsedMs")
     ownerSpeech[trace] = value($0, "speechMs")
+    ownerPeakRms[trace] = value($0, "peakRms")
+    ownerMeanRms[trace] = value($0, "meanRms")
+    ownerAsrGain[trace] = value($0, "asrGain")
     text = tailValue($0, "text")
     if (text != "") ownerText[trace] = text
   }
@@ -137,6 +144,9 @@ function printTrace(id) {
     localElapsed[trace] = value($0, "elapsedMs")
     localSpeech[trace] = value($0, "speechMs")
     localSilence[trace] = value($0, "silenceMs")
+    localPeakRms[trace] = value($0, "peakRms")
+    localMeanRms[trace] = value($0, "meanRms")
+    localAsrGain[trace] = value($0, "asrGain")
     text = tailValue($0, "text")
     if (text != "") localText[trace] = text
   }

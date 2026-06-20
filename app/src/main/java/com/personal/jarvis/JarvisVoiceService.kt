@@ -253,10 +253,6 @@ class JarvisVoiceService : Service(), RecognitionListener {
             startLocalCommandListening("fallback_after_android")
             return
         }
-        if (commandWindowOpen && !forceAndroidCommandOnce && localCommandSession.canStart()) {
-            startLocalCommandListening("primary")
-            return
-        }
         if (recognizer == null) {
             if (commandWindowOpen && localCommandSession.canStart()) {
                 ensureLatencyTrace("listen_cycle_start", "engine=local_asr recognizer=null")
@@ -356,6 +352,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 "local_complete",
                 "endpoint=${result.endpoint} elapsedMs=${result.elapsedMs} " +
                     "speechMs=${result.activeSpeechMs} silenceMs=${result.trailingSilenceMs} " +
+                    "peakRms=${result.peakRms} meanRms=${result.meanRms} " +
+                    "asrGain=${result.asrGain} " +
                     "text=${result.text}",
             )
         }
@@ -471,7 +469,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
             markLatency(
                 "owner_audio_asr_complete",
                 "endpoint=${result.endpoint} elapsedMs=${result.elapsedMs} " +
-                    "speechMs=${result.activeSpeechMs} text=${result.text}",
+                    "speechMs=${result.activeSpeechMs} peakRms=${result.peakRms} " +
+                    "meanRms=${result.meanRms} asrGain=${result.asrGain} text=${result.text}",
             )
         }
 
