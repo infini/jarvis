@@ -63,6 +63,9 @@ function printTrace(id) {
   if (localText[id] != "") {
     printf("  local_text=%s\n", localText[id])
   }
+  if (localEndpoint[id] != "") {
+    printf "  local_endpoint=%s local_elapsed=%sms speech=%sms silence=%sms\n", localEndpoint[id], localElapsed[id], localSpeech[id], localSilence[id]
+  }
   if (androidText[id] != "") {
     printf("  android_text=%s\n", androidText[id])
   }
@@ -92,6 +95,14 @@ function printTrace(id) {
   if (cmd != "") command[trace] = cmd
 
   if (event == "local_partial") localText[trace] = tailValue($0, "text")
+  if (event == "local_complete") {
+    localEndpoint[trace] = value($0, "endpoint")
+    localElapsed[trace] = value($0, "elapsedMs")
+    localSpeech[trace] = value($0, "speechMs")
+    localSilence[trace] = value($0, "silenceMs")
+    text = tailValue($0, "text")
+    if (text != "") localText[trace] = text
+  }
   if (event == "partial_results" || event == "final_results") androidText[trace] = $0
 
   if (event == "command_parsed" && totalRaw != "") parsed[trace] = millis(totalRaw)

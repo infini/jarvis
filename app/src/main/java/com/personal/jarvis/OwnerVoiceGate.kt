@@ -105,6 +105,8 @@ class OwnerVoiceGate(
         return when (match.acceptance) {
             OwnerVoiceEngine.Acceptance.STRICT -> "accepted"
             OwnerVoiceEngine.Acceptance.NEAR_CONSECUTIVE -> "accepted-near"
+            OwnerVoiceEngine.Acceptance.SOFT_WAKE_SINGLE -> "accepted-soft-wake-single"
+            OwnerVoiceEngine.Acceptance.SOFT_WAKE_CONSECUTIVE -> "accepted-soft-wake"
             OwnerVoiceEngine.Acceptance.REJECTED -> "rejected"
         }
     }

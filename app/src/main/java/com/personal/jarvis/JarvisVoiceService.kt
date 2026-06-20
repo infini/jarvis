@@ -30,7 +30,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     startLatencyTrace("owner_authorized", "windowMs=$OWNER_AUTH_WINDOW_MS")
                     openCommandWindow(OWNER_AUTH_WINDOW_MS)
                     signalCommandReady()
-                    scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+                    scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
                 }
             },
             onMissingProfile = {
@@ -342,6 +342,14 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         val result = outcome.result
         val command = result?.command
+        if (result != null) {
+            markLatency(
+                "local_complete",
+                "endpoint=${result.endpoint} elapsedMs=${result.elapsedMs} " +
+                    "speechMs=${result.activeSpeechMs} silenceMs=${result.trailingSilenceMs} " +
+                    "text=${result.text}",
+            )
+        }
         when {
             command != null -> {
                 markLatency("command_parsed", "source=local command=$command text=${result.text}")
@@ -390,7 +398,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         markLatency("fallback_to_android", "reason=$reason")
         forceAndroidCommandOnce = true
-        scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+        scheduleListening(FALLBACK_LISTEN_DELAY_MS)
         return true
     }
 
@@ -533,7 +541,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             notificationController.update("명령 처리됨. 다음 명령을 말하세요.")
             feedbackController.commandHandled()
             finishLatency("command_complete", "keepWindow=true nextWindowMs=$CAMERA_SESSION_AUTH_WINDOW_MS")
-            scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+            scheduleListening(COMMAND_CHAIN_LISTEN_DELAY_MS)
         } else {
             closeCommandWindow(playFeedback = true)
             finishLatency("command_complete", "keepWindow=false")
@@ -614,7 +622,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 }
             }
             forceLocalCommandOnce = true
-            scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+            scheduleListening(FALLBACK_LISTEN_DELAY_MS)
             return
         }
 
@@ -661,7 +669,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             completeCommandRun(keepCommandWindowOpen = true)
         } else if (outcome == SpeechOutcome.WAKE_ONLY) {
             finishLatency("wake_only_complete")
-            scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+            scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
         } else {
             if (wasListeningForCommand && isCommandWindowExpired()) {
                 closeCommandWindow(playFeedback = false)
@@ -747,7 +755,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_VERIFY_INTERVAL_MS = 180L
         private const val OWNER_VERIFY_RETRY_MS = 200L
         private const val DEFAULT_RETRY_DELAY_MS = 300L
-        private const val COMMAND_READY_LISTEN_DELAY_MS = 0L
+        private const val OWNER_READY_LISTEN_DELAY_MS = 260L
+        private const val COMMAND_CHAIN_LISTEN_DELAY_MS = 120L
+        private const val FALLBACK_LISTEN_DELAY_MS = 0L
         private const val COMMAND_RETRY_DELAY_MS = 25L
         private const val ACTIVE_SPEECH_DEADLINE_RECHECK_MS = 500L
         private const val ACTIVE_SPEECH_DEADLINE_GRACE_MS = 1800L

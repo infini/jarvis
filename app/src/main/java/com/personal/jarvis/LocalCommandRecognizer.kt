@@ -38,6 +38,9 @@ object LocalCommandRecognizer {
         val text: String,
         val elapsedMs: Long,
         val unavailable: Boolean = false,
+        val endpoint: String = "",
+        val activeSpeechMs: Long = 0L,
+        val trailingSilenceMs: Long = 0L,
     )
 
     fun isAvailable(context: Context): Boolean {
@@ -78,6 +81,8 @@ object LocalCommandRecognizer {
         var speechSeen = false
         var activeSpeechMs = 0L
         var lastSpeechAtMs = 0L
+        var endpoint = "timeout"
+        var finalTrailingSilenceMs = 0L
 
         try {
             recorder.startRecording()
@@ -106,17 +111,26 @@ object LocalCommandRecognizer {
                     onText(text)
                 }
                 if (command != null) {
-                    return Result(command, text, SystemClock.elapsedRealtime() - startedAt)
+                    return Result(
+                        command = command,
+                        text = text,
+                        elapsedMs = SystemClock.elapsedRealtime() - startedAt,
+                        endpoint = "partial_command",
+                        activeSpeechMs = activeSpeechMs,
+                        trailingSilenceMs = trailingSilenceMs(lastSpeechAtMs),
+                    )
                 }
 
                 val elapsedMs = now - startedAt
-                val trailingSilenceMs = if (lastSpeechAtMs > 0L) now - lastSpeechAtMs else 0L
+                val trailingSilenceMs = trailingSilenceMs(lastSpeechAtMs, now)
                 if (
                     speechSeen &&
                     activeSpeechMs >= LOCAL_MIN_ACTIVE_SPEECH_MS &&
                     elapsedMs >= LOCAL_EARLY_ENDPOINT_MIN_LISTEN_MS &&
                     trailingSilenceMs >= LOCAL_TRAILING_SILENCE_MS
                 ) {
+                    endpoint = "trailing_silence"
+                    finalTrailingSilenceMs = trailingSilenceMs
                     Log.d(
                         TAG,
                         "Local command endpoint: elapsed=${elapsedMs}ms, " +
@@ -136,7 +150,19 @@ object LocalCommandRecognizer {
                 Log.d(TAG, "Local command final text='$finalText' command=$finalCommand")
                 onText(finalText)
             }
-            return Result(finalCommand, finalText, SystemClock.elapsedRealtime() - startedAt)
+            val trailing = if (finalTrailingSilenceMs == 0L) {
+                trailingSilenceMs(lastSpeechAtMs)
+            } else {
+                finalTrailingSilenceMs
+            }
+            return Result(
+                command = finalCommand,
+                text = finalText,
+                elapsedMs = SystemClock.elapsedRealtime() - startedAt,
+                endpoint = endpoint,
+                activeSpeechMs = activeSpeechMs,
+                trailingSilenceMs = trailing,
+            )
         } finally {
             runCatching { recorder.stop() }
             recorder.release()
@@ -158,6 +184,13 @@ object LocalCommandRecognizer {
             sumSquares += sample * sample
         }
         return sqrt(sumSquares / read).toFloat()
+    }
+
+    private fun trailingSilenceMs(
+        lastSpeechAtMs: Long,
+        now: Long = SystemClock.elapsedRealtime(),
+    ): Long {
+        return if (lastSpeechAtMs > 0L) now - lastSpeechAtMs else 0L
     }
 
     private fun getRecognizer(context: Context): OnlineRecognizer {

@@ -28,6 +28,11 @@ object OwnerVoiceEngine {
     const val NEAR_ACCEPT_THRESHOLD = 0.28f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
     private const val NEAR_ACCEPT_MIN_SPEECH_MS = 600L
+    const val SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD = 0.20f
+    private const val SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS = 900L
+    const val SOFT_WAKE_ACCEPT_THRESHOLD = 0.16f
+    private const val SOFT_WAKE_ACCEPT_REQUIRED_COUNT = 2
+    private const val SOFT_WAKE_ACCEPT_MIN_SPEECH_MS = 450L
 
     private val initLock = Any()
     private val computeLock = Any()
@@ -37,6 +42,8 @@ object OwnerVoiceEngine {
         REJECTED,
         STRICT,
         NEAR_CONSECUTIVE,
+        SOFT_WAKE_SINGLE,
+        SOFT_WAKE_CONSECUTIVE,
     }
 
     data class Match(
@@ -58,6 +65,11 @@ object OwnerVoiceEngine {
         val start: Int,
         val end: Int,
         val activeSampleCount: Int,
+    )
+
+    internal data class ConsecutiveAcceptState(
+        val nearCount: Int = 0,
+        val softWakeCount: Int = 0,
     )
 
     fun createEmbedding(context: Context, samples: FloatArray): FloatArray? {
@@ -120,7 +132,7 @@ object OwnerVoiceEngine {
         val chunks = ArrayDeque<FloatArray>()
         var totalSamples = 0
         var lastVerificationAt = 0L
-        var nearAcceptCount = 0
+        var consecutiveAcceptState = ConsecutiveAcceptState()
 
         try {
             recorder.startRecording()
@@ -140,8 +152,8 @@ object OwnerVoiceEngine {
                 if (totalSamples >= maxWindowSamples && now - lastVerificationAt >= verificationIntervalMs) {
                     lastVerificationAt = now
                     val match = verifyOwner(context, flattenLastSamples(chunks, maxWindowSamples, totalSamples))
-                    val adjustedMatch = applyNearAcceptPolicy(match, nearAcceptCount)
-                    nearAcceptCount = adjustedMatch.second
+                    val adjustedMatch = applyConsecutiveAcceptPolicy(match, consecutiveAcceptState)
+                    consecutiveAcceptState = adjustedMatch.second
                     onMatch(adjustedMatch.first)
                     if (adjustedMatch.first.accepted) return adjustedMatch.first
                 }
@@ -154,22 +166,50 @@ object OwnerVoiceEngine {
         return null
     }
 
-    private fun applyNearAcceptPolicy(
+    internal fun applyConsecutiveAcceptPolicy(
         match: Match,
-        previousNearAcceptCount: Int,
-    ): Pair<Match, Int> {
-        if (match.accepted) return match to 0
-        if (match.score < NEAR_ACCEPT_THRESHOLD || match.activeSpeechMs < NEAR_ACCEPT_MIN_SPEECH_MS) {
-            return match to 0
+        previousState: ConsecutiveAcceptState,
+    ): Pair<Match, ConsecutiveAcceptState> {
+        if (match.accepted) return match to ConsecutiveAcceptState()
+
+        if (match.score >= NEAR_ACCEPT_THRESHOLD && match.activeSpeechMs >= NEAR_ACCEPT_MIN_SPEECH_MS) {
+            val nearAcceptCount = previousState.nearCount + 1
+            if (nearAcceptCount >= NEAR_ACCEPT_REQUIRED_COUNT) {
+                return match.copy(
+                    accepted = true,
+                    acceptance = Acceptance.NEAR_CONSECUTIVE,
+                ) to ConsecutiveAcceptState()
+            }
+
+            return match to ConsecutiveAcceptState(nearCount = nearAcceptCount)
         }
 
-        val nearAcceptCount = previousNearAcceptCount + 1
-        if (nearAcceptCount < NEAR_ACCEPT_REQUIRED_COUNT) return match to nearAcceptCount
+        if (
+            match.score >= SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD &&
+            match.activeSpeechMs >= SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS
+        ) {
+            return match.copy(
+                accepted = true,
+                acceptance = Acceptance.SOFT_WAKE_SINGLE,
+            ) to ConsecutiveAcceptState()
+        }
 
-        return match.copy(
-            accepted = true,
-            acceptance = Acceptance.NEAR_CONSECUTIVE,
-        ) to 0
+        if (
+            match.score >= SOFT_WAKE_ACCEPT_THRESHOLD &&
+            match.activeSpeechMs >= SOFT_WAKE_ACCEPT_MIN_SPEECH_MS
+        ) {
+            val softWakeCount = previousState.softWakeCount + 1
+            if (softWakeCount >= SOFT_WAKE_ACCEPT_REQUIRED_COUNT) {
+                return match.copy(
+                    accepted = true,
+                    acceptance = Acceptance.SOFT_WAKE_CONSECUTIVE,
+                ) to ConsecutiveAcceptState()
+            }
+
+            return match to ConsecutiveAcceptState(softWakeCount = softWakeCount)
+        }
+
+        return match to ConsecutiveAcceptState()
     }
 
     @SuppressLint("MissingPermission")
