@@ -18,6 +18,7 @@ object CommandBus {
     const val COMMAND_BACK = "back"
     const val COMMAND_HOME = "home"
     const val COMMAND_WAKE_SCREEN = "wake_screen"
+    const val COMMAND_SLEEP_SCREEN = "sleep_screen"
     const val COMMAND_STOP_LISTENING = "stop_listening"
 
     fun send(context: Context, command: String, source: String = "jarvis") {

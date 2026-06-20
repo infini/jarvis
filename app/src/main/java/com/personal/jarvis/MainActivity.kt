@@ -103,6 +103,7 @@ class MainActivity : Activity() {
         root.addView(button("테스트: 후면 카메라 열기") { CameraLauncher.openRear(this) })
         root.addView(button("테스트: 셔터 누르기") { CommandBus.send(this, CommandBus.COMMAND_TAKE_PHOTO) })
         root.addView(button("테스트: 화면 켜기") { ScreenController.wake(this) })
+        root.addView(button("테스트: 화면 끄기") { CommandBus.send(this, CommandBus.COMMAND_SLEEP_SCREEN) })
 
         val notes = TextView(this).apply {
             text = "접근성 서비스를 켠 뒤 Jarvis 시작을 누르세요.\n명령 예: 자비스, 카메라 셀피 모드로 실행해 / 자비스, 찍어 / 자비스, 필터"

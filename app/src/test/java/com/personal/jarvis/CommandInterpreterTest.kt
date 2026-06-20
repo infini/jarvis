@@ -19,6 +19,9 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("자비스, 화면 켜"))
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("자비스, 디스플레이 켜줘"))
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("자비스, 폰 깨워"))
+        assertEquals(CommandBus.COMMAND_SLEEP_SCREEN, CommandInterpreter.parse("자비스, 화면 꺼"))
+        assertEquals(CommandBus.COMMAND_SLEEP_SCREEN, CommandInterpreter.parse("자비스, 디스플레이 꺼줘"))
+        assertEquals(CommandBus.COMMAND_SLEEP_SCREEN, CommandInterpreter.parse("자비스, 폰 잠가"))
     }
 
     @Test
@@ -26,5 +29,6 @@ class CommandInterpreterTest {
         assertNull(CommandInterpreter.parse("찍어"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("찍어", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_WAKE_SCREEN, CommandInterpreter.parse("화면 켜", requireWakeWord = false))
+        assertEquals(CommandBus.COMMAND_SLEEP_SCREEN, CommandInterpreter.parse("화면 꺼", requireWakeWord = false))
     }
 }

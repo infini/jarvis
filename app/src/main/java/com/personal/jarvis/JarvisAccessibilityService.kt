@@ -66,6 +66,7 @@ class JarvisAccessibilityService : AccessibilityService() {
             CommandBus.COMMAND_BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
             CommandBus.COMMAND_HOME -> performGlobalAction(GLOBAL_ACTION_HOME)
             CommandBus.COMMAND_WAKE_SCREEN -> ScreenController.wake(this)
+            CommandBus.COMMAND_SLEEP_SCREEN -> ScreenController.sleep(this)
         }
     }
 
