@@ -144,29 +144,30 @@ class JarvisVoiceService : Service(), RecognitionListener {
         verifyingOwner = true
         ownerVerificationThread = Thread({
             try {
-                val samples = OwnerVoiceEngine.recordSamples(
-                    durationMs = OWNER_VERIFY_AUDIO_MS,
+                val match = OwnerVoiceEngine.waitForOwnerMatch(
+                    context = applicationContext,
+                    windowMs = OWNER_VERIFY_AUDIO_MS,
+                    verificationIntervalMs = OWNER_VERIFY_INTERVAL_MS,
                     shouldContinue = {
                         verifyingOwner && !Thread.currentThread().isInterrupted
+                    },
+                    onMatch = { match ->
+                        Log.d(
+                            TAG,
+                            "Owner voice ${if (match.accepted) "accepted" else "rejected"}: ${match.score}",
+                        )
                     },
                 )
                 if (!verifyingOwner || Thread.currentThread().isInterrupted) return@Thread
 
-                val match = OwnerVoiceEngine.verifyOwner(applicationContext, samples)
                 handler.post {
-                    if (destroyed || !verifyingOwner) return@post
+                    if (destroyed || !verifyingOwner || match?.accepted != true) return@post
 
                     verifyingOwner = false
                     ownerVerificationThread = null
-                    if (match.accepted) {
-                        Log.d(TAG, "Owner voice accepted: ${match.score}")
-                        ownerAuthorizedUntil = System.currentTimeMillis() + OWNER_AUTH_WINDOW_MS
-                        signalCommandReady()
-                        scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
-                    } else {
-                        Log.d(TAG, "Owner voice rejected: ${match.score}")
-                        scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
-                    }
+                    ownerAuthorizedUntil = System.currentTimeMillis() + OWNER_AUTH_WINDOW_MS
+                    signalCommandReady()
+                    scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
                 }
             } catch (e: Exception) {
                 handler.post {
@@ -376,6 +377,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val LISTENING_TIMEOUT_MS = 7000L
         private const val OWNER_AUTH_WINDOW_MS = 12000L
         private const val OWNER_VERIFY_AUDIO_MS = 2500L
+        private const val OWNER_VERIFY_INTERVAL_MS = 500L
         private const val OWNER_VERIFY_RETRY_MS = 700L
         private const val COMMAND_READY_LISTEN_DELAY_MS = 25L
         private const val COMMAND_RETRY_DELAY_MS = 75L

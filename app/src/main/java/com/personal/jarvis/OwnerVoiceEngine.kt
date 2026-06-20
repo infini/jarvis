@@ -7,6 +7,7 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
+import java.util.ArrayDeque
 import kotlin.math.min
 import kotlin.math.sqrt
 
@@ -56,26 +57,59 @@ object OwnerVoiceEngine {
     }
 
     @SuppressLint("MissingPermission")
+    fun waitForOwnerMatch(
+        context: Context,
+        windowMs: Long,
+        verificationIntervalMs: Long,
+        shouldContinue: () -> Boolean,
+        onMatch: (Match) -> Unit = {},
+    ): Match? {
+        val recorder = createRecorder()
+        val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
+        val buffer = ShortArray(readSize)
+        val maxWindowSamples = (SAMPLE_RATE_HZ * windowMs / 1000L).toInt()
+        val chunks = ArrayDeque<FloatArray>()
+        var totalSamples = 0
+        var lastVerificationAt = 0L
+
+        try {
+            recorder.startRecording()
+            while (shouldContinue()) {
+                val read = recorder.read(buffer, 0, buffer.size)
+                if (read <= 0) continue
+
+                val samples = FloatArray(read) { index -> buffer[index] / 32768.0f }
+                chunks.addLast(samples)
+                totalSamples += read
+
+                while (chunks.isNotEmpty() && totalSamples - chunks.first.size >= maxWindowSamples) {
+                    totalSamples -= chunks.removeFirst().size
+                }
+
+                val now = System.currentTimeMillis()
+                if (totalSamples >= maxWindowSamples && now - lastVerificationAt >= verificationIntervalMs) {
+                    lastVerificationAt = now
+                    val match = verifyOwner(context, flattenLastSamples(chunks, maxWindowSamples, totalSamples))
+                    onMatch(match)
+                    if (match.accepted) return match
+                }
+            }
+        } finally {
+            runCatching { recorder.stop() }
+            recorder.release()
+        }
+
+        return null
+    }
+
+    @SuppressLint("MissingPermission")
     fun recordSamples(
         durationMs: Long,
         shouldContinue: () -> Boolean = { true },
         onProgress: (Float) -> Unit = {},
     ): FloatArray {
-        val channelConfig = AudioFormat.CHANNEL_IN_MONO
-        val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-        val minBufferBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE_HZ, channelConfig, audioFormat)
-        require(minBufferBytes > 0) { "AudioRecord buffer size is not available: $minBufferBytes" }
-
+        val recorder = createRecorder()
         val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
-        val recorder = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            SAMPLE_RATE_HZ,
-            channelConfig,
-            audioFormat,
-            maxOf(minBufferBytes, readSize * Short.SIZE_BYTES * 2),
-        )
-        require(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord was not initialized" }
-
         val chunks = ArrayList<FloatArray>()
         var totalSamples = 0
         val buffer = ShortArray(readSize)
@@ -106,6 +140,54 @@ object OwnerVoiceEngine {
         chunks.forEach { chunk ->
             chunk.copyInto(result, destinationOffset = offset)
             offset += chunk.size
+        }
+        return result
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun createRecorder(): AudioRecord {
+        val channelConfig = AudioFormat.CHANNEL_IN_MONO
+        val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+        val minBufferBytes = AudioRecord.getMinBufferSize(SAMPLE_RATE_HZ, channelConfig, audioFormat)
+        require(minBufferBytes > 0) { "AudioRecord buffer size is not available: $minBufferBytes" }
+
+        val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
+        val recorder = AudioRecord(
+            MediaRecorder.AudioSource.MIC,
+            SAMPLE_RATE_HZ,
+            channelConfig,
+            audioFormat,
+            maxOf(minBufferBytes, readSize * Short.SIZE_BYTES * 2),
+        )
+        require(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord was not initialized" }
+        return recorder
+    }
+
+    private fun flattenLastSamples(
+        chunks: ArrayDeque<FloatArray>,
+        sampleCount: Int,
+        totalSamples: Int,
+    ): FloatArray {
+        val result = FloatArray(sampleCount)
+        var samplesToSkip = totalSamples - sampleCount
+        var offset = 0
+        chunks.forEach { chunk ->
+            if (samplesToSkip >= chunk.size) {
+                samplesToSkip -= chunk.size
+                return@forEach
+            }
+
+            val startIndex = samplesToSkip.coerceAtLeast(0)
+            val copyCount = min(chunk.size - startIndex, sampleCount - offset)
+            chunk.copyInto(
+                destination = result,
+                destinationOffset = offset,
+                startIndex = startIndex,
+                endIndex = startIndex + copyCount,
+            )
+            offset += copyCount
+            samplesToSkip = 0
+            if (offset >= sampleCount) return@forEach
         }
         return result
     }

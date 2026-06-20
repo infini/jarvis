@@ -25,6 +25,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 2026-06-20 21:26 KST 기준 약 15분 유지 테스트에서 프로세스, foreground notification, 접근성 바인딩, owner voice verification loop 유지 확인
 - `헤이 자비스` wake-only 발화 후 확인음/명령 대기 알림을 제공하고, 인증 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
 - wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 25ms로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
+- owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 2.5초 window를 500ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임을 줄임
 
 다음 우선순위:
 
@@ -190,16 +191,18 @@ JarvisAccessibilityService
 1. 사용자가 `내 목소리 등록 시작`을 누르고 조용한 환경에서 6초 동안 말한다.
 2. `OwnerVoiceEngine`이 16kHz mono PCM을 녹음하고 sherpa-onnx로 speaker embedding을 계산한다.
 3. 계산된 embedding을 `OwnerVoiceStore`에 저장한다.
-4. 이후 `JarvisVoiceService`는 owner embedding이 있으면 먼저 2.5초 발화를 녹음해 candidate embedding을 계산한다.
-5. 저장된 embedding과 candidate embedding의 cosine similarity가 threshold 이상이면 12초 인증 window를 열고 `SpeechRecognizer` 명령 인식을 시작한다.
-6. window 안에서 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
-7. window 안에서는 호출어 없는 명령도 허용하며, STT의 command-mode silence timeout을 더 짧게 사용한다.
-8. 명령 처리 후 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
+4. 이후 `JarvisVoiceService`는 owner embedding이 있으면 owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
+5. 최근 2.5초 rolling audio window에서 candidate embedding을 만들고 500ms마다 저장된 embedding과 cosine similarity를 비교한다.
+6. similarity가 threshold 이상이면 `AudioRecord`를 닫고 12초 인증 window를 열어 `SpeechRecognizer` 명령 인식을 시작한다.
+7. window 안에서 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
+8. window 안에서는 호출어 없는 명령도 허용하며, STT의 command-mode silence timeout을 더 짧게 사용한다.
+9. 명령 처리 후 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
 
 제약:
 
 - Android `SpeechRecognizer`는 텍스트 결과만 안정적으로 제공하고 원음 PCM을 제공하지 않는다.
 - 따라서 현재 버전은 “한 문장을 동시에 speaker verification + STT 처리”하지 않고, 소유자 확인 후 짧은 명령 window를 여는 2단계 구조다.
+- owner gate 대기 중에는 Android 상태바의 마이크 개인정보 표시가 켜져 있는 것이 정상이다. Android 정책상 앱이 이 표시를 숨길 수 없다.
 - 빅스비처럼 자연스러운 단일 발화 UX를 만들려면 wake word, speaker verification, command recognition을 하나의 raw audio pipeline으로 재구성해야 한다.
 - 현재 모델과 native library는 앱에 포함되며, 등록/검증 자체는 온디바이스에서 실행된다.
 
@@ -312,6 +315,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - owner embedding이 저장된 상태에서 Jarvis 시작 시 먼저 owner voice verification이 시작된다.
 - 등록된 사용자 목소리 similarity가 threshold 이상이면 명령 인식 window가 열린다.
 - 다른 사람 목소리는 threshold 미만으로 유지되어 명령 인식 window가 열리지 않아야 한다.
+- owner gate 대기 중 Android 마이크 표시가 깜빡이는 대신 켜진 상태로 유지된다.
 
 ### Boot/Always-On Test
 
@@ -325,6 +329,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - Xiaomi 카메라 앱 업데이트로 UI 키워드나 좌표가 바뀔 수 있다.
 - SpeechRecognizer가 네트워크/Google 앱 상태에 영향을 받을 수 있다.
 - 마이크 포그라운드 서비스는 배터리 최적화나 OS 정책에 의해 중단될 수 있다.
+- owner gate에서 마이크를 계속 열어 두면 privacy indicator는 안정적이지만 배터리 사용량이 늘 수 있다.
 - Android 14+는 부팅 receiver에서 microphone foreground service 시작을 제한한다. 현재 구현은 알림 탭을 통한 시작으로 우회가 아니라 정책 준수 경로를 사용한다.
 - HyperOS는 추가 자동 시작/배터리 제한이 있어 사용자가 앱별 설정을 직접 조정해야 할 수 있다.
 - speaker verification threshold `0.50`은 시작값이다. Xiaomi 15 Ultra 실측에서 본인/타인 점수 분포를 보고 조정해야 한다.
