@@ -193,6 +193,28 @@ AccessibilityNodeMatcher 또는 좌표 fallback 탭
 | `AndroidManifest.xml` | 권한, 서비스, 접근성 메타데이터 선언 |
 | `res/xml/jarvis_accessibility_service.xml` | 접근성 서비스 설정 |
 
+### App Automation Controller Architecture
+
+Jarvis가 카메라 외의 앱을 제어하게 되면 앱별 자동화 로직은 별도 controller 파일로 분리한다. `JarvisAccessibilityService`는 접근성 서비스 생명주기와 내부 명령 dispatch만 담당하고, 실제 화면 탐색/버튼 탭/fallback 좌표는 앱별 controller가 담당한다.
+
+예상 확장 구조:
+
+```text
+JarvisAccessibilityService
+  ├─ CameraAccessibilityController
+  ├─ GalleryAccessibilityController
+  ├─ SettingsAccessibilityController
+  └─ PhoneAccessibilityController
+```
+
+설계 원칙:
+
+- 앱별 세부 자동화 로직은 `...AccessibilityController` 파일에 둔다.
+- 여러 앱에서 공통으로 쓰는 접근성 노드 검색, 스코어링, 제스처 helper는 `AccessibilityNodeMatcher` 같은 공통 helper로 분리한다.
+- `JarvisAccessibilityService`에는 command routing 이상의 로직을 누적하지 않는다.
+- 두 번째 또는 세 번째 앱 controller가 추가되어 라우팅 패턴이 반복되면 `AccessibilityCommandController` interface와 controller registry 도입을 검토한다.
+- 새 앱 제어를 추가할 때는 `CommandBus`, `CommandInterpreter`, `JarvisCommandExecutor`, 앱별 controller, README, 이 문서를 함께 갱신한다.
+
 ## 8. Command Model
 
 내부 명령은 문자열 상수로 관리한다.
@@ -451,3 +473,4 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 5. 실기기 테스트 결과로 좌표나 키워드를 바꾸면 Accessibility Automation Strategy에 기록한다.
 6. 새 기능이 사용자에게 보이면 README도 갱신한다.
 7. 새 앱 자동화를 추가할 때는 `JarvisAccessibilityService`에 로직을 직접 누적하지 말고 앱별 controller와 필요한 matcher/helper로 분리한다.
+8. 문서 수정이 완료되면 변경 내용을 커밋하고 원격 저장소에 푸시한다.
