@@ -12,30 +12,19 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import ai.picovoice.android.voiceprocessor.VoiceProcessor
-import ai.picovoice.android.voiceprocessor.VoiceProcessorException
-import ai.picovoice.eagle.EagleActivationException
-import ai.picovoice.eagle.EagleActivationLimitException
-import ai.picovoice.eagle.EagleActivationRefusedException
-import ai.picovoice.eagle.EagleActivationThrottledException
-import ai.picovoice.eagle.EagleException
-import ai.picovoice.eagle.EagleProfiler
 
 class MainActivity : Activity() {
     private lateinit var statusView: TextView
     private lateinit var ownerVoiceStatusView: TextView
-    private lateinit var accessKeyInput: EditText
     private lateinit var enrollProgress: ProgressBar
     private lateinit var enrollButton: Button
-    private val voiceProcessor = VoiceProcessor.getInstance()
-    private var eagleProfiler: EagleProfiler? = null
-    private var enrolling = false
+    @Volatile private var enrolling = false
+    private var enrollmentThread: Thread? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,6 +34,11 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         updateStatus()
+    }
+
+    override fun onDestroy() {
+        stopOwnerEnrollment()
+        super.onDestroy()
     }
 
     private fun buildContentView(): ScrollView {
@@ -87,16 +81,6 @@ class MainActivity : Activity() {
         }
         root.addView(ownerVoiceStatusView, matchWrap(bottomMargin = dp(18)))
 
-        accessKeyInput = EditText(this).apply {
-            hint = "Picovoice AccessKey"
-            textSize = 15f
-            setSingleLine(true)
-            setText(OwnerVoiceStore.getAccessKey(this@MainActivity))
-        }
-        root.addView(accessKeyInput, matchWrap())
-
-        root.addView(button("Picovoice AccessKey 저장") { saveAccessKey() })
-
         enrollProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progress = 0
@@ -134,12 +118,6 @@ class MainActivity : Activity() {
         requestPermissions(permissions.toTypedArray(), REQUEST_PERMISSIONS)
     }
 
-    private fun saveAccessKey() {
-        OwnerVoiceStore.saveAccessKey(this, accessKeyInput.text.toString())
-        updateStatus()
-        Toast.makeText(this, "AccessKey 저장됨", Toast.LENGTH_SHORT).show()
-    }
-
     private fun toggleOwnerEnrollment() {
         if (enrolling) {
             stopOwnerEnrollment("목소리 등록을 중지했습니다.")
@@ -151,73 +129,59 @@ class MainActivity : Activity() {
             return
         }
 
-        val accessKey = accessKeyInput.text.toString().trim()
-        if (accessKey.isBlank()) {
-            Toast.makeText(this, "Picovoice AccessKey를 먼저 입력하세요.", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        OwnerVoiceStore.saveAccessKey(this, accessKey)
         stopService(Intent(this, JarvisVoiceService::class.java))
+        enrolling = true
+        enrollProgress.progress = 0
+        enrollButton.text = "내 목소리 등록 중지"
+        ownerVoiceStatusView.text = "목소리 등록 중: 조용한 곳에서 6초 동안 자연스럽게 말하세요."
 
-        try {
-            val profiler = EagleProfiler.Builder()
-                .setAccessKey(accessKey)
-                .build(applicationContext)
-            eagleProfiler = profiler
-            enrollProgress.progress = 0
-            enrolling = true
-            enrollButton.text = "내 목소리 등록 중지"
-            ownerVoiceStatusView.text = "목소리 등록 중: 조용한 곳에서 자연스럽게 여러 문장을 말하세요."
-            voiceProcessor.addFrameListener(::enrollOwnerFrame)
-            voiceProcessor.start(profiler.frameLength, profiler.sampleRate)
-        } catch (e: EagleException) {
-            handleOwnerVoiceError(e)
-            stopOwnerEnrollment()
-        } catch (e: VoiceProcessorException) {
-            showOwnerVoiceError("마이크 녹음을 시작하지 못했습니다: ${e.message}")
-            stopOwnerEnrollment()
-        }
-    }
+        enrollmentThread = Thread({
+            try {
+                val samples = OwnerVoiceEngine.recordSamples(
+                    durationMs = ENROLLMENT_DURATION_MS,
+                    shouldContinue = { enrolling },
+                    onProgress = { progress ->
+                        runOnUiThread {
+                            if (enrolling) {
+                                val percent = (progress * 100f).toInt().coerceIn(0, 100)
+                                enrollProgress.progress = percent
+                                ownerVoiceStatusView.text = "목소리 등록 중: $percent%"
+                            }
+                        }
+                    },
+                )
 
-    private fun enrollOwnerFrame(frame: ShortArray) {
-        val profiler = eagleProfiler ?: return
-        try {
-            val percentage = profiler.enroll(frame)
-            runOnUiThread {
-                enrollProgress.progress = percentage.toInt().coerceIn(0, 100)
-                ownerVoiceStatusView.text = "목소리 등록 중: ${percentage.toInt().coerceIn(0, 100)}%"
-            }
+                if (!enrolling) return@Thread
 
-            if (percentage >= 100f) {
-                val profile = profiler.export()
-                OwnerVoiceStore.saveProfile(this, profile.bytes)
-                profile.delete()
+                runOnUiThread {
+                    ownerVoiceStatusView.text = "목소리 등록 중: 음성 특징을 계산하는 중입니다."
+                }
+
+                val embedding = OwnerVoiceEngine.createEmbedding(applicationContext, samples)
+                    ?: throw IllegalStateException("충분한 음성 특징을 만들지 못했습니다. 더 또렷하게 다시 등록하세요.")
+                OwnerVoiceStore.saveEmbedding(this, embedding)
+
                 runOnUiThread {
                     Toast.makeText(this, "내 목소리 등록 완료", Toast.LENGTH_SHORT).show()
                     stopOwnerEnrollment("내 목소리 등록 완료. 이제 Jarvis 명령은 등록된 목소리 확인 후 실행됩니다.")
                     updateStatus()
                 }
+            } catch (e: Exception) {
+                if (enrolling) {
+                    runOnUiThread {
+                        showOwnerVoiceError("목소리 등록 실패: ${e.message}")
+                        stopOwnerEnrollment()
+                    }
+                }
             }
-        } catch (e: EagleException) {
-            runOnUiThread {
-                handleOwnerVoiceError(e)
-                stopOwnerEnrollment()
-            }
-        }
+        }, "JarvisOwnerEnrollment").also { it.start() }
     }
 
     private fun stopOwnerEnrollment(message: String? = null) {
-        if (enrolling) {
-            runCatching {
-                voiceProcessor.stop()
-                voiceProcessor.clearFrameListeners()
-            }
-        }
-        eagleProfiler?.delete()
-        eagleProfiler = null
         enrolling = false
-        enrollButton.text = "내 목소리 등록 시작"
+        enrollmentThread?.interrupt()
+        enrollmentThread = null
+        if (::enrollButton.isInitialized) enrollButton.text = "내 목소리 등록 시작"
         message?.let { ownerVoiceStatusView.text = it }
     }
 
@@ -226,17 +190,6 @@ class MainActivity : Activity() {
         enrollProgress.progress = 0
         updateStatus()
         Toast.makeText(this, "내 목소리 등록 삭제됨", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun handleOwnerVoiceError(error: EagleException) {
-        val message = when (error) {
-            is EagleActivationException -> "AccessKey 활성화 오류입니다."
-            is EagleActivationLimitException -> "AccessKey 기기 한도에 도달했습니다."
-            is EagleActivationRefusedException -> "AccessKey가 거부되었습니다."
-            is EagleActivationThrottledException -> "AccessKey가 일시 제한되었습니다."
-            else -> "목소리 엔진 오류: ${error.message}"
-        }
-        showOwnerVoiceError(message)
     }
 
     private fun showOwnerVoiceError(message: String) {
@@ -273,11 +226,12 @@ class MainActivity : Activity() {
     }
 
     private fun updateStatus() {
+        if (enrolling) return
+
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val notification = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         val accessibility = isJarvisAccessibilityEnabled()
-        val hasAccessKey = OwnerVoiceStore.hasAccessKey(this)
         val hasOwnerProfile = OwnerVoiceStore.hasProfile(this)
 
         statusView.text = buildString {
@@ -290,7 +244,8 @@ class MainActivity : Activity() {
 
         ownerVoiceStatusView.text = buildString {
             appendLine("소유자 목소리 인증: ${if (hasOwnerProfile) "등록됨" else "미등록"}")
-            appendLine("Picovoice AccessKey: ${if (hasAccessKey) "저장됨" else "필요함"}")
+            appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++")
+            appendLine("기본 threshold: ${OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD}")
             append("등록이 완료되면 Jarvis는 소유자 목소리 확인 후 명령을 받습니다.")
         }
     }
@@ -325,5 +280,6 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_PERMISSIONS = 1001
+        private const val ENROLLMENT_DURATION_MS = 6000L
     }
 }

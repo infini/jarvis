@@ -13,12 +13,15 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 }
 
 dependencies {
-    implementation("ai.picovoice:eagle-android:3.0.2")
-    implementation("ai.picovoice:android-voice-processor:1.0.2")
+    implementation(files("libs/sherpa-onnx-1.13.3.jar"))
 }
 
 kotlin {

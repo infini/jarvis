@@ -2,50 +2,51 @@ package com.personal.jarvis
 
 import android.content.Context
 import android.util.Base64
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 object OwnerVoiceStore {
     private const val PREFS_NAME = "owner_voice"
-    private const val KEY_ACCESS_KEY = "picovoice_access_key"
-    private const val KEY_PROFILE = "owner_profile"
+    private const val KEY_EMBEDDING = "owner_embedding_v1"
+    private const val KEY_ACCESS_KEY_LEGACY = "picovoice_access_key"
+    private const val KEY_PROFILE_LEGACY = "owner_profile"
 
-    const val DEFAULT_ACCEPT_THRESHOLD = 0.72f
+    const val MODEL_ASSET_NAME = "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"
+    const val DEFAULT_ACCEPT_THRESHOLD = 0.50f
 
-    fun getAccessKey(context: Context): String {
-        return prefs(context).getString(KEY_ACCESS_KEY, "").orEmpty()
-    }
-
-    fun saveAccessKey(context: Context, accessKey: String) {
+    fun saveEmbedding(context: Context, embedding: FloatArray) {
+        val bytes = ByteBuffer.allocate(embedding.size * Float.SIZE_BYTES)
+            .order(ByteOrder.LITTLE_ENDIAN)
+            .apply {
+                embedding.forEach(::putFloat)
+            }
+            .array()
+        val encoded = Base64.encodeToString(bytes, Base64.NO_WRAP)
         prefs(context)
             .edit()
-            .putString(KEY_ACCESS_KEY, accessKey.trim())
+            .putString(KEY_EMBEDDING, encoded)
             .apply()
     }
 
-    fun hasAccessKey(context: Context): Boolean = getAccessKey(context).isNotBlank()
+    fun getEmbedding(context: Context): FloatArray? {
+        val encoded = prefs(context).getString(KEY_EMBEDDING, null) ?: return null
+        val bytes = runCatching { Base64.decode(encoded, Base64.NO_WRAP) }.getOrNull() ?: return null
+        if (bytes.isEmpty() || bytes.size % Float.SIZE_BYTES != 0) return null
 
-    fun saveProfile(context: Context, profileBytes: ByteArray) {
-        val encoded = Base64.encodeToString(profileBytes, Base64.NO_WRAP)
-        prefs(context)
-            .edit()
-            .putString(KEY_PROFILE, encoded)
-            .apply()
+        val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        return FloatArray(bytes.size / Float.SIZE_BYTES) { buffer.float }
     }
 
-    fun getProfileBytes(context: Context): ByteArray? {
-        val encoded = prefs(context).getString(KEY_PROFILE, null) ?: return null
-        return runCatching { Base64.decode(encoded, Base64.NO_WRAP) }.getOrNull()
-    }
+    fun hasProfile(context: Context): Boolean = getEmbedding(context) != null
 
-    fun hasProfile(context: Context): Boolean = getProfileBytes(context) != null
-
-    fun isConfigured(context: Context): Boolean {
-        return hasAccessKey(context) && hasProfile(context)
-    }
+    fun isConfigured(context: Context): Boolean = hasProfile(context)
 
     fun clearProfile(context: Context) {
         prefs(context)
             .edit()
-            .remove(KEY_PROFILE)
+            .remove(KEY_EMBEDDING)
+            .remove(KEY_ACCESS_KEY_LEGACY)
+            .remove(KEY_PROFILE_LEGACY)
             .apply()
     }
 

@@ -16,20 +16,13 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
-import ai.picovoice.android.voiceprocessor.VoiceProcessor
-import ai.picovoice.android.voiceprocessor.VoiceProcessorException
-import ai.picovoice.eagle.Eagle
-import ai.picovoice.eagle.EagleException
-import ai.picovoice.eagle.EagleProfile
 
 class JarvisVoiceService : Service(), RecognitionListener {
     private val handler = Handler(Looper.getMainLooper())
-    private val voiceProcessor = VoiceProcessor.getInstance()
     private var recognizer: SpeechRecognizer? = null
-    private var eagle: Eagle? = null
-    private var ownerProfile: EagleProfile? = null
     private var listening = false
-    private var verifyingOwner = false
+    @Volatile private var verifyingOwner = false
+    private var ownerVerificationThread: Thread? = null
     private var destroyed = false
     private var lastCommand: String? = null
     private var lastCommandAt = 0L
@@ -95,7 +88,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     private fun startListening() {
-        if (destroyed || listening || recognizer == null) return
+        if (destroyed || listening || verifyingOwner || recognizer == null) return
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -125,72 +118,57 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     private fun startOwnerVerification() {
         if (destroyed || verifyingOwner || listening) return
-        val accessKey = OwnerVoiceStore.getAccessKey(this)
-        val profileBytes = OwnerVoiceStore.getProfileBytes(this)
 
-        if (accessKey.isBlank() || profileBytes == null) {
-            Log.w(TAG, "Owner voice profile is not configured; falling back to speech recognition")
+        if (!OwnerVoiceStore.isConfigured(this)) {
+            Log.w(TAG, "Owner voice embedding is not configured; falling back to speech recognition")
             scheduleListening(100)
             return
         }
 
-        try {
-            val engine = Eagle.Builder()
-                .setAccessKey(accessKey)
-                .build(applicationContext)
-            val profile = EagleProfile(profileBytes)
-            eagle = engine
-            ownerProfile = profile
-            verifyingOwner = true
-            voiceProcessor.addFrameListener(::verifyOwnerFrame)
-            voiceProcessor.start(engine.minProcessSamples, engine.sampleRate)
-            Log.d(TAG, "Owner voice verification started")
-        } catch (e: EagleException) {
-            Log.w(TAG, "Failed to start owner voice verification: ${e.message}")
-            stopOwnerVerification()
-            scheduleListening(1000)
-        } catch (e: VoiceProcessorException) {
-            Log.w(TAG, "Failed to record for owner voice verification: ${e.message}")
-            stopOwnerVerification()
-            scheduleListening(1000)
-        }
-    }
+        verifyingOwner = true
+        ownerVerificationThread = Thread({
+            try {
+                val samples = OwnerVoiceEngine.recordSamples(
+                    durationMs = OWNER_VERIFY_AUDIO_MS,
+                    shouldContinue = {
+                        verifyingOwner && !Thread.currentThread().isInterrupted
+                    },
+                )
+                if (!verifyingOwner || Thread.currentThread().isInterrupted) return@Thread
 
-    private fun verifyOwnerFrame(frame: ShortArray) {
-        val engine = eagle ?: return
-        val profile = ownerProfile ?: return
-        try {
-            val scores = engine.process(frame, arrayOf(profile))
-            val ownerScore = scores.firstOrNull() ?: 0f
-            if (ownerScore >= OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD) {
-                Log.d(TAG, "Owner voice accepted: $ownerScore")
+                val match = OwnerVoiceEngine.verifyOwner(applicationContext, samples)
                 handler.post {
-                    ownerAuthorizedUntil = System.currentTimeMillis() + OWNER_AUTH_WINDOW_MS
-                    stopOwnerVerification()
-                    scheduleListening(100)
+                    if (destroyed || !verifyingOwner) return@post
+
+                    verifyingOwner = false
+                    ownerVerificationThread = null
+                    if (match.accepted) {
+                        Log.d(TAG, "Owner voice accepted: ${match.score}")
+                        ownerAuthorizedUntil = System.currentTimeMillis() + OWNER_AUTH_WINDOW_MS
+                        scheduleListening(100)
+                    } else {
+                        Log.d(TAG, "Owner voice rejected: ${match.score}")
+                        scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
+                    }
+                }
+            } catch (e: Exception) {
+                handler.post {
+                    if (destroyed || !verifyingOwner) return@post
+
+                    Log.w(TAG, "Owner voice verification failed: ${e.message}")
+                    verifyingOwner = false
+                    ownerVerificationThread = null
+                    scheduleNextCapture(1000)
                 }
             }
-        } catch (e: EagleException) {
-            Log.w(TAG, "Owner voice verification failed: ${e.message}")
-            handler.post {
-                stopOwnerVerification()
-                scheduleNextCapture(1000)
-            }
-        }
+        }, "JarvisOwnerVerify").also { it.start() }
+        Log.d(TAG, "Owner voice verification started")
     }
 
     private fun stopOwnerVerification() {
-        if (verifyingOwner) {
-            runCatching {
-                voiceProcessor.stop()
-                voiceProcessor.clearFrameListeners()
-            }
-        }
         verifyingOwner = false
-        ownerProfile?.delete()
-        ownerProfile = null
-        eagle?.delete()
-        eagle = null
+        ownerVerificationThread?.interrupt()
+        ownerVerificationThread = null
     }
 
     private fun shouldUseOwnerGate(): Boolean = OwnerVoiceStore.isConfigured(this)
@@ -282,7 +260,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_jarvis)
             .setContentTitle("Jarvis 실행 중")
-            .setContentText("음성 명령을 기다리고 있습니다.")
+            .setContentText("소유자 목소리 확인 후 음성 명령을 듣습니다.")
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -344,5 +322,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val CAMERA_OPEN_DELAY_MS = 1500L
         private const val LISTENING_TIMEOUT_MS = 7000L
         private const val OWNER_AUTH_WINDOW_MS = 12000L
+        private const val OWNER_VERIFY_AUDIO_MS = 2500L
+        private const val OWNER_VERIFY_RETRY_MS = 700L
     }
 }
