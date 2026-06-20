@@ -252,6 +252,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     CAMERA_OPEN_DELAY_MS,
                 )
             }
+            CommandBus.COMMAND_WAKE_SCREEN -> ScreenController.wake(this)
             else -> CommandBus.send(this, command, "voice")
         }
     }

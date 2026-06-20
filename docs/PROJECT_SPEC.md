@@ -75,6 +75,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - `자비스, 전면 카메라`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
 - `자비스, 카메라 전환`: 전후면 카메라 전환
 - `자비스, 카메라 종료해`: 카메라 앱에서 홈으로 이동
+- `자비스, 화면 켜`: 꺼진 화면을 깨워 잠금화면 표시
 - `자비스, 뒤로`: Android 뒤로가기
 - `자비스, 홈`: Android 홈으로 이동
 - `자비스, 멈춰`: 음성 인식 서비스 중지
@@ -161,6 +162,7 @@ JarvisAccessibilityService
 | `CommandBus.kt` | 앱 내부 명령 브로드캐스트 |
 | `JarvisAccessibilityService.kt` | 접근성 기반 UI 탐색/탭/전역 동작 |
 | `CameraLauncher.kt` | 기본 카메라 앱 실행 |
+| `ScreenController.kt` | 짧은 wake lock으로 화면 켜기 |
 | `AndroidManifest.xml` | 권한, 서비스, 접근성 메타데이터 선언 |
 | `res/xml/jarvis_accessibility_service.xml` | 접근성 서비스 설정 |
 
@@ -179,6 +181,7 @@ JarvisAccessibilityService
 | `switch_camera` | 전후면 카메라 전환 |
 | `back` | 뒤로가기 |
 | `home` | 홈으로 이동 |
+| `wake_screen` | 꺼진 화면을 깨워 잠금화면 표시 |
 | `stop_listening` | Jarvis 음성 서비스 중지 |
 
 `카메라 종료해`, `카메라 닫아`, `카메라 꺼`, `카메라 나가` 같은 표현은 현재 카메라 앱을 직접 kill하지 않고 `home` 명령으로 매핑한다.
@@ -265,9 +268,13 @@ JarvisAccessibilityService
 | `FOREGROUND_SERVICE` | Jarvis 음성 서비스 실행 |
 | `FOREGROUND_SERVICE_MICROPHONE` | Android 14+ 마이크 foreground service 선언 |
 | `RECEIVE_BOOT_COMPLETED` | 재부팅 후 Jarvis 시작 알림 표시 |
+| `WAKE_LOCK` | 음성 명령으로 꺼진 화면을 짧게 깨우기 |
+| `TURN_SCREEN_ON` | Android 14+에서 화면 켜기 명령 의도를 명시 |
 | `BIND_ACCESSIBILITY_SERVICE` | 접근성 서비스 바인딩. 일반 런타임 권한이 아니며 시스템 설정에서 사용자가 직접 켜야 함 |
 
 소유자 목소리 등록/검증은 기존 `RECORD_AUDIO` 권한을 사용한다. 별도 런타임 권한은 추가하지 않았다.
+
+화면 켜기 명령은 잠금화면 표시까지만 수행한다. 비밀번호, 지문, 얼굴인식 등 사용자 인증을 자동 우회하지 않는다.
 
 ## 11. Installation Flow
 
@@ -315,6 +322,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - `자비스, 카메라 전환`이 전후면 카메라 전환을 시도한다.
 - 카메라 앱이 열리지 않은 상태에서 `자비스, 카메라 찍어`가 카메라를 열고 촬영을 시도한다.
 - `자비스, 카메라 종료해`가 홈으로 이동한다.
+- `자비스, 화면 켜`가 꺼진 화면을 깨워 잠금화면을 표시한다.
 - `자비스, 멈춰`가 음성 서비스를 중지한다.
 
 ### Camera Automation Test

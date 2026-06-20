@@ -33,6 +33,8 @@ object CommandInterpreter {
         val wantsFilter = listOf("필터", "효과", "색감").any(normalized::contains)
         val wantsBack = listOf("뒤로", "백").any(normalized::contains)
         val wantsHome = listOf("홈", "홈으로").any(normalized::contains)
+        val wantsWakeScreen = listOf("화면", "디스플레이", "폰", "휴대폰").any(normalized::contains) &&
+            listOf("켜", "깨워", "켜줘", "켜라", "온").any(normalized::contains)
         val wantsStop = listOf("멈춰", "중지", "꺼", "그만").any(normalized::contains)
         val wantsCloseApp = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내").any(normalized::contains)
 
@@ -50,6 +52,7 @@ object CommandInterpreter {
             wantsSwitchCamera -> CommandBus.COMMAND_SWITCH_CAMERA
             wantsBack -> CommandBus.COMMAND_BACK
             wantsHome -> CommandBus.COMMAND_HOME
+            wantsWakeScreen -> CommandBus.COMMAND_WAKE_SCREEN
             else -> null
         }
     }
