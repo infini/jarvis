@@ -17,8 +17,9 @@ object CommandInterpreter {
         val wantsCameraOpen = mentionsCamera &&
             listOf("열어", "켜", "시작", "실행").any(normalized::contains)
         val wantsFrontCamera = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라").any(normalized::contains)
+        val wantsRearCamera = listOf("후면", "후방", "뒷카메라", "뒤카메라", "백카메라", "리어카메라").any(normalized::contains)
         val wantsFilter = listOf("필터", "효과", "색감").any(normalized::contains)
-        val wantsSwitchCamera = listOf("전면", "후면", "셀피", "카메라전환", "렌즈전환").any(normalized::contains)
+        val wantsSwitchCamera = listOf("카메라전환", "렌즈전환", "전후면전환", "반전").any(normalized::contains)
         val wantsBack = listOf("뒤로", "백").any(normalized::contains)
         val wantsHome = listOf("홈", "홈으로").any(normalized::contains)
         val wantsStop = listOf("멈춰", "중지", "꺼", "그만").any(normalized::contains)
@@ -29,7 +30,10 @@ object CommandInterpreter {
             wantsStop -> CommandBus.COMMAND_STOP_LISTENING
             wantsShot && mentionsCamera -> CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO
             wantsShot -> CommandBus.COMMAND_TAKE_PHOTO
+            wantsRearCamera && mentionsCamera -> CommandBus.COMMAND_OPEN_REAR_CAMERA
+            wantsFrontCamera && mentionsCamera -> CommandBus.COMMAND_OPEN_FRONT_CAMERA
             wantsCameraOpen && wantsFrontCamera -> CommandBus.COMMAND_OPEN_FRONT_CAMERA
+            wantsCameraOpen && wantsRearCamera -> CommandBus.COMMAND_OPEN_REAR_CAMERA
             wantsCameraOpen -> CommandBus.COMMAND_OPEN_CAMERA
             wantsFilter -> CommandBus.COMMAND_OPEN_FILTERS
             wantsSwitchCamera -> CommandBus.COMMAND_SWITCH_CAMERA

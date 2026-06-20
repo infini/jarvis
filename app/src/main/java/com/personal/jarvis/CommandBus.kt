@@ -10,6 +10,7 @@ object CommandBus {
 
     const val COMMAND_OPEN_CAMERA = "open_camera"
     const val COMMAND_OPEN_FRONT_CAMERA = "open_front_camera"
+    const val COMMAND_OPEN_REAR_CAMERA = "open_rear_camera"
     const val COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO = "open_camera_and_take_photo"
     const val COMMAND_TAKE_PHOTO = "take_photo"
     const val COMMAND_OPEN_FILTERS = "open_filters"

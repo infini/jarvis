@@ -24,6 +24,7 @@ object CameraLauncher {
     }
 
     fun openFront(context: Context): Boolean = open(context, CameraFacing.FRONT)
+    fun openRear(context: Context): Boolean = open(context, CameraFacing.BACK)
 
     private fun openXiaomiCamera(context: Context, facing: CameraFacing?): Boolean {
         val xiaomiCamera = context.packageManager.getLaunchIntentForPackage("com.android.camera")
@@ -39,16 +40,18 @@ object CameraLauncher {
     }
 
     private fun Intent.addFacingExtras(facing: CameraFacing?) {
-        if (facing != CameraFacing.FRONT) return
+        if (facing == null) return
 
-        putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
-        putExtra("android.intent.extras.CAMERA_FACING", 1)
-        putExtra("android.intent.extras.LENS_FACING_FRONT", 1)
-        putExtra("android.intent.extras.LENS_FACING_BACK", 0)
-        putExtra("com.google.assistant.extra.USE_FRONT_CAMERA", true)
+        val front = facing == CameraFacing.FRONT
+        putExtra("android.intent.extra.USE_FRONT_CAMERA", front)
+        putExtra("android.intent.extras.CAMERA_FACING", if (front) 1 else 0)
+        putExtra("android.intent.extras.LENS_FACING_FRONT", if (front) 1 else 0)
+        putExtra("android.intent.extras.LENS_FACING_BACK", if (front) 0 else 1)
+        putExtra("com.google.assistant.extra.USE_FRONT_CAMERA", front)
     }
 
     enum class CameraFacing {
         FRONT,
+        BACK,
     }
 }

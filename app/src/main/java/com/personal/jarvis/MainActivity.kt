@@ -100,6 +100,7 @@ class MainActivity : Activity() {
         root.addView(button("Jarvis 중지") { stopService(Intent(this, JarvisVoiceService::class.java)) })
         root.addView(button("테스트: 카메라 열기") { CameraLauncher.open(this) })
         root.addView(button("테스트: 셀피 카메라 열기") { CameraLauncher.openFront(this) })
+        root.addView(button("테스트: 후면 카메라 열기") { CameraLauncher.openRear(this) })
         root.addView(button("테스트: 셔터 누르기") { CommandBus.send(this, CommandBus.COMMAND_TAKE_PHOTO) })
 
         val notes = TextView(this).apply {

@@ -240,6 +240,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 CameraLauncher.openFront(this)
                 CommandBus.send(this, command, "voice")
             }
+            CommandBus.COMMAND_OPEN_REAR_CAMERA -> {
+                CameraLauncher.openRear(this)
+                CommandBus.send(this, command, "voice")
+            }
             CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO -> {
                 CameraLauncher.open(this)
                 CommandBus.send(this, CommandBus.COMMAND_OPEN_CAMERA, "voice")

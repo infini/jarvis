@@ -55,6 +55,7 @@ class JarvisAccessibilityService : AccessibilityService() {
         when (command) {
             CommandBus.COMMAND_OPEN_CAMERA -> CameraLauncher.open(this)
             CommandBus.COMMAND_OPEN_FRONT_CAMERA -> CameraLauncher.openFront(this)
+            CommandBus.COMMAND_OPEN_REAR_CAMERA -> CameraLauncher.openRear(this)
             CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO -> {
                 CameraLauncher.open(this)
                 handler.postDelayed({ tapShutter() }, CAMERA_OPEN_DELAY_MS)
