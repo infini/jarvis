@@ -994,7 +994,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val LOCAL_FALLBACK_AUTH_EXTENSION_MS = 6000L
         private const val LOCAL_ANDROID_FALLBACK_MIN_SPEECH_MS = 360L
         private const val OWNER_VERIFY_AUDIO_MS = 1200L
-        private const val OWNER_VERIFY_INTERVAL_MS = 120L
+        private const val OWNER_VERIFY_INTERVAL_MS = 80L
         private const val OWNER_VERIFY_RETRY_MS = 200L
         private const val DEFAULT_RETRY_DELAY_MS = 300L
         private const val OWNER_READY_LISTEN_DELAY_MS = 0L

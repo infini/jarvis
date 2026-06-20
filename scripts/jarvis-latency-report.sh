@@ -192,6 +192,10 @@ function printTrace(id) {
 }
 
 END {
+  if (orderCount == 0) {
+    print "no_traces=1"
+    exit
+  }
   for (i = 1; i <= orderCount; i++) printTrace(order[i])
 }
 '

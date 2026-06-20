@@ -6,6 +6,7 @@ LOG_FILE="${2:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPORT_SCRIPT="$SCRIPT_DIR/jarvis-latency-report.sh"
 TEMP_LOG_FILE=""
+DIAGNOSTIC_LOG_FILE=""
 MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSED_MS="${JARVIS_MAX_SPEECH_PARSED_MS:-2500}"
 MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
@@ -53,8 +54,10 @@ if [[ -z "$LOG_FILE" ]]; then
   LOG_FILE="$TEMP_LOG_FILE"
   trap '[[ -n "$TEMP_LOG_FILE" ]] && rm -f "$TEMP_LOG_FILE"' EXIT
 fi
+DIAGNOSTIC_LOG_FILE="${JARVIS_DIAGNOSTIC_LOG_FILE:-${LOG_FILE}.diagnostic}"
 
 adb logcat -d -v time -s JarvisLatency > "$LOG_FILE"
+adb logcat -d -v time -s JarvisLatency OwnerVoiceGate JarvisVoiceService > "$DIAGNOSTIC_LOG_FILE" || true
 REPORT_OUTPUT="$("$REPORT_SCRIPT" "$LOG_FILE")"
 printf '%s\n' "$REPORT_OUTPUT"
 
@@ -72,15 +75,21 @@ WAKE_ONLY_PARTIAL_COUNT="$(count_event wake_only_partial)"
 OWNER_AUDIO_WAKE_ONLY_COUNT="$(count_event owner_audio_wake_only)"
 NON_STRICT_IDLE_SUPPRESSED_COUNT="$(count_event non_strict_wake_idle_suppressed)"
 FALLBACK_TO_LOCAL_COUNT="$(count_event fallback_to_local)"
+OWNER_REJECTED_COUNT="$(grep -c "Owner voice rejected" "$DIAGNOSTIC_LOG_FILE" || true)"
+OWNER_ACCEPTED_COUNT="$(grep -c "Owner voice accepted" "$DIAGNOSTIC_LOG_FILE" || true)"
+OWNER_SUPPRESSED_COUNT="$(grep -c "Owner voice suppressed" "$DIAGNOSTIC_LOG_FILE" || true)"
 
 COMMAND_COMPLETE_LINES="$(
   printf '%s\n' "$REPORT_OUTPUT" | awk '/^trace=/ && /status=command_complete/'
 )"
 if [[ -z "$COMMAND_COMPLETE_LINES" ]]; then
   echo "FAIL: no command_complete trace found in $LOG_FILE." >&2
+  echo "Diagnostic log: $DIAGNOSTIC_LOG_FILE" >&2
   echo "Diagnostics: owner_authorized=${OWNER_AUTHORIZED_COUNT}, ready_for_speech=${READY_FOR_SPEECH_COUNT}, speech_begin=${SPEECH_BEGIN_COUNT}, partial_results=${PARTIAL_RESULTS_COUNT}, command_parsed=${COMMAND_PARSED_COUNT}, wake_only_partial=${WAKE_ONLY_PARTIAL_COUNT}, owner_audio_wake_only=${OWNER_AUDIO_WAKE_ONLY_COUNT}, non_strict_wake_idle_suppressed=${NON_STRICT_IDLE_SUPPRESSED_COUNT}, fallback_to_local=${FALLBACK_TO_LOCAL_COUNT}" >&2
+  echo "OwnerVoiceGate: accepted=${OWNER_ACCEPTED_COUNT}, rejected=${OWNER_REJECTED_COUNT}, suppressed=${OWNER_SUPPRESSED_COUNT}" >&2
   if [[ "$OWNER_AUTHORIZED_COUNT" == "0" ]]; then
     echo "No owner wake was authorized. Say '자비스' clearly during the capture window or re-register the owner voice if scores stay low." >&2
+    grep "Owner voice" "$DIAGNOSTIC_LOG_FILE" | tail -12 >&2 || true
   elif [[ "$SPEECH_BEGIN_COUNT" == "0" && "$PARTIAL_RESULTS_COUNT" == "0" ]]; then
     echo "Jarvis opened a command window, but Android STT did not detect a spoken command. Say the command after the green JARVIS indicator appears or the ready tone/vibration plays." >&2
   elif [[ "$COMMAND_PARSED_COUNT" == "0" ]]; then

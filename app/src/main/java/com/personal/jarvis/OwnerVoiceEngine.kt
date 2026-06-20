@@ -15,7 +15,7 @@ object OwnerVoiceEngine {
     const val SAMPLE_RATE_HZ = 16000
     private const val EMBEDDING_MIN_AUDIO_MS = 1200L
     private const val MIN_ACTIVE_SPEECH_MS = 240L
-    private const val READ_INTERVAL_MS = 100L
+    private const val READ_INTERVAL_MS = 80L
     private const val ENERGY_FRAME_MS = 25L
     private const val SPEECH_EDGE_MARGIN_MS = 180L
     private const val MIN_PEAK_RMS = 0.002f
