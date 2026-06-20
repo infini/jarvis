@@ -234,6 +234,7 @@ class MainActivity : Activity() {
             appendLine("소유자 목소리 인증: ${if (hasOwnerProfile) "등록됨" else "미등록"}")
             appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++ / Korean streaming ASR")
             appendLine("기본 threshold: ${OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD}")
+            appendLine("짧은 호출어 보정: 말소리 구간 정리 + 근접 점수 2회 연속")
             append("등록이 완료되면 Jarvis는 소유자 목소리 확인 후 명령을 받습니다.")
         }
     }

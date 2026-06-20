@@ -13,26 +13,60 @@ import kotlin.math.sqrt
 
 object OwnerVoiceEngine {
     const val SAMPLE_RATE_HZ = 16000
-    private const val MIN_AUDIO_MS = 1200L
+    private const val EMBEDDING_MIN_AUDIO_MS = 1200L
+    private const val MIN_ACTIVE_SPEECH_MS = 350L
     private const val READ_INTERVAL_MS = 100L
+    private const val ENERGY_FRAME_MS = 25L
+    private const val SPEECH_EDGE_MARGIN_MS = 180L
+    private const val MIN_PEAK_RMS = 0.004f
+    private const val MIN_ACTIVE_RMS = 0.003f
+    private const val ACTIVE_RMS_RATIO = 0.18f
+    private const val NEAR_ACCEPT_THRESHOLD = 0.46f
+    private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
+    private const val NEAR_ACCEPT_MIN_SPEECH_MS = 600L
 
     private val initLock = Any()
     private val computeLock = Any()
     @Volatile private var extractor: SpeakerEmbeddingExtractor? = null
 
+    enum class Acceptance {
+        REJECTED,
+        STRICT,
+        NEAR_CONSECUTIVE,
+    }
+
     data class Match(
         val score: Float,
         val accepted: Boolean,
+        val activeSpeechMs: Long = 0L,
+        val acceptance: Acceptance = Acceptance.REJECTED,
+    )
+
+    internal data class PreparedAudio(
+        val samples: FloatArray,
+        val activeSampleCount: Int,
+    ) {
+        val activeSpeechMs: Long
+            get() = activeSampleCount * 1000L / SAMPLE_RATE_HZ
+    }
+
+    private data class SpeechBounds(
+        val start: Int,
+        val end: Int,
+        val activeSampleCount: Int,
     )
 
     fun createEmbedding(context: Context, samples: FloatArray): FloatArray? {
-        if (samples.size < SAMPLE_RATE_HZ * MIN_AUDIO_MS / 1000L) return null
+        val preparedAudio = prepareSamplesForEmbedding(samples) ?: return null
+        return createEmbedding(context, preparedAudio)
+    }
 
+    private fun createEmbedding(context: Context, preparedAudio: PreparedAudio): FloatArray? {
         synchronized(computeLock) {
             val speakerExtractor = getExtractor(context.applicationContext)
             val stream = speakerExtractor.createStream()
             return try {
-                stream.acceptWaveform(samples, SAMPLE_RATE_HZ)
+                stream.acceptWaveform(preparedAudio.samples, SAMPLE_RATE_HZ)
                 stream.inputFinished()
                 if (speakerExtractor.isReady(stream)) {
                     speakerExtractor.compute(stream)
@@ -51,9 +85,17 @@ object OwnerVoiceEngine {
         threshold: Float = OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD,
     ): Match {
         val ownerEmbedding = OwnerVoiceStore.getEmbedding(context) ?: return Match(0f, accepted = false)
-        val candidateEmbedding = createEmbedding(context, samples) ?: return Match(0f, accepted = false)
+        val preparedAudio = prepareSamplesForEmbedding(samples) ?: return Match(0f, accepted = false)
+        val candidateEmbedding = createEmbedding(context, preparedAudio)
+            ?: return Match(0f, accepted = false, activeSpeechMs = preparedAudio.activeSpeechMs)
         val score = cosineSimilarity(ownerEmbedding, candidateEmbedding)
-        return Match(score = score, accepted = score >= threshold)
+        val accepted = score >= threshold
+        return Match(
+            score = score,
+            accepted = accepted,
+            activeSpeechMs = preparedAudio.activeSpeechMs,
+            acceptance = if (accepted) Acceptance.STRICT else Acceptance.REJECTED,
+        )
     }
 
     @SuppressLint("MissingPermission")
@@ -71,6 +113,7 @@ object OwnerVoiceEngine {
         val chunks = ArrayDeque<FloatArray>()
         var totalSamples = 0
         var lastVerificationAt = 0L
+        var nearAcceptCount = 0
 
         try {
             recorder.startRecording()
@@ -90,8 +133,10 @@ object OwnerVoiceEngine {
                 if (totalSamples >= maxWindowSamples && now - lastVerificationAt >= verificationIntervalMs) {
                     lastVerificationAt = now
                     val match = verifyOwner(context, flattenLastSamples(chunks, maxWindowSamples, totalSamples))
-                    onMatch(match)
-                    if (match.accepted) return match
+                    val adjustedMatch = applyNearAcceptPolicy(match, nearAcceptCount)
+                    nearAcceptCount = adjustedMatch.second
+                    onMatch(adjustedMatch.first)
+                    if (adjustedMatch.first.accepted) return adjustedMatch.first
                 }
             }
         } finally {
@@ -100,6 +145,24 @@ object OwnerVoiceEngine {
         }
 
         return null
+    }
+
+    private fun applyNearAcceptPolicy(
+        match: Match,
+        previousNearAcceptCount: Int,
+    ): Pair<Match, Int> {
+        if (match.accepted) return match to 0
+        if (match.score < NEAR_ACCEPT_THRESHOLD || match.activeSpeechMs < NEAR_ACCEPT_MIN_SPEECH_MS) {
+            return match to 0
+        }
+
+        val nearAcceptCount = previousNearAcceptCount + 1
+        if (nearAcceptCount < NEAR_ACCEPT_REQUIRED_COUNT) return match to nearAcceptCount
+
+        return match.copy(
+            accepted = true,
+            acceptance = Acceptance.NEAR_CONSECUTIVE,
+        ) to 0
     }
 
     @SuppressLint("MissingPermission")
@@ -190,6 +253,69 @@ object OwnerVoiceEngine {
             if (offset >= sampleCount) return@forEach
         }
         return result
+    }
+
+    internal fun prepareSamplesForEmbedding(samples: FloatArray): PreparedAudio? {
+        val speechBounds = findSpeechBounds(samples) ?: return null
+        val activeSampleCount = speechBounds.activeSampleCount
+        if (activeSampleCount < SAMPLE_RATE_HZ * MIN_ACTIVE_SPEECH_MS / 1000L) return null
+
+        val trimmed = samples.copyOfRange(speechBounds.start, speechBounds.end)
+        val minSamples = (SAMPLE_RATE_HZ * EMBEDDING_MIN_AUDIO_MS / 1000L).toInt()
+        if (trimmed.size >= minSamples) {
+            return PreparedAudio(trimmed, activeSampleCount)
+        }
+
+        val padded = FloatArray(minSamples)
+        val offset = (minSamples - trimmed.size) / 2
+        trimmed.copyInto(padded, destinationOffset = offset)
+        return PreparedAudio(padded, activeSampleCount)
+    }
+
+    private fun findSpeechBounds(samples: FloatArray): SpeechBounds? {
+        val frameSamples = (SAMPLE_RATE_HZ * ENERGY_FRAME_MS / 1000L).toInt()
+        if (samples.size < frameSamples) return null
+
+        val frameRms = mutableListOf<Pair<Int, Float>>()
+        var start = 0
+        var peakRms = 0f
+        while (start < samples.size) {
+            val end = min(start + frameSamples, samples.size)
+            val rms = rms(samples, start, end)
+            frameRms += start to rms
+            peakRms = maxOf(peakRms, rms)
+            start += frameSamples
+        }
+        if (peakRms < MIN_PEAK_RMS) return null
+
+        val activeThreshold = maxOf(MIN_ACTIVE_RMS, peakRms * ACTIVE_RMS_RATIO)
+        var firstActiveStart = -1
+        var lastActiveEnd = -1
+        frameRms.forEach { (frameStart, frameValue) ->
+            if (frameValue >= activeThreshold) {
+                if (firstActiveStart < 0) firstActiveStart = frameStart
+                lastActiveEnd = min(frameStart + frameSamples, samples.size)
+            }
+        }
+        if (firstActiveStart < 0 || lastActiveEnd <= firstActiveStart) return null
+
+        val marginSamples = (SAMPLE_RATE_HZ * SPEECH_EDGE_MARGIN_MS / 1000L).toInt()
+        return SpeechBounds(
+            start = (firstActiveStart - marginSamples).coerceAtLeast(0),
+            end = (lastActiveEnd + marginSamples).coerceAtMost(samples.size),
+            activeSampleCount = lastActiveEnd - firstActiveStart,
+        )
+    }
+
+    private fun rms(samples: FloatArray, start: Int, end: Int): Float {
+        if (end <= start) return 0f
+
+        var sum = 0.0
+        for (index in start until end) {
+            val value = samples[index].toDouble()
+            sum += value * value
+        }
+        return sqrt(sum / (end - start)).toFloat()
     }
 
     fun cosineSimilarity(left: FloatArray, right: FloatArray): Float {

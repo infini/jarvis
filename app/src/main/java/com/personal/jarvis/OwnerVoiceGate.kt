@@ -62,7 +62,8 @@ class OwnerVoiceGate(
                     onMatch = { candidate ->
                         Log.d(
                             TAG,
-                            "Owner voice ${if (candidate.accepted) "accepted" else "rejected"}: ${candidate.score}",
+                            "Owner voice ${statusFor(candidate)}: " +
+                                "score=${candidate.score}, speech=${candidate.activeSpeechMs}ms",
                         )
                     },
                 )
@@ -98,6 +99,14 @@ class OwnerVoiceGate(
         verifying = false
         verificationThread?.interrupt()
         verificationThread = null
+    }
+
+    private fun statusFor(match: OwnerVoiceEngine.Match): String {
+        return when (match.acceptance) {
+            OwnerVoiceEngine.Acceptance.STRICT -> "accepted"
+            OwnerVoiceEngine.Acceptance.NEAR_CONSECUTIVE -> "accepted-near"
+            OwnerVoiceEngine.Acceptance.REJECTED -> "rejected"
+        }
     }
 
     companion object {

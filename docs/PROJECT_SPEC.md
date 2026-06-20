@@ -26,6 +26,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - `자비스` 또는 `헤이 자비스` wake-only 발화 후 확인음/명령 대기 알림을 제공하고, 인증 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
 - wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 즉시 실행으로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
 - owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 2.0초 window를 250ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임
+- 짧은 `자비스` 호출어가 2초 window 안의 무음에 묻히지 않도록 owner voice gate에서 RMS 기반 말소리 구간 정리와 근접 점수 2회 연속 통과 정책을 추가함
 - command window 안에서는 sherpa-onnx 한국어 streaming ASR 모델을 우선 사용해 Android `SpeechRecognizer` partial result 대기 시간을 우회하도록 변경
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 - 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
@@ -281,7 +282,7 @@ Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표�
 - Runtime: `sherpa-onnx` 공식 Android AAR `v1.13.3`의 Kotlin API jar와 `arm64-v8a` native libraries
 - Model: `3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`
 - 저장 방식: 소유자 embedding `FloatArray`를 little-endian bytes로 변환한 뒤 Base64 인코딩하여 앱 private `SharedPreferences`에 저장한다.
-- 기본 허용 threshold는 `0.50`으로 시작하며 실기기 테스트 후 조정한다.
+- 기본 허용 threshold는 `0.50`이다. 짧은 호출어 보정을 위해 말소리 구간이 600ms 이상이고 similarity `0.46` 이상인 근접 점수가 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다.
 - 현재 APK는 Xiaomi 15 Ultra를 우선해 `arm64-v8a` ABI만 패키징한다.
 
 현재 구현 흐름:
@@ -290,8 +291,8 @@ Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표�
 2. `OwnerVoiceEngine`이 16kHz mono PCM을 녹음하고 sherpa-onnx로 speaker embedding을 계산한다.
 3. 계산된 embedding을 `OwnerVoiceStore`에 저장한다.
 4. 이후 `JarvisVoiceService`는 `OwnerVoiceGate`를 통해 owner embedding이 있는지 확인하고, owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
-5. 최근 2.0초 rolling audio window에서 candidate embedding을 만들고 250ms마다 저장된 embedding과 cosine similarity를 비교한다.
-6. similarity가 threshold 이상이면 `AudioRecord`를 닫고 12초 인증 window를 연다.
+5. 최근 2.0초 rolling audio window에서 RMS 기반으로 말소리 앞뒤 무음을 줄인 뒤 candidate embedding을 만들고 250ms마다 저장된 embedding과 cosine similarity를 비교한다.
+6. similarity가 `0.50` 이상이거나 짧은 호출어 보정 near-match 조건을 만족하면 `AudioRecord`를 닫고 12초 인증 window를 연다.
 7. window 안에서 `자비스` 또는 `헤이 자비스` 같은 wake-only 발화가 인식되면 확인음을 내고 command window를 유지한다.
 8. window 안에서는 호출어 없는 명령도 허용하며, `LocalCommandSession`이 로컬 한국어 streaming ASR로 command text를 먼저 시도한다.
 9. 로컬 모델이 없거나 초기화에 실패하면 Android `SpeechRecognizer` fallback을 사용하고, 이 경우 command-mode silence timeout을 더 짧게 사용한다.
