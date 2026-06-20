@@ -96,6 +96,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private fun startListening() {
         if (destroyed || listening || verifyingOwner || recognizer == null) return
 
+        val commandWindowOpen = shouldUseOwnerGate() && isOwnerAuthorized()
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
@@ -103,9 +104,18 @@ class JarvisVoiceService : Service(), RecognitionListener {
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1200L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 700L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1000L)
+            putExtra(
+                RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,
+                if (commandWindowOpen) COMMAND_INPUT_MINIMUM_LENGTH_MS else DEFAULT_INPUT_MINIMUM_LENGTH_MS,
+            )
+            putExtra(
+                RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
+                if (commandWindowOpen) COMMAND_POSSIBLY_COMPLETE_SILENCE_MS else DEFAULT_POSSIBLY_COMPLETE_SILENCE_MS,
+            )
+            putExtra(
+                RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
+                if (commandWindowOpen) COMMAND_COMPLETE_SILENCE_MS else DEFAULT_COMPLETE_SILENCE_MS,
+            )
         }
 
         try {
@@ -152,7 +162,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                         Log.d(TAG, "Owner voice accepted: ${match.score}")
                         ownerAuthorizedUntil = System.currentTimeMillis() + OWNER_AUTH_WINDOW_MS
                         signalCommandReady()
-                        scheduleListening(100)
+                        scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
                     } else {
                         Log.d(TAG, "Owner voice rejected: ${match.score}")
                         scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
@@ -323,7 +333,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
         Log.w(TAG, "Speech error: $error")
         val delay = when (error) {
             SpeechRecognizer.ERROR_NO_MATCH,
-            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 300L
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                if (isOwnerAuthorized()) COMMAND_RETRY_DELAY_MS else OWNER_VERIFY_RETRY_MS
+            }
             else -> 1000L
         }
         scheduleNextCapture(delay)
@@ -337,8 +349,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (outcome == SpeechOutcome.COMMAND_RUN) {
             ownerAuthorizedUntil = 0L
             updateNotification(DEFAULT_NOTIFICATION_TEXT)
+            scheduleNextCapture(250)
+        } else if (outcome == SpeechOutcome.WAKE_ONLY) {
+            scheduleListening(COMMAND_READY_LISTEN_DELAY_MS)
+        } else {
+            scheduleNextCapture(if (isOwnerAuthorized()) COMMAND_RETRY_DELAY_MS else 250L)
         }
-        scheduleNextCapture(250)
     }
 
     override fun onPartialResults(partialResults: Bundle?) {
@@ -361,6 +377,14 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_AUTH_WINDOW_MS = 12000L
         private const val OWNER_VERIFY_AUDIO_MS = 2500L
         private const val OWNER_VERIFY_RETRY_MS = 700L
+        private const val COMMAND_READY_LISTEN_DELAY_MS = 25L
+        private const val COMMAND_RETRY_DELAY_MS = 75L
+        private const val DEFAULT_INPUT_MINIMUM_LENGTH_MS = 1200L
+        private const val DEFAULT_POSSIBLY_COMPLETE_SILENCE_MS = 700L
+        private const val DEFAULT_COMPLETE_SILENCE_MS = 1000L
+        private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 700L
+        private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 350L
+        private const val COMMAND_COMPLETE_SILENCE_MS = 600L
         private const val OWNER_READY_TONE_MS = 120
         private const val DEFAULT_NOTIFICATION_TEXT = "소유자 목소리 확인 후 음성 명령을 듣습니다."
     }
