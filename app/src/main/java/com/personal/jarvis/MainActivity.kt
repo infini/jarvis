@@ -112,7 +112,6 @@ class MainActivity : Activity() {
         root.addView(button("배터리 최적화 설정 열기") { openBatteryOptimizationSettings() })
         root.addView(button("앱 자동 시작/배터리 설정 열기") { openAppSettings() })
         root.addView(button("Jarvis 시작") { startJarvis() })
-        root.addView(button("Jarvis 중지") { stopService(Intent(this, JarvisVoiceService::class.java)) })
         root.addView(button("테스트: 카메라 열기") { CameraLauncher.open(this) })
         root.addView(button("테스트: 셀피 카메라 열기") { CommandBus.send(this, CommandBus.COMMAND_OPEN_FRONT_CAMERA) })
         root.addView(button("테스트: 후면 카메라 열기") { CommandBus.send(this, CommandBus.COMMAND_OPEN_REAR_CAMERA) })
@@ -150,7 +149,13 @@ class MainActivity : Activity() {
             return
         }
 
-        stopService(Intent(this, JarvisVoiceService::class.java))
+        if (JarvisVoiceService.isRunning) {
+            val message = "Jarvis 실행 중에는 목소리 재등록을 시작하지 않습니다. 재부팅 후 Jarvis 시작 전에 등록하세요."
+            ownerVoiceStatusView.text = message
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            return
+        }
+
         enrollButton.text = "내 목소리 등록 중지"
         ownerVoiceEnrollmentController.start(ENROLLMENT_DURATION_MS)
     }
@@ -226,6 +231,7 @@ class MainActivity : Activity() {
             appendLine("마이크 권한: ${if (mic) "허용됨" else "필요함"}")
             appendLine("알림 권한: ${if (notification) "허용됨" else "필요함"}")
             appendLine("접근성 서비스: ${if (accessibility) "켜짐" else "꺼짐"}")
+            appendLine("Jarvis 서비스: ${if (JarvisVoiceService.isRunning) "실행 중" else "시작 전"}")
             appendLine()
             append("기본 카메라 제어는 접근성 서비스가 켜져 있어야 동작합니다.")
         }

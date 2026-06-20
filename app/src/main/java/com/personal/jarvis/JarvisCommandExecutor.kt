@@ -7,7 +7,6 @@ import android.util.Log
 class JarvisCommandExecutor(
     private val context: Context,
     private val handler: Handler,
-    private val onStopListening: () -> Unit,
 ) {
     private var lastCommand: String? = null
     private var lastCommandAt = 0L
@@ -24,7 +23,7 @@ class JarvisCommandExecutor(
         Log.d(TAG, "Running command: $command")
 
         when (command) {
-            CommandBus.COMMAND_STOP_LISTENING -> onStopListening()
+            CommandBus.COMMAND_STOP_LISTENING -> Log.d(TAG, "Closing command window without stopping service")
             CommandBus.COMMAND_OPEN_CAMERA -> CameraLauncher.open(context)
             CommandBus.COMMAND_OPEN_FRONT_CAMERA,
             CommandBus.COMMAND_OPEN_REAR_CAMERA -> CommandBus.send(context, command, "voice")
@@ -65,11 +64,16 @@ class JarvisCommandExecutor(
             CommandBus.COMMAND_HOME,
             CommandBus.COMMAND_BACK,
         )
+        private val VOICE_SERVICE_STOP_COMMANDS = emptySet<String>()
 
         val FAST_PARTIAL_COMMANDS = COMMAND_WINDOW_CONTINUATION_COMMANDS
 
         fun shouldKeepCommandWindowOpen(command: String): Boolean {
             return command in COMMAND_WINDOW_CONTINUATION_COMMANDS
+        }
+
+        fun shouldStopVoiceService(command: String): Boolean {
+            return command in VOICE_SERVICE_STOP_COMMANDS
         }
 
         fun String.keepsCommandWindowOpen(): Boolean {

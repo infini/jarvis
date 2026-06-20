@@ -16,7 +16,6 @@ class JarvisVoiceService : Service(), RecognitionListener {
         JarvisCommandExecutor(
             context = this,
             handler = handler,
-            onStopListening = { stopSelf() },
         )
     }
     private val notificationController by lazy {
@@ -80,6 +79,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     override fun onCreate() {
         super.onCreate()
+        isRunning = true
         notificationController.createChannel()
         notificationController.startForeground()
         createRecognizer()
@@ -94,6 +94,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     override fun onDestroy() {
         destroyed = true
+        isRunning = false
         handler.removeCallbacksAndMessages(null)
         ownerVoiceGate.stop()
         localCommandSession.stop()
@@ -108,8 +109,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     private fun createRecognizer() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Log.w(TAG, "Speech recognition is not available")
-            stopSelf()
+            Log.w(TAG, "Speech recognition is not available; keeping service alive for owner gate/local fallback")
             return
         }
         recognizer = SpeechRecognizer.createSpeechRecognizer(this).also {
@@ -437,6 +437,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     companion object {
+        @Volatile
+        var isRunning: Boolean = false
+            private set
+
         private const val TAG = "JarvisVoiceService"
         private const val LISTENING_TIMEOUT_MS = 4500L
         private const val OWNER_AUTH_WINDOW_MS = 12000L

@@ -57,4 +57,11 @@ class CommandInterpreterTest {
         assertTrue(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_BACK))
         assertFalse(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_STOP_LISTENING))
     }
+
+    @Test
+    fun stopListeningClosesOnlyCurrentCommandWindow() {
+        assertEquals(CommandBus.COMMAND_STOP_LISTENING, CommandInterpreter.parse("자비스, 멈춰"))
+        assertEquals(CommandBus.COMMAND_STOP_LISTENING, CommandInterpreter.parse("멈춰", requireWakeWord = false))
+        assertFalse(JarvisCommandExecutor.shouldStopVoiceService(CommandBus.COMMAND_STOP_LISTENING))
+    }
 }
