@@ -126,6 +126,7 @@ class OwnerVoiceGate(
 
     private fun isNonStrictSuppressed(match: OwnerVoiceEngine.Match): Boolean {
         if (!match.accepted || match.acceptance == OwnerVoiceEngine.Acceptance.STRICT) return false
+        if (match.acceptance != OwnerVoiceEngine.Acceptance.SOFT_WAKE_CONSECUTIVE) return false
 
         return System.currentTimeMillis() < nonStrictSuppressedUntil
     }

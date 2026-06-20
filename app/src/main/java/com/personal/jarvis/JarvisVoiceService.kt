@@ -37,8 +37,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     openCommandWindow(OWNER_AUTH_WINDOW_MS)
                     commandWindowOpenedByNonStrictOwnerGate =
                         match.acceptance != OwnerVoiceEngine.Acceptance.STRICT
-                    commandFeedbackEnabled = !commandWindowOpenedByNonStrictOwnerGate
-                    if (commandFeedbackEnabled) signalCommandReady()
+                    commandFeedbackEnabled = shouldPlayCommandReadyFeedback(match)
+                    signalCommandReady()
                     if (!startOwnerAudioCommandRecognition(match)) {
                         scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
                     }
@@ -312,11 +312,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 )
             }
             if (commandWindowOpen) {
-                if (commandFeedbackEnabled) {
-                    feedbackController.commandListening()
-                } else {
-                    feedbackController.showOwnerVerifying()
-                }
+                feedbackController.commandListening()
             } else {
                 feedbackController.showWakeWaiting()
             }
@@ -515,6 +511,15 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     "Parsed owner audio command: $command from '${result.text}' in ${result.elapsedMs}ms",
                 )
                 completeCommandRun(runCommand(command, "owner_audio").keepsCommandWindowOpen)
+            }
+            result != null && CommandInterpreter.isWakeOnly(result.text) -> {
+                markLatency("owner_audio_wake_only", "text=${result.text}")
+                Log.d(TAG, "Parsed owner audio wake phrase from '${result.text}'")
+                commandWindowOpenedByNonStrictOwnerGate = false
+                commandFeedbackEnabled = true
+                signalCommandReady()
+                finishLatency("wake_only_complete", "source=owner_audio")
+                scheduleListening(ownerReadyDelayAfter(result))
             }
             failed || result?.unavailable == true -> {
                 markLatency("owner_audio_asr_unavailable")
@@ -721,6 +726,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private fun signalCommandReady() {
         notificationController.update("소유자 확인됨. 명령을 말하세요.")
         feedbackController.commandListening()
+    }
+
+    private fun shouldPlayCommandReadyFeedback(match: OwnerVoiceEngine.Match): Boolean {
+        return match.acceptance == OwnerVoiceEngine.Acceptance.STRICT ||
+            match.acceptance == OwnerVoiceEngine.Acceptance.NEAR_CONSECUTIVE ||
+            match.acceptance == OwnerVoiceEngine.Acceptance.SOFT_WAKE_SINGLE
     }
 
     override fun onReadyForSpeech(params: Bundle?) {
@@ -986,7 +997,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_VERIFY_INTERVAL_MS = 120L
         private const val OWNER_VERIFY_RETRY_MS = 200L
         private const val DEFAULT_RETRY_DELAY_MS = 300L
-        private const val OWNER_READY_LISTEN_DELAY_MS = 260L
+        private const val OWNER_READY_LISTEN_DELAY_MS = 80L
         private const val COMMAND_CHAIN_LISTEN_DELAY_MS = 120L
         private const val FALLBACK_LISTEN_DELAY_MS = 0L
         private const val COMMAND_RETRY_DELAY_MS = 25L

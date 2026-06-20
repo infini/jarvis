@@ -45,7 +45,7 @@ if [[ "$START_DEBUG_ACTIVITY" == "1" ]]; then
   adb shell am start -n com.personal.jarvis/.debug.JarvisDebugStartActivity >/dev/null 2>&1 || true
   sleep 1
 fi
-echo "Speak now: say '자비스', wait for the ready tone, say one command such as '카메라 실행', then wait for the handled tone before the next command: '후면', '전면', '찍어', '종료'."
+echo "Speak now: say '자비스'. When the green JARVIS indicator appears or the ready tone/vibration plays, say one command such as '카메라 실행', then wait for the handled tone before the next command: '후면', '전면', '찍어', '종료'."
 sleep "$DURATION_SECONDS"
 
 if [[ -z "$LOG_FILE" ]]; then
@@ -58,11 +58,34 @@ adb logcat -d -v time -s JarvisLatency > "$LOG_FILE"
 REPORT_OUTPUT="$("$REPORT_SCRIPT" "$LOG_FILE")"
 printf '%s\n' "$REPORT_OUTPUT"
 
+count_event() {
+  local event="$1"
+  grep -c "event=${event}" "$LOG_FILE" || true
+}
+
+OWNER_AUTHORIZED_COUNT="$(count_event owner_authorized)"
+READY_FOR_SPEECH_COUNT="$(count_event ready_for_speech)"
+SPEECH_BEGIN_COUNT="$(count_event speech_begin)"
+PARTIAL_RESULTS_COUNT="$(count_event partial_results)"
+COMMAND_PARSED_COUNT="$(count_event command_parsed)"
+WAKE_ONLY_PARTIAL_COUNT="$(count_event wake_only_partial)"
+OWNER_AUDIO_WAKE_ONLY_COUNT="$(count_event owner_audio_wake_only)"
+NON_STRICT_IDLE_SUPPRESSED_COUNT="$(count_event non_strict_wake_idle_suppressed)"
+FALLBACK_TO_LOCAL_COUNT="$(count_event fallback_to_local)"
+
 COMMAND_COMPLETE_LINES="$(
   printf '%s\n' "$REPORT_OUTPUT" | awk '/^trace=/ && /status=command_complete/'
 )"
 if [[ -z "$COMMAND_COMPLETE_LINES" ]]; then
-  echo "FAIL: no command_complete trace found. Speak the command cycle during the capture window." >&2
+  echo "FAIL: no command_complete trace found in $LOG_FILE." >&2
+  echo "Diagnostics: owner_authorized=${OWNER_AUTHORIZED_COUNT}, ready_for_speech=${READY_FOR_SPEECH_COUNT}, speech_begin=${SPEECH_BEGIN_COUNT}, partial_results=${PARTIAL_RESULTS_COUNT}, command_parsed=${COMMAND_PARSED_COUNT}, wake_only_partial=${WAKE_ONLY_PARTIAL_COUNT}, owner_audio_wake_only=${OWNER_AUDIO_WAKE_ONLY_COUNT}, non_strict_wake_idle_suppressed=${NON_STRICT_IDLE_SUPPRESSED_COUNT}, fallback_to_local=${FALLBACK_TO_LOCAL_COUNT}" >&2
+  if [[ "$OWNER_AUTHORIZED_COUNT" == "0" ]]; then
+    echo "No owner wake was authorized. Say '자비스' clearly during the capture window or re-register the owner voice if scores stay low." >&2
+  elif [[ "$SPEECH_BEGIN_COUNT" == "0" && "$PARTIAL_RESULTS_COUNT" == "0" ]]; then
+    echo "Jarvis opened a command window, but Android STT did not detect a spoken command. Say the command after the green JARVIS indicator appears or the ready tone/vibration plays." >&2
+  elif [[ "$COMMAND_PARSED_COUNT" == "0" ]]; then
+    echo "Speech was detected, but no supported command was parsed. Try a shorter command such as '카메라 실행', '후면', '전면', '찍어', or '종료'." >&2
+  fi
   exit 1
 fi
 

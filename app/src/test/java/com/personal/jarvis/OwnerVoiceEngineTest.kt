@@ -114,7 +114,7 @@ class OwnerVoiceEngineTest {
     @Test
     fun acceptsSingleSoftWakeWhenScoreAndSpeechAreEnough() {
         val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.25f, activeSpeechMs = 1000L),
+            match = ownerMatch(score = 0.25f, activeSpeechMs = 500L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
 
@@ -133,7 +133,7 @@ class OwnerVoiceEngineTest {
     }
 
     @Test
-    fun rejectsSingleSoftWakeWhenWakeWordIsTooShort() {
+    fun rejectsWeakSingleSoftWakeWhenWakeWordIsShort() {
         val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
             match = ownerMatch(score = 0.17f, activeSpeechMs = 450L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
