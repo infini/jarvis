@@ -298,6 +298,12 @@ adb logcat -v time -s JarvisLatency
 scripts/jarvis-latency-report.sh
 ```
 
+소유자 목소리 재등록 후에는 debug APK 전용 no-display Activity를 호출하는 다음 스크립트로 프로필 상태를 확인한다. `profile_embeddings`가 2 이상이어야 짧은 `자비스` 호출어 latency 검증을 진행한다.
+
+```bash
+scripts/jarvis-profile-status.sh
+```
+
 새 실기기 측정은 로그를 비우고 정해진 시간 동안 녹화한 뒤 바로 요약한다.
 
 ```bash

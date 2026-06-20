@@ -81,6 +81,14 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-latency-audit.sh /tmp/jarvis-command-trace.log
 ```
 
+소유자 목소리 재등록 후에는 debug APK에서 저장된 embedding 개수를 먼저 확인합니다.
+
+```bash
+scripts/jarvis-profile-status.sh
+```
+
+정상적인 재등록 상태는 `profile_embeddings`가 2 이상이어야 합니다.
+
 새 측정은 로그를 비우고 정해진 시간 동안 녹화한 뒤 바로 요약합니다.
 
 ```bash
