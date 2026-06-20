@@ -78,6 +78,20 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var latencyTrace: JarvisLatencyTrace? = null
     @Volatile private var ownerAudioCommandActive = false
     private var ownerAudioCommandThread: Thread? = null
+    private val startListeningRunnable = Runnable {
+        startListening()
+    }
+    private val nextCaptureRunnable = Runnable {
+        if (destroyed) return@Runnable
+
+        if (shouldUseOwnerGate() && !isCommandWindowOpen()) {
+            notificationController.reset()
+            feedbackController.showOwnerVerifying()
+            startOwnerVerification()
+        } else {
+            startListening()
+        }
+    }
     private val listeningTimeout: Runnable = Runnable {
         if (!listening || destroyed) return@Runnable
         markLatency("listen_timeout", "commandWindow=$currentListeningAllowsCommandWithoutWake")
@@ -253,20 +267,16 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     private fun scheduleListening(delayMs: Long) {
         if (destroyed) return
-        handler.postDelayed({ startListening() }, delayMs)
+        handler.removeCallbacks(nextCaptureRunnable)
+        handler.removeCallbacks(startListeningRunnable)
+        handler.postDelayed(startListeningRunnable, delayMs)
     }
 
     private fun scheduleNextCapture(delayMs: Long) {
         if (destroyed) return
-        handler.postDelayed({
-            if (shouldUseOwnerGate() && !isCommandWindowOpen()) {
-                notificationController.reset()
-                feedbackController.showOwnerVerifying()
-                startOwnerVerification()
-            } else {
-                startListening()
-            }
-        }, delayMs)
+        handler.removeCallbacks(startListeningRunnable)
+        handler.removeCallbacks(nextCaptureRunnable)
+        handler.postDelayed(nextCaptureRunnable, delayMs)
     }
 
     private fun startListening() {

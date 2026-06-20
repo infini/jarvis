@@ -84,6 +84,42 @@ print_owner_reject_reasons() {
   ' "$diagnostic_file" | sort -t= -k2,2nr | head -5
 }
 
+owner_gate_stats() {
+  local diagnostic_file="$1"
+  if [[ ! -f "$diagnostic_file" ]]; then
+    return
+  fi
+
+  awk '
+    /Owner voice/ {
+      score = ""
+      peak = ""
+      noise = ""
+      threshold = ""
+      for (i = 1; i <= NF; i++) {
+        split($i, pair, "=")
+        if (pair[1] == "score") score = pair[2] + 0
+        if (pair[1] == "peakRms") peak = pair[2] + 0
+        if (pair[1] == "noiseRms") noise = pair[2] + 0
+        if (pair[1] == "thresholdRms") threshold = pair[2] + 0
+      }
+      count++
+      if (score != "" && (!hasScore || score > maxScore)) {
+        hasScore = 1
+        maxScore = score
+      }
+      if (peak != "" && peak > maxPeak) maxPeak = peak
+      if (noise != "" && noise > maxNoise) maxNoise = noise
+      if (threshold != "" && threshold > maxThreshold) maxThreshold = threshold
+    }
+    END {
+      if (count > 0) {
+        printf "samples=%d max_score=%.6g max_peak_rms=%.6g max_noise_rms=%.6g max_threshold_rms=%.6g\n", count, maxScore, maxPeak, maxNoise, maxThreshold
+      }
+    }
+  ' "$diagnostic_file"
+}
+
 status_hint() {
   local status="$1"
   case "$status" in
@@ -184,6 +220,11 @@ audit_file() {
   echo "owner_gate: accepted=${owner_accepted}, rejected=${owner_rejected}, suppressed=${owner_suppressed}"
   if [[ -f "$diagnostic_file" ]]; then
     echo "diagnostic=$diagnostic_file"
+    local gate_stats
+    gate_stats="$(owner_gate_stats "$diagnostic_file")"
+    if [[ -n "$gate_stats" ]]; then
+      echo "owner_gate_stats: $gate_stats"
+    fi
     local reject_reasons
     reject_reasons="$(print_owner_reject_reasons "$diagnostic_file")"
     if [[ -n "$reject_reasons" ]]; then
