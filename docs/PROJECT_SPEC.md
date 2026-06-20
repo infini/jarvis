@@ -230,10 +230,10 @@ Jarvis는 Android 상태바의 초록색 마이크 표시만으로 상태를 판
 
 | State | Overlay | Sound/Vibration | Meaning |
 | --- | --- | --- | --- |
-| `COMMAND_READY` | 초록색 `JARVIS 듣는 중` | 확인음 2회, 짧은 진동 1회 | 호출어 없이 바로 명령 가능 |
-| `COMMAND_PROCESSING` | 주황색 `JARVIS 처리 중` | 없음 | 명령을 실행 중 |
-| `COMMAND_HANDLED` | 파란색 `JARVIS · 다음 명령 가능` | 확인음 1회, 짧은 진동 1회 | 명령 처리 완료, 다음 명령 가능 |
-| `COMMAND_FAILED` | 빨간색 `JARVIS · 다시 말하세요` | 실패음 2회, 짧은 진동 2회 | 인식 실패 또는 command window 안의 무명령 |
+| `COMMAND_READY` | 작은 black pill `JARVIS` | 확인음 2회, 짧은 진동 1회 | 호출어 없이 바로 명령 가능 |
+| `COMMAND_PROCESSING` | 작은 black pill `JARVIS` | 없음 | 명령을 실행 중 |
+| `COMMAND_HANDLED` | 작은 black pill `JARVIS` | 확인음 1회, 짧은 진동 1회 | 명령 처리 완료, 다음 명령 가능 |
+| `COMMAND_FAILED` | 작은 black pill `JARVIS` | 실패음 2회, 짧은 진동 2회 | 인식 실패 또는 command window 안의 무명령 |
 | `IDLE` | overlay 제거 | 낮은 안내음 1회, 짧은 진동 2회 | 명령 window 종료 |
 
 Passive 상태 표시 정책:
@@ -241,6 +241,7 @@ Passive 상태 표시 정책:
 - owner voice verification 중에는 overlay를 띄우지 않는다. 이 상태는 평상시 기본 대기 상태이므로 지속 표시하면 전체화면 앱 사용을 방해한다.
 - wake waiting 중에도 overlay를 띄우지 않는다. 사용자가 호출어를 말해 command window가 열렸을 때만 명확히 표시한다.
 - notification 문구는 passive 상태 진단용으로 유지하되, 사용자의 현재 화면 위에 지속적으로 노출하지 않는다.
+- overlay text는 상태 설명 문구를 넣지 않고 `JARVIS` 단일 라벨만 사용한다. 상태별 의미는 소리와 진동으로 전달한다.
 
 Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표시한다. 별도 “다른 앱 위에 표시” 권한을 요구하지 않지만, Jarvis 접근성 서비스가 켜져 있어야 카메라 앱 위에서도 보인다.
 
@@ -421,9 +422,9 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 ### State Feedback Test
 
-- owner gate 통과 또는 wake-only 발화 후 초록색 `JARVIS 듣는 중` overlay, 확인음 2회, 짧은 진동 1회가 발생한다.
-- 카메라 명령 처리 후 파란색 `JARVIS · 다음 명령 가능` overlay, 확인음 1회, 짧은 진동 1회가 발생한다.
-- command window 안에서 인식 실패 시 빨간색 `JARVIS · 다시 말하세요` overlay, 실패음 2회, 짧은 진동 2회가 발생한다.
+- owner gate 통과 또는 wake-only 발화 후 작은 black pill `JARVIS` overlay, 확인음 2회, 짧은 진동 1회가 발생한다.
+- 카메라 명령 처리 후 작은 black pill `JARVIS` overlay, 확인음 1회, 짧은 진동 1회가 발생한다.
+- command window 안에서 인식 실패 시 작은 black pill `JARVIS` overlay, 실패음 2회, 짧은 진동 2회가 발생한다.
 - owner gate 대기, 호출어 대기, command window 종료 상태에서는 overlay가 사라진다.
 
 ### Camera Automation Test

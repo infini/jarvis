@@ -27,14 +27,13 @@ class JarvisStateIndicatorController(
             indicatorView = it
             windowManager.addView(it, layoutParams())
         }
-        val style = styleFor(state)
-        view.text = style.text
-        view.setTextColor(style.textColor)
+        view.text = INDICATOR_TEXT
+        view.setTextColor(Color.WHITE)
         view.background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(18).toFloat()
-            setColor(style.backgroundColor)
-            setStroke(dp(1), style.strokeColor)
+            cornerRadius = dp(16).toFloat()
+            setColor(Color.argb(218, 8, 8, 10))
+            setStroke(dp(1), Color.argb(48, 255, 255, 255))
         }
     }
 
@@ -50,11 +49,14 @@ class JarvisStateIndicatorController(
 
     private fun createIndicatorView(): TextView {
         return TextView(service).apply {
-            textSize = 15f
-            typeface = Typeface.DEFAULT_BOLD
-            setPadding(dp(14), dp(8), dp(14), dp(8))
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            letterSpacing = 0f
+            minWidth = dp(64)
+            setPadding(dp(11), dp(5), dp(11), dp(5))
             gravity = Gravity.CENTER
             includeFontPadding = false
+            elevation = dp(8).toFloat()
         }
     }
 
@@ -65,47 +67,12 @@ class JarvisStateIndicatorController(
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT,
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = dp(16)
-            y = dp(56)
-        }
-    }
-
-    private fun styleFor(state: JarvisVoiceState): IndicatorStyle {
-        return when (state) {
-            JarvisVoiceState.COMMAND_READY -> IndicatorStyle(
-                text = "JARVIS 듣는 중",
-                backgroundColor = Color.argb(232, 7, 112, 72),
-                strokeColor = Color.argb(230, 118, 255, 198),
-                textColor = Color.WHITE,
-            )
-            JarvisVoiceState.COMMAND_PROCESSING -> IndicatorStyle(
-                text = "JARVIS 처리 중",
-                backgroundColor = Color.argb(232, 133, 83, 10),
-                strokeColor = Color.argb(230, 255, 207, 128),
-                textColor = Color.WHITE,
-            )
-            JarvisVoiceState.COMMAND_HANDLED -> IndicatorStyle(
-                text = "JARVIS · 다음 명령 가능",
-                backgroundColor = Color.argb(232, 24, 91, 145),
-                strokeColor = Color.argb(230, 139, 209, 255),
-                textColor = Color.WHITE,
-            )
-            JarvisVoiceState.COMMAND_FAILED -> IndicatorStyle(
-                text = "JARVIS · 다시 말하세요",
-                backgroundColor = Color.argb(235, 156, 39, 49),
-                strokeColor = Color.argb(230, 255, 166, 174),
-                textColor = Color.WHITE,
-            )
-            JarvisVoiceState.IDLE -> IndicatorStyle(
-                text = "",
-                backgroundColor = Color.TRANSPARENT,
-                strokeColor = Color.TRANSPARENT,
-                textColor = Color.TRANSPARENT,
-            )
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = dp(8)
         }
     }
 
@@ -113,10 +80,7 @@ class JarvisStateIndicatorController(
         return (value * service.resources.displayMetrics.density).toInt()
     }
 
-    private data class IndicatorStyle(
-        val text: String,
-        val backgroundColor: Int,
-        val strokeColor: Int,
-        val textColor: Int,
-    )
+    companion object {
+        private const val INDICATOR_TEXT = "JARVIS"
+    }
 }
