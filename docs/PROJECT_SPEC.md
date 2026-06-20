@@ -16,15 +16,18 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 기본 카메라 실행 helper 구현 완료
 - sherpa-onnx + 3D-Speaker CAM++ 기반 소유자 목소리 등록 UI 및 embedding 저장 구현 완료
 - 등록된 소유자 embedding이 있을 때 명령 인식 전 owner voice gate 1차 구현 완료
+- 재부팅/앱 업데이트 후 Jarvis 시작 알림을 띄우는 boot receiver 구현 완료
 - README 설치 문서 작성 완료
 - 로컬 Debug 빌드는 `ANDROID_HOME=/opt/homebrew/share/android-commandlinetools` 지정 시 성공 확인
 - Xiaomi 15 Ultra USB 연결 상태에서 Debug APK 재설치 성공 확인
+- 앱 업데이트 후 `Jarvis 대기 준비됨` 시작 알림 표시 확인
 
 다음 우선순위:
 
 1. Xiaomi 15 Ultra에서 내 목소리 등록 후 threshold 실측
-2. owner voice gate 통과 후 명령 인식 UX 보정
-3. 실제 카메라 화면에서 셔터/필터/전환 좌표 보정
+2. 재부팅 후 시작 알림 및 HyperOS 자동 시작/배터리 설정 실기기 검증
+3. owner voice gate 통과 후 명령 인식 UX 보정
+4. 실제 카메라 화면에서 셔터/필터/전환 좌표 보정
 
 ## 2. Quick Context For Future Work
 
@@ -71,6 +74,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - Google Play 공개 배포
 - 은행앱/보안화면/권한화면 자동 우회
 - 백그라운드에서 무제한으로 항상 마이크를 사용하는 완전 상시 대기
+- Android 정책을 우회해서 부팅 직후 마이크 foreground service를 몰래 시작하는 방식
 - 루팅, Shizuku, ADB 권한을 전제로 한 구현
 
 ## 4. Target Device
@@ -100,10 +104,20 @@ Jarvis는 다음 조합으로 동작한다.
 - SpeechRecognizer: 한국어 음성 명령 인식
 - AccessibilityService: 화면 노드 탐색, 클릭, 전역 동작 수행
 - Intent: 기본 카메라 앱 실행
+- BroadcastReceiver: 재부팅 또는 앱 업데이트 후 Jarvis 시작 알림 표시
 
 접근성 서비스는 사용자가 설정에서 직접 켜야 하며, 설치만으로 자동 활성화할 수 없다.
 
 전면 카메라 실행은 Android 카메라 인텐트에 전면 렌즈 힌트 extra를 넣어 시도한다. 이 extra는 카메라 앱 구현에 따라 무시될 수 있으므로, Xiaomi 기본 카메라가 힌트를 무시하면 카메라를 연 뒤 접근성 전환 명령을 조합하는 fallback이 필요하다.
+
+Android 14(API 34)+에서 `RECORD_AUDIO`는 while-in-use 권한으로 취급된다. 현재 앱은 `targetSdk=35`이므로 `BOOT_COMPLETED` receiver에서 microphone foreground service를 직접 시작할 수 없다. 부팅 후 자동 대기는 다음 구조로 처리한다.
+
+1. `JarvisBootReceiver`가 `BOOT_COMPLETED` 또는 `MY_PACKAGE_REPLACED`를 받는다.
+2. receiver는 마이크 서비스를 직접 시작하지 않고 `Jarvis 대기 준비됨` 알림을 띄운다.
+3. 사용자가 알림의 `Jarvis 시작`을 누르면 notification interaction으로 `JarvisVoiceService`를 foreground service로 시작한다.
+4. 한 번 시작된 뒤에는 foreground notification과 `START_STICKY`로 계속 대기한다.
+
+완전한 “부팅 직후 무터치 마이크 대기”는 일반 앱 권한만으로는 신뢰할 수 없다. 장기적으로는 기본 Assistant/VoiceInteractionService 역할, device-owner/system app, 또는 사용자가 명시적으로 실행한 foreground session을 유지하는 방식 중 하나를 검토한다.
 
 ## 7. Current Architecture
 
@@ -126,6 +140,7 @@ JarvisAccessibilityService
 | File | Role |
 | --- | --- |
 | `MainActivity.kt` | 권한 요청, 접근성 설정 진입, Jarvis 시작/중지 UI |
+| `JarvisBootReceiver.kt` | 부팅/앱 업데이트 후 Jarvis 시작 알림 표시 |
 | `JarvisVoiceService.kt` | 포그라운드 음성 인식 서비스 |
 | `OwnerVoiceEngine.kt` | sherpa-onnx speaker embedding 생성, 녹음, cosine 검증 |
 | `OwnerVoiceStore.kt` | 소유자 음성 embedding 저장 |
@@ -227,6 +242,7 @@ JarvisAccessibilityService
 | `POST_NOTIFICATIONS` | Android 13+ 포그라운드 서비스 알림 |
 | `FOREGROUND_SERVICE` | Jarvis 음성 서비스 실행 |
 | `FOREGROUND_SERVICE_MICROPHONE` | Android 14+ 마이크 foreground service 선언 |
+| `RECEIVE_BOOT_COMPLETED` | 재부팅 후 Jarvis 시작 알림 표시 |
 | `BIND_ACCESSIBILITY_SERVICE` | 접근성 서비스 바인딩. 일반 런타임 권한이 아니며 시스템 설정에서 사용자가 직접 켜야 함 |
 
 소유자 목소리 등록/검증은 기존 `RECORD_AUDIO` 권한을 사용한다. 별도 런타임 권한은 추가하지 않았다.
@@ -243,7 +259,8 @@ JarvisAccessibilityService
 6. Jarvis 앱 실행
 7. 마이크/알림 권한 허용
 8. 접근성 설정에서 Jarvis 서비스 활성화
-9. Jarvis 시작
+9. 앱 정보 또는 HyperOS 보안 설정에서 자동 시작 허용 및 배터리 제한 해제
+10. Jarvis 시작
 
 APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자가 직접 켜야 한다.
 
@@ -260,6 +277,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - 마이크 권한 허용 상태가 UI에 표시됨
 - 알림 권한 허용 상태가 UI에 표시됨
 - 접근성 서비스 켜짐/꺼짐 상태가 UI에 표시됨
+- 배터리 최적화/앱 정보 설정 화면으로 이동할 수 있음
 
 ### Voice Test
 
@@ -287,11 +305,20 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - 등록된 사용자 목소리 similarity가 threshold 이상이면 명령 인식 window가 열린다.
 - 다른 사람 목소리는 threshold 미만으로 유지되어 명령 인식 window가 열리지 않아야 한다.
 
+### Boot/Always-On Test
+
+- `MY_PACKAGE_REPLACED` 또는 재부팅 후 `Jarvis 대기 준비됨` 알림이 표시된다.
+- 알림의 `Jarvis 시작`을 누르면 `JarvisVoiceService` foreground notification이 표시된다.
+- Android 정책상 `BOOT_COMPLETED`에서 microphone foreground service가 직접 시작되지 않는다.
+- HyperOS 자동 시작 허용 및 배터리 제한 해제 후 장시간 대기 안정성을 확인한다.
+
 ## 13. Known Risks
 
 - Xiaomi 카메라 앱 업데이트로 UI 키워드나 좌표가 바뀔 수 있다.
 - SpeechRecognizer가 네트워크/Google 앱 상태에 영향을 받을 수 있다.
 - 마이크 포그라운드 서비스는 배터리 최적화나 OS 정책에 의해 중단될 수 있다.
+- Android 14+는 부팅 receiver에서 microphone foreground service 시작을 제한한다. 현재 구현은 알림 탭을 통한 시작으로 우회가 아니라 정책 준수 경로를 사용한다.
+- HyperOS는 추가 자동 시작/배터리 제한이 있어 사용자가 앱별 설정을 직접 조정해야 할 수 있다.
 - speaker verification threshold `0.50`은 시작값이다. Xiaomi 15 Ultra 실측에서 본인/타인 점수 분포를 보고 조정해야 한다.
 - ONNX 모델과 native library를 앱에 포함하므로 APK 크기가 커진다.
 - 접근성 API를 자동화 비서로 쓰는 방식은 개인용 실험에는 적합하지만 Google Play 배포에는 정책 검토가 필요하다.

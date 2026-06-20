@@ -9,6 +9,7 @@
 - `JarvisVoiceService`: 마이크를 사용하는 포그라운드 서비스입니다. `자비스, 찍어` 같은 한국어 명령을 듣고 내부 명령으로 바꿉니다.
 - `OwnerVoiceEngine`: sherpa-onnx와 3D-Speaker CAM++ 모델로 소유자 목소리 embedding을 만들고 검증합니다.
 - `OwnerVoiceStore`: 등록된 소유자 목소리 embedding을 앱 private storage에 저장합니다.
+- `JarvisBootReceiver`: 재부팅 또는 앱 업데이트 후 Jarvis 시작 알림을 띄웁니다.
 - `JarvisAccessibilityService`: 접근성 서비스입니다. 음성 서비스가 보낸 명령을 받아 현재 화면의 버튼을 찾거나, 실패하면 카메라 화면의 예상 위치를 탭합니다.
 - `MainActivity`: 마이크/알림 권한 요청, 접근성 설정 열기, Jarvis 시작/중지 UI입니다.
 
@@ -33,7 +34,8 @@
 3. 앱에서 마이크 권한과 알림 권한을 허용합니다.
 4. `내 목소리 등록 시작`을 누른 뒤 조용한 곳에서 6초 동안 자연스럽게 말합니다.
 5. `접근성 설정 열기`를 누르고 `Jarvis` 접근성 서비스를 켭니다.
-6. 앱으로 돌아와 `Jarvis 시작`을 누릅니다.
+6. HyperOS 앱 설정에서 자동 시작을 허용하고 배터리 제한을 풀어줍니다.
+7. 앱으로 돌아와 `Jarvis 시작`을 누릅니다.
 
 ## 설치 방법
 
@@ -62,3 +64,5 @@
 기본 카메라 앱은 외부 제어 API를 제공하지 않습니다. 그래서 이 프로젝트는 접근성 서비스를 통해 버튼을 찾고 탭합니다. 셀피 모드 실행은 Android 카메라 인텐트에 전면 카메라 힌트를 함께 전달하지만, Xiaomi 카메라 앱이 해당 힌트를 무시하면 마지막 사용 렌즈로 열릴 수 있습니다. Xiaomi 카메라 UI 버전, 언어, 화면 방향, 업데이트에 따라 좌표 fallback을 조정해야 할 수 있습니다.
 
 소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 먼저 짧은 발화를 녹음해 목소리를 확인하고, 통과한 짧은 시간 동안만 `SpeechRecognizer` 명령 인식을 시작합니다. 현재 구조상 한 문장을 완전히 동시에 인증/인식하지는 못하므로, 실사용에서는 먼저 Jarvis를 부르듯 말해 소유자 확인을 통과한 뒤 명령을 말하는 2단계 흐름이 가장 안정적입니다.
+
+Android 14+ 정책상 `targetSdk=35` 앱은 재부팅 broadcast에서 microphone foreground service를 직접 시작할 수 없습니다. 대신 Jarvis는 재부팅 후 시작 알림을 띄우고, 사용자가 알림을 탭하면 마이크 서비스를 시작합니다. 한 번 시작된 뒤에는 foreground notification으로 계속 대기합니다.

@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -93,6 +94,8 @@ class MainActivity : Activity() {
 
         root.addView(button("마이크/알림 권한 요청") { requestRuntimePermissions() })
         root.addView(button("접근성 설정 열기") { openAccessibilitySettings() })
+        root.addView(button("배터리 최적화 설정 열기") { openBatteryOptimizationSettings() })
+        root.addView(button("앱 자동 시작/배터리 설정 열기") { openAppSettings() })
         root.addView(button("Jarvis 시작") { startJarvis() })
         root.addView(button("Jarvis 중지") { stopService(Intent(this, JarvisVoiceService::class.java)) })
         root.addView(button("테스트: 카메라 열기") { CameraLauncher.open(this) })
@@ -199,6 +202,18 @@ class MainActivity : Activity() {
 
     private fun openAccessibilitySettings() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }
+
+    private fun openBatteryOptimizationSettings() {
+        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+    }
+
+    private fun openAppSettings() {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:$packageName"),
+        )
+        startActivity(intent)
     }
 
     private fun startJarvis() {
