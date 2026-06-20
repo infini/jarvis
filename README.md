@@ -69,6 +69,14 @@ adb logcat -v time -s JarvisLatency
 
 주요 이벤트는 `listen_start`, `local_partial`, `fallback_to_android`, `ready_for_speech`, `partial_results`, `final_results`, `command_parsed`, `command_execute_start`, `command_execute_return`, `accessibility_command_received`, `accessibility_command_dispatch_return`, `command_complete`입니다. 음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후 걸린 시간입니다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 명령을 보낸 뒤 접근성 서비스가 받은 지연입니다.
 
+trace별 요약은 다음 스크립트로 확인합니다.
+
+```bash
+scripts/jarvis-latency-report.sh
+```
+
+출력의 `path`는 `local_asr`, `local_asr->android_stt` 같은 실제 인식 경로이고, `total`은 마지막 trace 이벤트까지의 누적 시간입니다. 정상적인 빠른 명령은 `command_parsed`, `command_execute_start`, `accessibility_command_received`, `command_complete`가 같은 trace 안에 이어져야 합니다.
+
 ## 폰에서 켜야 하는 것
 
 1. Android Studio에서 이 폴더를 엽니다.

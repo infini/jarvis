@@ -273,6 +273,14 @@ Overlay는 `JarvisAccessibilityService`가 `TYPE_ACCESSIBILITY_OVERLAY`로 표�
 adb logcat -v time -s JarvisLatency
 ```
 
+요약은 repo root에서 다음 스크립트로 확인한다.
+
+```bash
+scripts/jarvis-latency-report.sh
+```
+
+스크립트는 `trace`, `total`, `path`, `command`, `status`, `parsed`, `access`, `bus`를 한 줄로 출력한다. 목표는 command window 안의 정상 명령이 `path=local_asr`, `status=command_complete`로 끝나고, `parsed`와 `access`가 체감 지연을 설명할 수 있는 낮은 값으로 유지되는 것이다. `path=local_asr->android_stt`는 local ASR이 명령을 못 잡아 Android fallback을 탔다는 뜻이므로 별도 튜닝 대상으로 본다.
+
 주요 이벤트:
 
 - `owner_authorized`: 소유자 목소리 인증 통과
