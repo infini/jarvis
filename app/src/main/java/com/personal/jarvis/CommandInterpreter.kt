@@ -42,7 +42,7 @@ object CommandInterpreter {
             listOf("켜", "깨워", "켜줘", "켜라", "온").any(normalized::contains)
         val wantsSleepScreen = (mentionsScreen && listOf("꺼", "끄", "오프").any(normalized::contains)) ||
             (mentionsPhone && listOf("잠가", "잠궈", "잠금", "락").any(normalized::contains))
-        val wantsStop = listOf("멈춰", "중지", "꺼", "그만").any(normalized::contains)
+        val wantsStop = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만").any(normalized::contains)
         val wantsCloseApp = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내").any(normalized::contains)
 
         return when {
@@ -87,7 +87,7 @@ object CommandInterpreter {
 
     private val FRONT_CAMERA_WORDS = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라")
     private val REAR_CAMERA_WORDS = listOf("후면", "후방", "뒷카메라", "뒤카메라", "백카메라", "리어카메라")
-    private val ACTIVATION_WORDS = listOf("실행", "실행해")
+    private val ACTIVATION_WORDS = listOf("깨어나")
 
     private val WAKE_WORDS = listOf(
         "자비스",

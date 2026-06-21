@@ -1022,7 +1022,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val ACTIVE_SPEECH_DEADLINE_RECHECK_MS = 500L
         private const val ACTIVE_SPEECH_DEADLINE_GRACE_MS = 3500L
         private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 100L
-        private const val DEFAULT_NOTIFICATION_TEXT = "'자비스 실행' 후 음성 명령을 듣습니다."
+        private const val DEFAULT_NOTIFICATION_TEXT = "'자비스 깨어나' 후 음성 명령을 듣습니다."
         private val AIAI_RECOGNITION_SERVICE = ComponentName(
             "com.google.android.as",
             "com.google.android.apps.miphone.aiai.app.AiAiSpeechRecognitionService",

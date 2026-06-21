@@ -18,7 +18,7 @@ esac
 DURATION_MS=$((DURATION_SECONDS * 1000))
 WAIT_DEADLINE=$((DURATION_SECONDS + 30))
 
-echo "Speak now: say '자비스 실행' repeatedly for ${DURATION_SECONDS}s."
+echo "Speak now: say '자비스 깨어나' repeatedly for ${DURATION_SECONDS}s."
 adb shell am start \
   -n "$ACTIVITY" \
   --el duration_ms "$DURATION_MS" \

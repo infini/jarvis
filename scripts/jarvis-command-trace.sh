@@ -69,7 +69,7 @@ if [[ "$START_DEBUG_ACTIVITY" == "1" ]]; then
     --ez reset_voice_service true >/dev/null 2>&1 || true
   sleep 1
 fi
-echo "Speak now: say '자비스 실행'. When the green JARVIS indicator appears or the ready tone/vibration plays, say one command such as '카메라 실행', then wait for the handled tone before the next command: '후면', '전면', '찍어', '종료'."
+echo "Speak now: say '자비스 깨어나'. When the green JARVIS indicator appears or the ready tone/vibration plays, say one command such as '카메라 실행', then wait for the handled tone before the next command: '후면', '전면', '찍어', '종료'."
 sleep "$DURATION_SECONDS"
 
 if [[ -z "$LOG_FILE" ]]; then
@@ -110,10 +110,10 @@ if [[ -z "$COMMAND_COMPLETE_LINES" ]]; then
   echo "Diagnostics: owner_authorized=${OWNER_AUTHORIZED_COUNT}, owner_audio_activation=${OWNER_AUDIO_ACTIVATION_COUNT}, ready_for_speech=${READY_FOR_SPEECH_COUNT}, speech_begin=${SPEECH_BEGIN_COUNT}, partial_results=${PARTIAL_RESULTS_COUNT}, command_parsed=${COMMAND_PARSED_COUNT}, activation_partial=${ACTIVATION_PARTIAL_COUNT}, fallback_to_local=${FALLBACK_TO_LOCAL_COUNT}" >&2
   echo "OwnerVoiceGate: accepted=${OWNER_ACCEPTED_COUNT}, rejected=${OWNER_REJECTED_COUNT}, suppressed=${OWNER_SUPPRESSED_COUNT}" >&2
   if [[ "$OWNER_AUTHORIZED_COUNT" == "0" ]]; then
-    echo "No owner voice was authorized. Say '자비스 실행' clearly during the capture window or re-register the owner voice if scores stay low." >&2
+    echo "No owner voice was authorized. Say '자비스 깨어나' clearly during the capture window or re-register the owner voice if scores stay low." >&2
     grep "Owner voice" "$DIAGNOSTIC_LOG_FILE" | tail -12 >&2 || true
   elif [[ "$OWNER_AUDIO_ACTIVATION_COUNT" == "0" ]]; then
-    echo "Owner voice was authorized, but the local activation phrase was not recognized as '자비스 실행'." >&2
+    echo "Owner voice was authorized, but the local activation phrase was not recognized as '자비스 깨어나'." >&2
   elif [[ "$SPEECH_BEGIN_COUNT" == "0" && "$PARTIAL_RESULTS_COUNT" == "0" ]]; then
     echo "Jarvis opened a command window, but Android STT did not detect a spoken command. Say the command after the green JARVIS indicator appears or the ready tone/vibration plays." >&2
   elif [[ "$COMMAND_PARSED_COUNT" == "0" ]]; then

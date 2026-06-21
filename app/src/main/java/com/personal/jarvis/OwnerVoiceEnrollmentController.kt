@@ -21,7 +21,7 @@ class OwnerVoiceEnrollmentController(
 
         enrolling = true
         onProgress(0)
-        onStatus("목소리 등록 중: 조용한 곳에서 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'을 여러 번 또렷하게 말하세요.")
+        onStatus("목소리 등록 중: 조용한 곳에서 등록 문구 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'를 여러 번 또렷하게 말하세요.")
 
         thread = Thread({
             try {
@@ -50,7 +50,7 @@ class OwnerVoiceEnrollmentController(
                     throw IllegalStateException("충분한 음성 특징을 만들지 못했습니다. 더 또렷하게 다시 등록하세요.")
                 }
                 if (embeddings.size < OwnerVoiceEngine.MIN_OWNER_EMBEDDINGS) {
-                    throw IllegalStateException("'${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'을 여러 번 또렷하게 말해 다시 등록하세요.")
+                    throw IllegalStateException("등록 문구 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'를 여러 번 또렷하게 말해 다시 등록하세요.")
                 }
 
                 if (!enrolling) return@Thread

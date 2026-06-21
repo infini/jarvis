@@ -181,7 +181,7 @@ status_hint() {
       echo "hint=Owner voice gate did not authorize the speaker. Check peak RMS, reject reasons, distance, and owner voice enrollment."
       ;;
     FAIL_NO_ACTIVATION)
-      echo "hint=Owner voice was authorized, but local ASR did not recognize the activation phrase '자비스 실행'."
+      echo "hint=Owner voice was authorized, but local ASR did not recognize the activation phrase '자비스 깨어나'."
       ;;
     FAIL_LEGACY_PROFILE)
       echo "hint=Owner profile has fewer than 2 embeddings. Re-register owner voice before judging wake or command latency."

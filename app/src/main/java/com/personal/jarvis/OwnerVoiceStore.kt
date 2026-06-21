@@ -16,8 +16,8 @@ object OwnerVoiceStore {
     const val MODEL_ASSET_NAME = "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"
     const val DEFAULT_ACCEPT_THRESHOLD = 0.50f
     const val MIN_CONFIGURED_EMBEDDINGS = 2
-    const val OWNER_ENROLLMENT_PHRASE = "자비스 실행"
-    const val OWNER_ENROLLMENT_PHRASE_ID = "jarvis_activation_v2"
+    const val OWNER_ENROLLMENT_PHRASE = "자비스 깨어나"
+    const val OWNER_ENROLLMENT_PHRASE_ID = "jarvis_activation_v3"
 
     fun saveEmbedding(context: Context, embedding: FloatArray) {
         saveEmbeddings(context, listOf(embedding))

@@ -44,17 +44,18 @@ class CommandInterpreterTest {
     }
 
     @Test
-    fun activatesOnlyOnExplicitJarvisRunPhrase() {
-        assertTrue(CommandInterpreter.isActivationWake("자비스 실행"))
-        assertTrue(CommandInterpreter.isActivationWake("자베스 실행"))
-        assertTrue(CommandInterpreter.isActivationWake("자비스 실행해"))
-        assertFalse(CommandInterpreter.isActivationWake("헤이 자비스 실행"))
+    fun activatesOnlyOnExplicitJarvisWakePhrase() {
+        assertTrue(CommandInterpreter.isActivationWake("자비스 깨어나"))
+        assertTrue(CommandInterpreter.isActivationWake("자베스 깨어나"))
+        assertTrue(CommandInterpreter.isActivationWake("쟈비스 깨어나"))
+        assertFalse(CommandInterpreter.isActivationWake("헤이 자비스 깨어나"))
+        assertFalse(CommandInterpreter.isActivationWake("자비스 실행"))
         assertFalse(CommandInterpreter.isActivationWake("자비스"))
         assertFalse(CommandInterpreter.isActivationWake("헤이 자비스"))
         assertFalse(CommandInterpreter.isActivationWake("자비스 찍어"))
         assertFalse(CommandInterpreter.isActivationWake("자비스 카메라 실행"))
         assertFalse(CommandInterpreter.isActivationWake("카메라 실행"))
-        assertNull(CommandInterpreter.parse("자비스 실행"))
+        assertNull(CommandInterpreter.parse("자비스 깨어나"))
     }
 
     @Test
@@ -66,6 +67,8 @@ class CommandInterpreterTest {
 
     @Test
     fun stopListeningClosesOnlyCurrentCommandWindow() {
+        assertEquals(CommandBus.COMMAND_STOP_LISTENING, CommandInterpreter.parse("자비스, 잠들어"))
+        assertEquals(CommandBus.COMMAND_STOP_LISTENING, CommandInterpreter.parse("잠들어", requireWakeWord = false))
         assertEquals(CommandBus.COMMAND_STOP_LISTENING, CommandInterpreter.parse("자비스, 멈춰"))
         assertEquals(CommandBus.COMMAND_STOP_LISTENING, CommandInterpreter.parse("멈춰", requireWakeWord = false))
         assertFalse(JarvisCommandExecutor.shouldStopVoiceService(CommandBus.COMMAND_STOP_LISTENING))

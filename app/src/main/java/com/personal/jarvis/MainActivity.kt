@@ -123,7 +123,7 @@ class MainActivity : Activity() {
         root.addView(button("테스트: 화면 끄기") { CommandBus.send(this, CommandBus.COMMAND_SLEEP_SCREEN) })
 
         val notes = TextView(this).apply {
-            text = "접근성 서비스를 켠 뒤 Jarvis 시작을 누르세요.\n먼저 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'을 말한 뒤 카메라 실행 / 전면 / 후면 / 찍어 / 종료를 말합니다."
+            text = "접근성 서비스를 켠 뒤 Jarvis 시작을 누르세요.\n먼저 등록 문구 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'를 말한 뒤 카메라 실행 / 전면 / 후면 / 찍어 / 종료를 말합니다."
             textSize = 14f
             setTextColor(Color.rgb(76, 86, 96))
             setPadding(0, dp(18), 0, 0)
@@ -292,7 +292,7 @@ class MainActivity : Activity() {
                 appendLine("등록 문구: ${ownerPhraseId ?: "이전 버전/알 수 없음"}")
             }
             if (hasOwnerProfile && !ownerProfileConfigured) {
-                appendLine("'${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'으로 다시 등록해야 Jarvis 대기를 시작합니다.")
+                appendLine("등록 문구 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'로 다시 등록해야 Jarvis 대기를 시작합니다.")
                 appendLine("내 목소리 등록 시작을 눌러 다시 등록하세요.")
             }
             appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++ / Korean streaming ASR")

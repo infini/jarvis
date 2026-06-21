@@ -74,7 +74,7 @@ PROFILE_PHRASE_ID="$(
 )"
 
 if [[ "$PROFILE_CONFIGURED" != "true" ]]; then
-  echo "WARN: profile_configured=${PROFILE_CONFIGURED}, profile_embeddings=${EMBEDDING_COUNT}, profile_phrase_id=${PROFILE_PHRASE_ID}. Re-register owner voice with repeated '자비스 실행' before latency verification." >&2
+  echo "WARN: profile_configured=${PROFILE_CONFIGURED}, profile_embeddings=${EMBEDDING_COUNT}, profile_phrase_id=${PROFILE_PHRASE_ID}. Re-register owner voice with repeated '자비스 깨어나' before latency verification." >&2
   exit 1
 fi
 
