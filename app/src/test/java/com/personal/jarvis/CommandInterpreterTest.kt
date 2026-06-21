@@ -64,14 +64,20 @@ class CommandInterpreterTest {
 
     @Test
     fun acceptsLocalActivationAsrEquivalentWithoutChangingExplicitWakePhrase() {
+        assertTrue(CommandInterpreter.isActivationWakeAsrEquivalent("자비스 깨어나"))
         assertTrue(CommandInterpreter.isActivationWakeAsrEquivalent("자비스게임?"))
         assertTrue(CommandInterpreter.isActivationWakeAsrEquivalent("잡비스 게임"))
         assertTrue(CommandInterpreter.isActivationWakeAsrEquivalent("다비스때어나"))
         assertTrue(CommandInterpreter.isActivationWakeAsrEquivalent("아에스에어나"))
         assertFalse(CommandInterpreter.isActivationWake("자비스게임?"))
         assertFalse(CommandInterpreter.isActivationWake("다비스 때어나"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("자비스 실행"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("자비스"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("헤이 자비스"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("헤이 자비스 깨어나"))
         assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("헤이 자비스 게임"))
         assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("자비스 카메라 실행"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("자비스 깨어나 카메라 실행"))
         assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("카메라 실행"))
         assertNull(CommandInterpreter.parse("다비스 카메라 실행"))
     }
