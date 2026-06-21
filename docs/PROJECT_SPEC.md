@@ -374,7 +374,7 @@ scripts/jarvis-command-trace.sh 45
 
 실행/종료, 켜기/끄기처럼 자연스러운 반대 동작이 있는 명령은 항상 페어로 등록한다. 새 명령을 추가할 때는 파서, Command Model, 테스트 문장, README 지원 명령 목록에 양쪽 표현을 함께 반영한다.
 
-Idle 상태에서 command window를 여는 activation phrase는 `자비스 실행`이다. ASR 흔들림을 고려해 `자베스`, `쟈비스`, `제비스`, `차비스`, `jarvis` + `실행`도 activation으로 인정한다. `자비스` 단독, `헤이 자비스` 단독, `자비스 카메라 실행`은 idle에서 command window를 열지 않는다. 이는 owner voice gate가 사용자의 목소리를 통과시키더라도 로컬 activation ASR이 실패하면 Android command STT와 overlay/비프음을 시작하지 않기 위한 제약이다.
+Idle 상태에서 command window를 여는 activation phrase는 `자비스 실행`이다. ASR 표기 흔들림을 고려해 `자베스`, `쟈비스`, `제비스`, `차비스`, `jarvis` + `실행`도 같은 호출로 보지만, 호출어 앞뒤에 다른 filler나 명령이 붙으면 activation으로 인정하지 않는다. `자비스` 단독, `헤이 자비스`, `헤이 자비스 실행`, `자비스 카메라 실행`은 idle에서 command window를 열지 않는다. 이는 owner voice gate가 사용자의 목소리를 통과시키더라도 로컬 activation ASR이 실패하면 Android command STT와 overlay/비프음을 시작하지 않기 위한 제약이다.
 
 예외: 30초 command window가 열린 동안에는 이어지는 명령에서 호출어를 생략한다. 예를 들어 `자비스 실행`으로 초록 `JARVIS` overlay가 보인 뒤 `카메라 셀피 모드로 실행해`를 말할 수 있다. command window 안에서 `자비스 실행` activation phrase가 다시 들어오면 window를 다시 30초로 갱신할 수 있지만, 일반 명령 파싱이 우선된다.
 
@@ -402,7 +402,7 @@ Idle 상태에서 command window를 여는 activation phrase는 `자비스 실�
 7. 최근 1800ms rolling audio window에서 RMS 기반으로 말소리 앞뒤 무음을 줄인다. 인증 경로에서는 noise floor 대비 peak가 충분한 구간만 candidate embedding으로 만들고, speaker embedding 입력은 최소 1.2초로 padding한 뒤 60ms마다 저장된 embedding 묶음과 cosine similarity 최고점을 비교한다.
 8. similarity가 `0.50` 이상이거나 near/soft score 조건을 만족하면 owner gate는 통과로 판단하되, 아직 command window를 열거나 overlay/비프음을 내지 않는다.
 9. owner gate 통과 후 같은 `AudioRecord`에서 350ms를 추가 캡처해 activation phrase 끝부분을 포함시킨 뒤, 직전 1800ms 음성 window를 즉시 local ASR로 재해석한다.
-10. local ASR 결과가 `자비스 실행` 또는 허용된 alias + `실행`이면 30초 command window를 열고 Android System Intelligence(AiAi) `SpeechRecognizer` live command STT를 시작한다. activation phrase가 아니면 `owner_audio_activation_rejected`로 trace를 끝내고 조용히 owner gate 대기로 돌아간다.
+10. local ASR 결과가 `자비스 실행` 계열 activation phrase이면 30초 command window를 열고 Android System Intelligence(AiAi) `SpeechRecognizer` live command STT를 시작한다. activation phrase가 아니면 `owner_audio_activation_rejected`로 trace를 끝내고 조용히 owner gate 대기로 돌아간다.
 11. Android STT partial 결과에서 빠른 명령이 파싱되면 final 결과를 기다리지 않고 즉시 실행한다.
 12. Android STT가 실제 발화를 감지한 뒤 실패했거나 사용할 수 없으면 `LocalCommandSession`이 로컬 한국어 streaming ASR fallback을 시도한다. 발화가 감지되지 않은 `NO_MATCH`/timeout은 idle retry로 처리한다.
 13. 카메라 세션 명령과 `home` 종료 명령은 Android STT 또는 local fallback 결과에서 먼저 해석되면 즉시 실행한다.
@@ -512,7 +512,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 ### Voice Test
 
-- Idle 상태에서 `자비스` 단독, `헤이 자비스`, `자비스 카메라 실행`은 command window를 열지 않는다.
+- Idle 상태에서 `자비스` 단독, `헤이 자비스`, `헤이 자비스 실행`, `자비스 카메라 실행`은 command window를 열지 않는다.
 - Idle 상태에서 `자비스 실행`이 owner voice + activation phrase를 통과하면 초록 `JARVIS` overlay가 표시되고 30초 command window가 열린다.
 - `자비스 실행` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리한다.
 - command window 안에서 `카메라 열어`가 기본 카메라 앱을 연다.

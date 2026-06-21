@@ -46,9 +46,9 @@ class CommandInterpreterTest {
     @Test
     fun activatesOnlyOnExplicitJarvisRunPhrase() {
         assertTrue(CommandInterpreter.isActivationWake("자비스 실행"))
-        assertTrue(CommandInterpreter.isActivationWake("헤이 자비스 실행"))
         assertTrue(CommandInterpreter.isActivationWake("자베스 실행"))
         assertTrue(CommandInterpreter.isActivationWake("자비스 실행해"))
+        assertFalse(CommandInterpreter.isActivationWake("헤이 자비스 실행"))
         assertFalse(CommandInterpreter.isActivationWake("자비스"))
         assertFalse(CommandInterpreter.isActivationWake("헤이 자비스"))
         assertFalse(CommandInterpreter.isActivationWake("자비스 찍어"))

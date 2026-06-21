@@ -68,15 +68,11 @@ object CommandInterpreter {
 
     fun isActivationWake(text: String): Boolean {
         val normalized = normalize(text)
-        if (!hasWakeWord(normalized)) return false
-
-        val withoutWake = WAKE_WORDS.fold(normalized) { current, wakeWord ->
-            current.replace(wakeWord, "")
+        return WAKE_WORDS.any { wakeWord ->
+            ACTIVATION_WORDS.any { activationWord ->
+                normalized == wakeWord + activationWord
+            }
         }
-        val activationText = WAKE_FILLER_WORDS.fold(withoutWake) { current, filler ->
-            current.replace(filler, "")
-        }
-        return activationText in ACTIVATION_WORDS
     }
 
     private fun normalize(text: String): String {
@@ -92,7 +88,6 @@ object CommandInterpreter {
     private val FRONT_CAMERA_WORDS = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라")
     private val REAR_CAMERA_WORDS = listOf("후면", "후방", "뒷카메라", "뒤카메라", "백카메라", "리어카메라")
     private val ACTIVATION_WORDS = listOf("실행", "실행해")
-    private val WAKE_FILLER_WORDS = listOf("헤이", "hey", "하이")
 
     private val WAKE_WORDS = listOf(
         "자비스",

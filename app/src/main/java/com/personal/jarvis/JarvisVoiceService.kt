@@ -100,6 +100,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
             handler.postDelayed(listeningTimeout, ACTIVE_SPEECH_DEADLINE_RECHECK_MS)
             return@Runnable
         }
+        if (wasListeningForCommand && isCommandWindowExpired()) {
+            stopActiveCommandRecognitionForWindowClose()
+            closeCommandWindow(playFeedback = false)
+            finishLatency("command_window_expired_on_listen_timeout")
+            scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
+            return@Runnable
+        }
         listening = false
         currentListeningAllowsCommandWithoutWake = false
         androidListenAfterLocal = false
@@ -108,12 +115,6 @@ class JarvisVoiceService : Service(), RecognitionListener {
             localCommandSession.stop()
         } else {
             runCatching { recognizer?.cancel() }
-        }
-        if (wasListeningForCommand && isCommandWindowExpired()) {
-            closeCommandWindow(playFeedback = false)
-            finishLatency("command_window_expired_on_listen_timeout")
-            scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
-            return@Runnable
         }
         if (wasListeningForCommand && shouldUseOwnerGate()) {
             extendCommandWindowWithinDeadline(COMMAND_RETRY_GRACE_MS)
@@ -151,19 +152,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
             Log.d(TAG, "Command window speech grace expired; returning to owner gate")
             markLatency("command_window_deadline_speech_grace_expired")
-            listening = false
-            currentListeningAllowsCommandWithoutWake = false
-            androidListenAfterLocal = false
-            partialCommandHandled = false
-            partialCommandKeepsWindowOpen = false
-            speechStartedInCurrentListen = false
-            handler.removeCallbacks(listeningTimeout)
-            handler.removeCallbacks(partialCommandFinalize)
-            if (localCommandSession.isActive) {
-                localCommandSession.stop()
-            } else {
-                runCatching { recognizer?.cancel() }
-            }
+            stopActiveCommandRecognitionForWindowClose()
             closeCommandWindow(playFeedback = false)
             finishLatency("command_window_expired_after_speech_grace")
             scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
@@ -172,19 +161,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         Log.d(TAG, "Command window deadline reached; returning to owner gate")
         finishLatency("command_window_timeout")
-        listening = false
-        currentListeningAllowsCommandWithoutWake = false
-        androidListenAfterLocal = false
-        partialCommandHandled = false
-        partialCommandKeepsWindowOpen = false
-        speechStartedInCurrentListen = false
-        handler.removeCallbacks(listeningTimeout)
-        handler.removeCallbacks(partialCommandFinalize)
-        if (localCommandSession.isActive) {
-            localCommandSession.stop()
-        } else {
-            runCatching { recognizer?.cancel() }
-        }
+        stopActiveCommandRecognitionForWindowClose()
         closeCommandWindow(playFeedback = false)
         scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
     }
@@ -284,6 +261,24 @@ class JarvisVoiceService : Service(), RecognitionListener {
         runCatching { recognizer?.destroy() }
         recognizer = null
         createRecognizer()
+    }
+
+    private fun stopActiveCommandRecognitionForWindowClose() {
+        listening = false
+        currentListeningAllowsCommandWithoutWake = false
+        androidListenAfterLocal = false
+        partialCommandHandled = false
+        partialCommandKeepsWindowOpen = false
+        partialActivationHandled = false
+        speechStartedInCurrentListen = false
+        handler.removeCallbacks(listeningTimeout)
+        handler.removeCallbacks(partialCommandFinalize)
+        if (localCommandSession.isActive) {
+            localCommandSession.stop()
+        } else {
+            suppressCancelledRecognizerCallbacks = true
+            runCatching { recognizer?.cancel() }
+        }
     }
 
     private fun scheduleListening(delayMs: Long) {
