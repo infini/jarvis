@@ -338,11 +338,13 @@ scripts/jarvis-owner-enroll.sh 6
 activation ASR 디버깅은 다음 순서로 진행한다.
 
 ```bash
+scripts/jarvis-wake-live-check.sh 20
+scripts/jarvis-wake-diagnose.sh
 scripts/jarvis-activation-replay.sh
 scripts/jarvis-activation-captures.sh
 ```
 
-debug APK는 activation attempt마다 `jarvis-activation-attempts/activation-<timestamp>-<accepted|rejected>.wav`와 같은 이름의 `.json` 메타데이터를 cache에 저장한다. idle activation ASR은 60초 마이크 세션 안에서 최근 3.6초 rolling audio를 보존하고, activation phrase가 확인되면 같은 audio를 owner verification에 사용한다. activation이 아닌 segment는 `activation_asr_rejected_segment`로 기록한 뒤 마이크를 닫지 않고 계속 듣는다. `jarvis-wake-diagnose.sh`는 프로필 상태, 저장 WAV replay, 최신 캡처 메타데이터, 관련 logcat을 한 번에 묶어 wake 실패 원인을 분류한다. replay 스크립트는 사용자의 추가 발화 없이 저장 WAV를 현재 APK의 `LocalCommandRecognizer.recognizeBufferedActivation`으로 다시 실행해 text, accepted, endpoint, RMS, gain과 owner score를 리포트한다. 이 절차를 먼저 통과하지 못한 threshold/fuzzy rule 변경은 실시간 발화 테스트로 넘기지 않는다.
+debug APK는 activation attempt마다 `jarvis-activation-attempts/activation-<timestamp>-<accepted|rejected>.wav`와 같은 이름의 `.json` 메타데이터를 cache에 저장한다. idle activation ASR은 60초 마이크 세션 안에서 최근 3.6초 rolling audio를 보존하고, activation phrase가 확인되면 같은 audio를 owner verification에 사용한다. activation이 아닌 segment는 `activation_asr_rejected_segment`로 기록한 뒤 마이크를 닫지 않고 계속 듣는다. `jarvis-wake-live-check.sh`는 실기기에서 `자비스 깨어나` wake만 검증한다. 기본값은 앱 화면을 띄우지 않고 `JarvisVoiceService` foreground 상태만 보장하며, 폰을 짧게 진동시킨 뒤 사용자가 말하도록 한다. 이 스크립트는 `owner_audio_activation`, `ready_for_speech`, `JarvisStateIndicator overlay_visible state=COMMAND_READY`를 함께 확인해 상단 중앙 `JARVIS` overlay 표시 여부까지 판정한다. `jarvis-wake-diagnose.sh`는 프로필 상태, 저장 WAV replay, 최신 캡처 메타데이터, 관련 logcat을 한 번에 묶어 wake 실패 원인을 분류한다. replay 스크립트는 사용자의 추가 발화 없이 저장 WAV를 현재 APK의 `LocalCommandRecognizer.recognizeBufferedActivation`으로 다시 실행해 text, accepted, endpoint, RMS, gain과 owner score를 리포트한다. 이 절차를 먼저 통과하지 못한 threshold/fuzzy rule 변경은 실시간 발화 테스트로 넘기지 않는다.
 
 command window timeout은 다음 스크립트로 실기기에서 검증한다.
 

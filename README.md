@@ -112,11 +112,12 @@ activation 디버깅은 사용자가 같은 문장을 반복해 말하는 방식
 
 ```bash
 scripts/jarvis-wake-diagnose.sh
+scripts/jarvis-wake-live-check.sh 20
 scripts/jarvis-activation-replay.sh
 scripts/jarvis-activation-captures.sh
 ```
 
-`jarvis-wake-diagnose.sh`는 프로필 상태, 저장된 activation WAV replay, 최신 캡처 메타데이터, 관련 logcat을 한 번에 묶어 wake 실패 원인을 먼저 분류합니다. `jarvis-activation-replay.sh`는 저장된 WAV들을 앱 내부에서 재디코딩해 accepted/text/RMS와 owner score를 로그로 요약합니다. `jarvis-activation-captures.sh`는 WAV/JSON 묶음을 `/tmp`로 가져와 사람이 직접 확인하거나 별도 분석에 사용할 수 있게 합니다. 이 흐름으로 ASR rule과 threshold 변경은 저장 샘플로 먼저 검증하고, 사용자의 실시간 발화는 최종 확인 단계에서만 요청합니다.
+`jarvis-wake-live-check.sh`는 실기기에서 wake만 검증합니다. 기본값은 앱 화면을 띄우지 않고 `JarvisVoiceService` foreground 상태만 보장합니다. 실행하면 폰이 짧게 진동하고, 사용자는 진동 직후 `자비스 깨어나`를 말합니다. 스크립트는 `owner_audio_activation`, `ready_for_speech`, `JarvisStateIndicator overlay_visible state=COMMAND_READY`를 함께 확인해 상단 중앙 `JARVIS` overlay가 실제로 표시됐는지 판정합니다. `jarvis-wake-diagnose.sh`는 프로필 상태, 저장된 activation WAV replay, 최신 캡처 메타데이터, 관련 logcat을 한 번에 묶어 wake 실패 원인을 먼저 분류합니다. `jarvis-activation-replay.sh`는 저장된 WAV들을 앱 내부에서 재디코딩해 accepted/text/RMS와 owner score를 로그로 요약합니다. `jarvis-activation-captures.sh`는 WAV/JSON 묶음을 `/tmp`로 가져와 사람이 직접 확인하거나 별도 분석에 사용할 수 있게 합니다. 이 흐름으로 ASR rule과 threshold 변경은 저장 샘플로 먼저 검증하고, 사용자의 실시간 발화는 최종 확인 단계에서만 요청합니다.
 
 30초 command window timeout은 사용자가 발화하지 않아도 debug APK에서 검증할 수 있습니다.
 
