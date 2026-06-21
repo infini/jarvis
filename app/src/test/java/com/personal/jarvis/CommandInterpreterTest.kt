@@ -89,6 +89,10 @@ class CommandInterpreterTest {
 
     @Test
     fun appNavigationCommandsKeepCommandWindowOpen() {
+        assertTrue(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_OPEN_CAMERA))
+        assertTrue(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_OPEN_FRONT_CAMERA))
+        assertTrue(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_OPEN_REAR_CAMERA))
+        assertTrue(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_TAKE_PHOTO))
         assertTrue(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_HOME))
         assertTrue(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_BACK))
         assertFalse(JarvisCommandExecutor.shouldKeepCommandWindowOpen(CommandBus.COMMAND_STOP_LISTENING))

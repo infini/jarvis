@@ -11,6 +11,7 @@ class JarvisDebugCommandWindowActivity : Activity() {
         super.onCreate(savedInstanceState)
         val windowMs = intent.getLongExtra(EXTRA_WINDOW_MS, DEFAULT_WINDOW_MS)
         val requestId = intent.getStringExtra(EXTRA_REQUEST_ID).orEmpty()
+        val command = intent.getStringExtra(EXTRA_COMMAND).orEmpty()
         val serviceIntent = Intent(this, JarvisVoiceService::class.java)
             .putExtra(
                 JarvisVoiceServiceStarter.EXTRA_START_SOURCE,
@@ -18,6 +19,9 @@ class JarvisDebugCommandWindowActivity : Activity() {
             )
             .putExtra(JarvisVoiceService.EXTRA_DEBUG_COMMAND_WINDOW_MS, windowMs)
             .putExtra(JarvisVoiceService.EXTRA_DEBUG_REQUEST_ID, requestId)
+        if (command.isNotBlank()) {
+            serviceIntent.putExtra(JarvisVoiceService.EXTRA_DEBUG_COMMAND, command)
+        }
         startForegroundService(serviceIntent)
         finish()
     }
@@ -25,6 +29,7 @@ class JarvisDebugCommandWindowActivity : Activity() {
     companion object {
         const val EXTRA_WINDOW_MS = "window_ms"
         const val EXTRA_REQUEST_ID = "request_id"
+        const val EXTRA_COMMAND = "command"
         private const val DEFAULT_WINDOW_MS = 30000L
     }
 }

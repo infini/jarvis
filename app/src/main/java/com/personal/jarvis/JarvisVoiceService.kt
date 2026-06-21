@@ -274,6 +274,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             TAG,
             "debug_command_window_open request_id=$requestId windowMs=$requestedWindowMs",
         )
+        val debugCommand = intent?.getStringExtra(EXTRA_DEBUG_COMMAND)
         stopOwnerAudioActivationRecognition()
         ownerVoiceGate.stop()
         stopActiveCommandRecognitionForWindowClose()
@@ -284,7 +285,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
         )
         openCommandWindow(requestedWindowMs)
         signalCommandReady()
-        scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
+        if (debugCommand.isNullOrBlank()) {
+            scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
+        } else {
+            markLatency("debug_command_injected", "command=$debugCommand")
+            completeCommandRun(runCommand(debugCommand, "debug").keepsCommandWindowOpen)
+        }
         return true
     }
 
@@ -1142,6 +1148,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 100L
         const val EXTRA_DEBUG_COMMAND_WINDOW_MS = "debug_command_window_ms"
         const val EXTRA_DEBUG_REQUEST_ID = "debug_request_id"
+        const val EXTRA_DEBUG_COMMAND = "debug_command"
         private const val DEBUG_MIN_COMMAND_WINDOW_MS = 1000L
         private const val DEBUG_MAX_COMMAND_WINDOW_MS = 60000L
         private const val DEFAULT_NOTIFICATION_TEXT = "'자비스 깨어나' 후 음성 명령을 듣습니다."

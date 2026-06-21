@@ -118,9 +118,10 @@ scripts/jarvis-activation-captures.sh
 
 ```bash
 scripts/jarvis-command-window-timeout.sh 30
+scripts/jarvis-command-window-timeout.sh 30 open_camera
 ```
 
-이 스크립트는 debug no-display Activity로 command window를 열고, 지정한 시간 뒤 `command_window_timeout`이 발생하며 이후 `ready_for_speech`가 다시 나오지 않는지 확인합니다.
+이 스크립트는 debug no-display Activity로 command window를 열고, 지정한 시간 뒤 `command_window_timeout`이 발생하며 이후 `ready_for_speech`가 다시 나오지 않는지 확인합니다. 두 번째 인자로 command id를 넘기면 `open_camera`, `open_front_camera`, `open_rear_camera`, `take_photo`, `home` 같은 명령 실행 후 command window가 다시 열린 뒤 timeout되는 경로를 검증합니다.
 
 ```bash
 scripts/jarvis-command-trace.sh 45
