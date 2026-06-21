@@ -44,11 +44,17 @@ class CommandInterpreterTest {
     }
 
     @Test
-    fun recognizesJarvisOnlyAsWakePhrase() {
-        assertTrue(CommandInterpreter.isWakeOnly("자비스"))
-        assertTrue(CommandInterpreter.isWakeOnly("헤이 자비스"))
-        assertTrue(CommandInterpreter.isWakeOnly("자베스"))
-        assertFalse(CommandInterpreter.isWakeOnly("자비스 찍어"))
+    fun activatesOnlyOnExplicitJarvisRunPhrase() {
+        assertTrue(CommandInterpreter.isActivationWake("자비스 실행"))
+        assertTrue(CommandInterpreter.isActivationWake("헤이 자비스 실행"))
+        assertTrue(CommandInterpreter.isActivationWake("자베스 실행"))
+        assertTrue(CommandInterpreter.isActivationWake("자비스 실행해"))
+        assertFalse(CommandInterpreter.isActivationWake("자비스"))
+        assertFalse(CommandInterpreter.isActivationWake("헤이 자비스"))
+        assertFalse(CommandInterpreter.isActivationWake("자비스 찍어"))
+        assertFalse(CommandInterpreter.isActivationWake("자비스 카메라 실행"))
+        assertFalse(CommandInterpreter.isActivationWake("카메라 실행"))
+        assertNull(CommandInterpreter.parse("자비스 실행"))
     }
 
     @Test

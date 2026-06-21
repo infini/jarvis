@@ -123,7 +123,7 @@ class MainActivity : Activity() {
         root.addView(button("테스트: 화면 끄기") { CommandBus.send(this, CommandBus.COMMAND_SLEEP_SCREEN) })
 
         val notes = TextView(this).apply {
-            text = "접근성 서비스를 켠 뒤 Jarvis 시작을 누르세요.\n명령 예: 자비스, 카메라 셀피 모드로 실행해 / 자비스, 찍어 / 자비스, 필터"
+            text = "접근성 서비스를 켠 뒤 Jarvis 시작을 누르세요.\n먼저 '자비스 실행'을 말한 뒤 카메라 실행 / 전면 / 후면 / 찍어 / 종료를 말합니다."
             textSize = 14f
             setTextColor(Color.rgb(76, 86, 96))
             setPadding(0, dp(18), 0, 0)
@@ -293,7 +293,7 @@ class MainActivity : Activity() {
             }
             appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++ / Korean streaming ASR")
             appendLine("기본 threshold: ${OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD}")
-            appendLine("짧은 호출어 보정: 고신뢰 1회, 근접 2회 또는 soft wake")
+            appendLine("소유자 확인 보정: 고신뢰 1회, 근접 2회 또는 soft score")
             append("등록이 완료되면 Jarvis는 소유자 목소리 확인 후 명령을 받습니다.")
         }
     }

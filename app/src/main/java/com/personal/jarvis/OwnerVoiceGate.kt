@@ -13,7 +13,6 @@ class OwnerVoiceGate(
 ) {
     @Volatile private var verifying = false
     @Volatile private var authorizedUntil = 0L
-    @Volatile private var nonStrictSuppressedUntil = 0L
     private var verificationThread: Thread? = null
 
     val isVerifying: Boolean
@@ -37,14 +36,10 @@ class OwnerVoiceGate(
         authorizedUntil = authorizedUntil.coerceAtLeast(System.currentTimeMillis() + durationMs)
     }
 
-    fun suppressNonStrictFor(durationMs: Long) {
-        nonStrictSuppressedUntil = System.currentTimeMillis() + durationMs
-    }
-
     fun startVerification(
         audioWindowMs: Long,
         verificationIntervalMs: Long,
-        authorizationWindowMs: Long,
+        postAcceptAudioMs: Long,
     ) {
         if (verifying) return
 
@@ -77,9 +72,7 @@ class OwnerVoiceGate(
                                 "reason=${candidate.rejectReason ?: "none"}",
                         )
                     },
-                    shouldAccept = { candidate ->
-                        !isNonStrictSuppressed(candidate)
-                    },
+                    postAcceptAudioMs = postAcceptAudioMs,
                 )
                 if (!verifying || Thread.currentThread().isInterrupted) return@Thread
 
@@ -89,7 +82,6 @@ class OwnerVoiceGate(
                     verifying = false
                     verificationThread = null
                     if (match?.accepted == true) {
-                        authorizeFor(authorizationWindowMs)
                         onAuthorized(match)
                     } else {
                         onVerificationError(IllegalStateException("Owner voice verification ended without a match"))
@@ -116,8 +108,6 @@ class OwnerVoiceGate(
     }
 
     private fun statusFor(match: OwnerVoiceEngine.Match): String {
-        if (match.accepted && isNonStrictSuppressed(match)) return "suppressed-non-strict"
-
         return when (match.acceptance) {
             OwnerVoiceEngine.Acceptance.STRICT -> "accepted"
             OwnerVoiceEngine.Acceptance.HIGH_CONFIDENCE_SINGLE -> "accepted-high-confidence"
@@ -126,13 +116,6 @@ class OwnerVoiceGate(
             OwnerVoiceEngine.Acceptance.SOFT_WAKE_CONSECUTIVE -> "accepted-soft-wake"
             OwnerVoiceEngine.Acceptance.REJECTED -> "rejected"
         }
-    }
-
-    private fun isNonStrictSuppressed(match: OwnerVoiceEngine.Match): Boolean {
-        if (!match.accepted || match.acceptance == OwnerVoiceEngine.Acceptance.STRICT) return false
-        if (match.acceptance != OwnerVoiceEngine.Acceptance.SOFT_WAKE_CONSECUTIVE) return false
-
-        return System.currentTimeMillis() < nonStrictSuppressedUntil
     }
 
     companion object {

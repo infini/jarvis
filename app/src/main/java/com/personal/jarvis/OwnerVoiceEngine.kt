@@ -24,8 +24,8 @@ object OwnerVoiceEngine {
     private const val VERIFY_MIN_ACTIVE_RMS = 0.00050f
     private const val ACTIVE_RMS_RATIO = 0.18f
     private const val VERIFY_NOISE_FLOOR_PERCENTILE = 0.20f
-    private const val VERIFY_MIN_PEAK_TO_FLOOR_RATIO = 1.8f
-    private const val VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS = 0.00032f
+    private const val VERIFY_MIN_PEAK_TO_FLOOR_RATIO = 1.35f
+    private const val VERIFY_MIN_PEAK_ABOVE_FLOOR_RMS = 0.00022f
     private const val VERIFY_ACTIVE_RMS_RANGE_RATIO = 0.28f
     private const val ENROLLMENT_SEGMENT_MS = 1400L
     private const val ENROLLMENT_SEGMENT_STEP_MS = 700L
@@ -229,6 +229,7 @@ object OwnerVoiceEngine {
         shouldContinue: () -> Boolean,
         onMatch: (Match) -> Unit = {},
         shouldAccept: (Match) -> Boolean = { true },
+        postAcceptAudioMs: Long = 0L,
     ): Match? {
         val recorder = createRecorder()
         val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
@@ -273,7 +274,21 @@ object OwnerVoiceEngine {
                     )
                     onMatch(timedMatch)
                     if (timedMatch.accepted && shouldAccept(timedMatch)) {
-                        return timedMatch
+                        return if (postAcceptAudioMs > 0L) {
+                            capturePostAcceptAudio(
+                                recorder = recorder,
+                                buffer = buffer,
+                                chunks = chunks,
+                                totalSamples = totalSamples,
+                                maxWindowSamples = maxWindowSamples,
+                                postAcceptAudioMs = postAcceptAudioMs,
+                                startedAt = startedAt,
+                                match = timedMatch,
+                                shouldContinue = shouldContinue,
+                            )
+                        } else {
+                            timedMatch
+                        }
                     }
                 }
             }
@@ -283,6 +298,48 @@ object OwnerVoiceEngine {
         }
 
         return null
+    }
+
+    private fun capturePostAcceptAudio(
+        recorder: AudioRecord,
+        buffer: ShortArray,
+        chunks: ArrayDeque<FloatArray>,
+        totalSamples: Int,
+        maxWindowSamples: Int,
+        postAcceptAudioMs: Long,
+        startedAt: Long,
+        match: Match,
+        shouldContinue: () -> Boolean,
+    ): Match {
+        var currentTotalSamples = totalSamples
+        val captureUntil = System.currentTimeMillis() + postAcceptAudioMs
+        while (shouldContinue() && System.currentTimeMillis() < captureUntil) {
+            val read = recorder.read(buffer, 0, buffer.size)
+            if (read <= 0) continue
+
+            val samples = FloatArray(read) { index -> buffer[index] / 32768.0f }
+            chunks.addLast(samples)
+            currentTotalSamples += read
+
+            while (chunks.isNotEmpty() && currentTotalSamples - chunks.first.size >= maxWindowSamples) {
+                currentTotalSamples -= chunks.removeFirst().size
+            }
+        }
+
+        val commandWindowSamples = flattenLastSamples(
+            chunks = chunks,
+            sampleCount = maxWindowSamples,
+            totalSamples = currentTotalSamples,
+        )
+        val commandSamples = prepareSamplesForEmbedding(
+            samples = commandWindowSamples,
+            requireSpeechContrast = true,
+        )?.samples ?: commandWindowSamples
+
+        return match.copy(
+            commandSamples = commandSamples,
+            verificationElapsedMs = System.currentTimeMillis() - startedAt,
+        )
     }
 
     internal fun applyConsecutiveAcceptPolicy(

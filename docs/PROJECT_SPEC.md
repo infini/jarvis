@@ -23,13 +23,13 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 앱 업데이트 후 `Jarvis 대기 준비됨` 시작 알림 표시 확인
 - Xiaomi 15 Ultra에서 `JarvisVoiceService` foreground 실행, 접근성 서비스 바인딩, 배터리 최적화 예외 등록 확인
 - 2026-06-20 21:26 KST 기준 약 15분 유지 테스트에서 프로세스, foreground notification, 접근성 바인딩, owner voice verification loop 유지 확인
-- `자비스` 또는 `헤이 자비스` wake-only 발화 후 확인음/명령 대기 알림을 제공하고, 인증 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
-- wake-only 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 즉시 실행으로 낮추고, 인증 window 안의 `SpeechRecognizer` silence timeout을 단축
-- owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 800ms window를 60ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 wake 대기 시간을 줄임. speaker embedding 입력은 내부에서 최소 1.2초로 padding한다.
+- `자비스 실행` activation 발화가 확인된 뒤에만 30초 command window를 열고, 이 window 안에서는 호출어 없는 후속 명령을 허용하도록 보정
+- activation 후속 명령 인식 지연을 줄이기 위해 다음 listening 예약을 즉시 실행으로 낮추고, command window 안의 `SpeechRecognizer` silence timeout을 단축
+- owner voice gate 대기 중 `AudioRecord`를 계속 열어 두고 rolling 1800ms window를 60ms마다 검증하도록 변경해 Android 마이크 표시 깜빡임과 activation 대기 시간을 줄임. speaker embedding 입력은 내부에서 최소 1.2초로 padding한다.
 - 짧은 `자비스` 호출어가 2초 window 안의 무음에 묻히지 않도록 owner voice gate에서 RMS 기반 말소리 구간 정리와 근접 점수 2회 연속 통과 정책을 추가함
-- Xiaomi 15 Ultra 실기기 로그에서 짧은 `자비스` 호출 점수가 낮게 나오고 non-strict 억제에 실제 재호출이 같이 묶일 수 있는 케이스가 확인되어, 다중 embedding 프로필에서 450ms 이상 말소리의 similarity `0.36` 이상 고신뢰 점수는 1회 통과시키고, `0.28` 이상 근접 점수는 2회 연속 통과시키도록 보정함. 600ms 이상 말소리의 단발 soft wake는 similarity `0.20` 이상일 때 통과시키고 낮은 점수 경로는 400ms 이상 말소리에서 similarity `0.14` 이상 4회 연속일 때만 통과시키도록 보정함. 짧은 호출어의 점수 흔들림을 흡수하기 위해 soft wake 연속 판정 중간에 similarity `0.10` 이상 애매한 점수 1회까지 허용함
+- Xiaomi 15 Ultra 실기기 로그에서 짧은 호출 발화 점수가 낮게 나오는 케이스가 확인되어, 다중 embedding 프로필에서 450ms 이상 말소리의 similarity `0.36` 이상 고신뢰 점수는 1회 통과시키고, `0.28` 이상 근접 점수는 2회 연속 통과시키도록 보정함. 600ms 이상 말소리의 단발 soft score는 similarity `0.20` 이상일 때 통과시키고 낮은 점수 경로는 400ms 이상 말소리에서 similarity `0.14` 이상 4회 연속일 때만 통과시키도록 보정함. 짧은 발화의 점수 흔들림을 흡수하기 위해 soft score 연속 판정 중간에 similarity `0.10` 이상 애매한 점수 1회까지 허용함
 - owner voice gate가 일정한 배경음을 계속 말소리로 판단하지 않도록, 인증 시에는 noise floor 대비 피크가 충분한 음성 구간만 speaker embedding으로 계산하도록 보정함
-- owner gate 직전 800ms 음성 window는 sherpa-onnx 한국어 streaming ASR로 즉시 해석하고, live command window는 Android System Intelligence(AiAi) `SpeechRecognizer` partial/final 결과를 우선 사용하도록 변경
+- owner gate 직전 1800ms 음성 window는 sherpa-onnx 한국어 streaming ASR로 즉시 해석하고, `자비스 실행` activation이 확인된 경우에만 live command window를 연다. live command window는 Android System Intelligence(AiAi) `SpeechRecognizer` partial/final 결과를 우선 사용한다.
 - Android `SpeechRecognizer`가 command window 안에서 실패하거나 사용할 수 없으면 local command ASR fallback을 1회 시도하도록 변경
 - `종료`, `홈`, `뒤로`는 현재 앱만 제어하고 Jarvis command window는 닫지 않도록 변경
 - `멈춰`는 Jarvis 서비스를 중지하지 않고 현재 command window만 닫아 이후 `자비스`로 다시 깨울 수 있도록 변경
@@ -43,20 +43,20 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - local ASR은 6초 live listen timeout만 기다리지 않고, 최소 발화/최소 청취 조건을 만족한 뒤 240ms trailing silence가 감지되면 final decode로 넘어가도록 보정함
 - local ASR 종료 시 `local_complete` 이벤트에 endpoint, local elapsed, active speech, trailing silence, peak/mean RMS를 기록해 실제 빠른 종료 여부와 음성 입력 레벨을 리포트에서 확인할 수 있게 함
 - 2026-06-21 실기기 trace에서 owner gate 통과 발화와 command window 입력 peak RMS가 `0.005`대인 케이스가 확인되어, live local ASR 말소리 판정 기준을 `0.0035` RMS로 낮춤
-- 낮은 입력 음량에서 sherpa-onnx local ASR 텍스트가 비는 문제를 줄이기 위해, 원본 RMS가 `0.0025` 이상인 구간은 ASR 입력에만 목표 RMS `0.04`, 최대 `10x` gain을 적용하고 원본 RMS와 gain을 trace에 남김
+- 낮은 입력 음량에서 sherpa-onnx local ASR 텍스트가 비는 문제를 줄이기 위해, 원본 RMS가 `0.0010` 이상인 구간은 ASR 입력에만 목표 RMS `0.04`, 최대 `10x` gain을 적용하고 원본 RMS와 gain을 trace에 남김
 - Jarvis 자체 확인음이 local ASR에 녹음되어 첫 명령을 방해하지 않도록 소유자 확인 직후에는 추가 대기 없이, 카메라 세션 명령 처리 직후에는 80ms 뒤에 다음 리스닝을 시작함
-- owner gate 통과 직전 800ms 음성 window를 즉시 local ASR에 넣어 `자비스 카메라 실행`처럼 같은 문장 안에 들어온 명령이나 `자비스` wake-only를 먼저 해석하도록 변경
+- owner gate 통과 직전 1800ms 음성 window와 통과 후 350ms 추가 캡처를 local ASR에 넣어 `자비스 실행` activation phrase를 먼저 확인하도록 변경
 - live command는 Android System Intelligence(AiAi) STT가 먼저 듣고 partial 결과에서 빠른 명령을 즉시 실행한다. Android STT가 실제 발화를 감지한 뒤 실패했을 때만 local ASR fallback이 6초 동안 첫 명령 발화를 기다리고, 아무 말이 없거나 텍스트 없는 360ms 미만의 짧은 소리만 있으면 local 대기를 이어간다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패 피드백 없이 command window 안에서 다시 듣는다.
 - Android STT command window는 짧은 명령 구문에 맞춰 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 300ms, possibly-complete silence 150ms, complete silence 300ms를 사용한다. 빠른 실행은 final보다 partial command path로 우선 달성한다.
-- owner audio ASR은 Android STT 시작을 막지 않고 백그라운드로 동작한다. owner audio ASR에서 `자비스` wake-only를 잡으면 다음 command listening을 시작하고, live partial STT에서 `자비스` wake-only를 잡으면 recognizer를 유지한 채 command-ready 표시와 window 연장만 수행한다.
+- owner audio ASR은 idle에서 Android STT를 열기 전 activation phrase만 확인한다. owner audio ASR에서 `자비스 실행`을 잡으면 30초 command window와 Android command STT를 시작하고, 그렇지 않으면 overlay/비프음 없이 owner gate 대기로 돌아간다.
 - 2026-06-21 실기기 trace에서 AiAi STT partial `카메라 실행해 줘`가 `open_camera`로 파싱되고 카메라 foreground 실행이 확인되었다. 해당 trace의 `speech_parse`는 648ms였다.
-- 사용자 준비음/진동은 owner authorization 직후가 아니라 Android STT `ready_for_speech` callback 시점에 낸다. owner authorization 직후에는 초록 command-ready 표시만 띄운다.
+- 사용자 준비음/진동은 owner authorization 직후가 아니라 `자비스 실행` activation으로 열린 Android STT `ready_for_speech` callback 시점에 낸다.
 - command listening timeout이 발화 진행 중인 Android STT를 먼저 취소하지 않도록, `speech_begin` 이후에는 active speech deadline grace가 command window 종료를 담당한다. active speech grace는 3.5초다.
-- owner gate가 통과하면 strict/near/soft wake 모두 command window를 초록 `JARVIS` overlay로 즉시 표시한다. strict, near, single soft wake는 Android STT `ready_for_speech` 시점에 준비음/진동도 내고, 낮은 점수 연속 soft wake는 소리 없이 overlay만 표시한다. 이 상태에서 Android STT가 발화 시작 없이 `NO_MATCH`/timeout을 반환하면 `non_strict_wake_idle_suppressed`로 window를 즉시 닫고 8초 동안 낮은 점수 연속 soft wake만 억제한다.
-- 2026-06-21 idle trace에서 non-strict false wake가 `non_strict_wake_idle_suppressed`로 닫히고, Jarvis 앱의 준비음 `AudioTrack` 및 `fallback_to_local`이 발생하지 않는 것을 확인했다.
-- 2026-06-21 wake debug trace에서 사용자의 짧은 `자비스` 발화로 추정되는 구간이 peak RMS `0.0009`대였지만 기존 verification 최소 peak RMS `0.002`에 막혀 `PEAK_BELOW_MIN`으로 거절되는 문제가 확인되었다. 등록/일반 embedding의 최소 peak RMS `0.002`는 유지하고 owner verification 경로만 최소 peak RMS `0.00075`, 최소 active RMS `0.00050`, floor 대비 최소 상승폭 `0.00032`로 분리해 저음량 호출을 받아들이되 일정한 배경음은 floor contrast로 계속 거절한다.
+- owner gate가 통과해도 strict/near/soft 점수만으로 command window를 열지 않는다. local activation ASR 결과가 `자비스 실행`일 때만 초록 `JARVIS` overlay와 command STT가 시작된다.
+- 2026-06-21 idle UX 보정으로 `자비스` 단독, `자비스 카메라 실행`, 주변 대화처럼 activation phrase가 아닌 owner audio는 `owner_audio_activation_rejected`로 끝나며 Jarvis 앱의 준비음과 Android command STT가 발생하지 않도록 변경했다.
+- 2026-06-21 wake debug trace에서 사용자의 짧은 `자비스` 발화로 추정되는 구간이 peak RMS `0.0009`대였지만 기존 verification 최소 peak RMS `0.002`에 막혀 `PEAK_BELOW_MIN`으로 거절되는 문제가 확인되었다. 등록/일반 embedding의 최소 peak RMS `0.002`는 유지하고 owner verification 경로만 최소 peak RMS `0.00075`, 최소 active RMS `0.00050`, floor 대비 최소 상승폭 `0.00022`로 분리해 저음량 호출을 받아들이되 일정한 배경음은 floor contrast로 계속 거절한다.
 - command window 전환 지연과 trace 혼선을 줄이기 위해 `scheduleListening`과 `scheduleNextCapture`는 익명 delayed lambda를 누적하지 않고 단일 runnable을 재예약한다.
-- `자비스` wake-only partial이 먼저 들어온 경우 recognizer를 즉시 취소하지 않고 command-ready 표시와 window 연장만 수행한다. 같은 발화 안에서 `자비스 카메라 실행`처럼 명령이 뒤따르면 partial/final 명령 파싱이 wake-only 완료보다 우선한다.
+- command window 안에서 `자비스 실행` activation partial이 다시 들어온 경우 recognizer를 즉시 취소하지 않고 command-ready 표시와 30초 window 갱신만 수행한다. 같은 STT session에서 명령이 뒤따르면 명령 파싱이 우선한다.
 - debug profile/enrollment 스크립트는 request id로 자기 실행 로그만 읽고 전체 logcat을 지우지 않는다. `jarvis-command-trace.sh`는 측정 전 `profile_embeddings>=2`를 확인하고, 실패하면 latency 로그를 지우지 않는다.
 - 앱 UI에서 소유자 목소리 재등록을 시작하면 실행 중인 Jarvis 음성 서비스를 잠시 중지하고, 등록 중에는 접근성 watchdog의 자동 재시작을 `owner_voice_enrollment_active`로 억제한다.
 - 저장된 소유자 목소리 embedding이 2개 미만인 구버전 단일 샘플 프로필은 `profile_configured=false`로 취급하고, Jarvis 음성 서비스 시작과 접근성 watchdog 자동 재시작을 차단한다. 재등록 성공 후에는 Jarvis 음성 서비스를 자동으로 다시 시작한다.
@@ -103,29 +103,30 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 
 기본 카메라 앱을 대상으로 다음 동작을 지원한다.
 
-- `자비스, 카메라 열어`: 기본 카메라 앱 실행
-- `자비스, 카메라 실행`: 기본 카메라 앱 실행
-- `헤이 자비스, 카메라 셀피 모드로 실행해`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
-- `자비스, 셀피`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
-- `자비스, 전면`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
-- `자비스, 셀피 모드`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
-- `자비스, 카메라 후면 모드로 실행해`: 기본 카메라 앱을 후면 카메라 힌트와 함께 실행
-- `자비스, 후면`: 기본 카메라 앱을 후면 카메라 힌트와 함께 실행
-- `자비스, 후면 모드`: 기본 카메라 앱을 후면 카메라 힌트와 함께 실행
-- `자비스, 후면으로 전환`: 기본 카메라 앱을 후면 카메라 힌트와 함께 실행
-- `자비스, 찍어`: 현재 화면에서 셔터 버튼 탭
-- `자비스, 사진 찍기`: 카메라 앱 실행 후 셔터 탭
-- `자비스, 카메라 찍어`: 카메라 앱 실행 후 셔터 탭
-- `자비스, 필터`: 카메라 앱 필터/효과 UI 열기
-- `자비스, 전면 카메라`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
-- `자비스, 카메라 전환`: 전후면 카메라 전환
-- `자비스, 카메라 종료해`: 카메라 앱에서 홈으로 이동
-- `자비스, 종료`: 현재 카메라 세션에서 홈으로 이동
-- `자비스, 화면 켜`: 꺼진 화면을 깨워 잠금화면 표시
-- `자비스, 화면 꺼`: 접근성 잠금화면 전역 액션으로 화면 끄기/잠금
-- `자비스, 뒤로`: Android 뒤로가기
-- `자비스, 홈`: Android 홈으로 이동
-- `자비스, 멈춰`: 현재 command window 종료 후 owner gate 대기로 복귀
+- Idle 상태에서 `자비스 실행`: 소유자 목소리와 activation phrase를 확인한 뒤 30초 command window 열기
+- `카메라 열어`: 기본 카메라 앱 실행
+- `카메라 실행`: 기본 카메라 앱 실행
+- `카메라 셀피 모드로 실행해`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
+- `셀피`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
+- `전면`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
+- `셀피 모드`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
+- `카메라 후면 모드로 실행해`: 기본 카메라 앱을 후면 카메라 힌트와 함께 실행
+- `후면`: 기본 카메라 앱을 후면 카메라 힌트와 함께 실행
+- `후면 모드`: 기본 카메라 앱을 후면 카메라 힌트와 함께 실행
+- `후면으로 전환`: 기본 카메라 앱을 후면 카메라 힌트와 함께 실행
+- `찍어`: 현재 화면에서 셔터 버튼 탭
+- `사진 찍기`: 카메라 앱 실행 후 셔터 탭
+- `카메라 찍어`: 카메라 앱 실행 후 셔터 탭
+- `필터`: 카메라 앱 필터/효과 UI 열기
+- `전면 카메라`: 기본 카메라 앱을 전면 카메라 힌트와 함께 실행
+- `카메라 전환`: 전후면 카메라 전환
+- `카메라 종료해`: 카메라 앱에서 홈으로 이동
+- `종료`: 현재 카메라 세션에서 홈으로 이동
+- `화면 켜`: 꺼진 화면을 깨워 잠금화면 표시
+- `화면 꺼`: 접근성 잠금화면 전역 액션으로 화면 끄기/잠금
+- `뒤로`: Android 뒤로가기
+- `홈`: Android 홈으로 이동
+- `멈춰`: 현재 command window 종료 후 owner gate 대기로 복귀
 
 ### 비목표
 
@@ -221,7 +222,7 @@ JarvisAccessibilityService
 | `debug/JarvisDebugStartActivity.kt` | debug APK 전용 ADB service start 진입점 |
 | `debug/JarvisDebugOwnerEnrollActivity.kt` | debug APK 전용 ADB owner voice 재등록 진입점 |
 | `debug/JarvisDebugProfileStatusActivity.kt` | debug APK 전용 owner voice profile 상태 로그 진입점 |
-| `OwnerVoiceGate.kt` | owner voice verification 스레드, 인증 window 상태 관리 |
+| `OwnerVoiceGate.kt` | owner voice verification 스레드와 activation audio capture 관리 |
 | `OwnerVoiceEngine.kt` | sherpa-onnx speaker embedding 묶음 생성, 녹음, cosine 검증 |
 | `OwnerVoiceStore.kt` | 소유자 음성 embedding 묶음 저장 |
 | `LocalCommandRecognizer.kt` | sherpa-onnx 한국어 streaming ASR 기반 owner audio 즉시 해석 및 fallback 인식 |
@@ -268,7 +269,7 @@ JarvisAccessibilityService
 
 ### Voice State Feedback
 
-Jarvis는 Android 상태바의 초록색 마이크 표시만으로 상태를 판단하지 않는다. 마이크 표시의 의미는 “마이크 사용 중”뿐이므로, 명령 가능 여부는 Jarvis 자체 feedback으로 표시한다. 다만 idle, owner verification, wake waiting처럼 사용자가 즉시 수행할 액션이 없는 passive 상태에서는 화면을 계속 가리지 않도록 overlay를 표시하지 않는다.
+Jarvis는 Android 상태바의 초록색 마이크 표시만으로 상태를 판단하지 않는다. 마이크 표시의 의미는 “마이크 사용 중”뿐이므로, 명령 가능 여부는 Jarvis 자체 feedback으로 표시한다. 다만 idle, owner verification, activation phrase 확인처럼 사용자가 즉시 수행할 액션이 없는 passive 상태에서는 화면을 계속 가리지 않도록 overlay를 표시하지 않는다.
 
 상태별 사용자 feedback:
 
@@ -283,7 +284,7 @@ Jarvis는 Android 상태바의 초록색 마이크 표시만으로 상태를 판
 Passive 상태 표시 정책:
 
 - owner voice verification 중에는 overlay를 띄우지 않는다. 이 상태는 평상시 기본 대기 상태이므로 지속 표시하면 전체화면 앱 사용을 방해한다.
-- wake waiting 중에도 overlay를 띄우지 않는다. 사용자가 호출어를 말해 command window가 열렸을 때만 명확히 표시한다.
+- activation phrase 확인 중에도 overlay를 띄우지 않는다. 사용자가 `자비스 실행`으로 command window를 열었을 때만 명확히 표시한다.
 - notification 문구는 passive 상태 진단용으로 유지하되, 사용자의 현재 화면 위에 지속적으로 노출하지 않는다.
 - overlay text는 상태 설명 문구를 넣지 않고 `JARVIS` 단일 라벨만 사용한다. 상태별 의미는 작은 컬러 점, 소리, 진동으로 전달한다.
 - red dot은 명령 대기 상태가 아니라 직전 인식 실패 상태다. 실패 직후 새 local/fallback listening이 시작되면 overlay는 다시 green dot으로 돌아가야 한다.
@@ -305,7 +306,7 @@ adb logcat -v time -s JarvisLatency
 scripts/jarvis-latency-report.sh
 ```
 
-소유자 목소리 재등록 후에는 debug APK 전용 no-display Activity를 호출하는 다음 스크립트로 프로필 상태를 확인한다. `profile_embeddings`가 2 이상이어야 짧은 `자비스` 호출어 latency 검증을 진행한다.
+소유자 목소리 재등록 후에는 debug APK 전용 no-display Activity를 호출하는 다음 스크립트로 프로필 상태를 확인한다. `profile_embeddings`가 2 이상이어야 `자비스 실행` activation latency 검증을 진행한다.
 
 ```bash
 scripts/jarvis-profile-status.sh
@@ -325,13 +326,13 @@ scripts/jarvis-owner-enroll.sh 6
 scripts/jarvis-command-trace.sh 45
 ```
 
-스크립트는 `trace`, `total`, `path`, `command`, `status`, `owner_gate`, `listen`, `listen_ready`, `parsed`, `speech_parse`, `access`, `speech_access`, `command_access`, `bus`를 한 줄로 출력한다. 하위 줄에는 `owner_acceptance`, `owner_auth_speech`, `owner_gate_elapsed`, `owner_attempts`, `owner_endpoint`, `owner_elapsed`, `owner_text`, `local_endpoint`, `local_elapsed`, `local_text`, `android_ready`, `speech_begin`, `speech_end`, `error`, `peak_rms`, `mean_rms`, `asr_gain`을 출력해 owner gate, owner audio ASR, live Android STT, local fallback 병목을 분리한다. `owner_gate`/`owner_gate_elapsed`는 owner verification loop 시작부터 통과까지 걸린 시간이고, `owner_attempts`는 해당 window에서 embedding 비교가 수행된 횟수다. `listen`은 Android STT 시작 시점이고, `listen_ready`는 Android STT 시작부터 `ready_for_speech`까지의 시간이다. `parsed`는 trace 시작부터 명령 파싱까지의 누적 시간이고, `speech_parse`는 Android STT가 발화를 감지한 뒤 명령 파싱까지의 시간이다. `speech_access`는 Android STT 발화 시작부터 접근성 서비스 수신까지, `command_access`는 명령 파싱부터 접근성 서비스 수신까지의 시간이다. `jarvis-command-trace.sh`는 debug APK의 no-display `JarvisDebugStartActivity`를 먼저 호출해 Jarvis 서비스를 재시작하려고 시도한다. release APK에는 이 Activity가 포함되지 않으며, 자동 시작은 `JARVIS_START_DEBUG_ACTIVITY=0`으로 끌 수 있다. 구버전 단일 embedding 상태에서 강제로 측정하려면 `JARVIS_SKIP_PROFILE_CHECK=1`을 지정한다. 측정 중에는 `자비스`를 말한 뒤 초록 `JARVIS` 표시 또는 준비음/진동이 나오면 `카메라 실행` 같은 짧은 명령을 말한다. 이 스크립트는 `status=command_complete`가 하나도 없으면 실패 종료하고 `owner_authorized`, `ready_for_speech`, `speech_begin`, `partial_results`, `command_parsed`, `non_strict_wake_idle_suppressed` 카운터로 어느 단계에서 멈췄는지 출력한다. 같은 경로의 `.diagnostic` 로그에는 `OwnerVoiceGate`, `JarvisVoiceService`, `JarvisLatency` 원본을 함께 저장해 owner voice 점수와 거절 사유를 확인할 수 있다. `jarvis-latency-audit.sh <log>`는 기존 측정 로그와 `.diagnostic` 로그를 함께 읽어 `PASS`, `FAIL_LEGACY_PROFILE`, `FAIL_NO_OWNER_WAKE`, `FAIL_NO_SPEECH`, `FAIL_NO_COMMAND`, `FAIL_NO_COMMAND_COMPLETE`, `FAIL_SLOW`로 분류하고 `max_score`, `max_peak_rms`, `max_noise_rms`, owner gate 거절 사유 상위 항목을 출력한다. `FAIL_LEGACY_PROFILE`은 저장된 owner profile이 2개 미만의 embedding이라 wake/command latency 판정에 사용할 수 없다는 뜻이다. 명령이 실행됐더라도 기본 기준 `owner_gate<=2500ms`, `speech_begin`이 있는 trace에서는 `speech_parse<=2500ms`, `speech_begin`이 없는 trace에서는 `parsed<=2500ms`, 접근성 실행이 있는 경우 `speech_access<=4000ms`와 `command_access<=1200ms`도 함께 검사한다. 기준은 `JARVIS_MAX_OWNER_GATE_MS`, `JARVIS_MAX_SPEECH_PARSED_MS`, `JARVIS_MAX_PARSED_MS`, `JARVIS_MAX_ACCESS_MS`, `JARVIS_MAX_COMMAND_ACCESS_MS` 환경 변수로 조정한다. 목표는 command window 안의 정상 명령이 `path=owner_audio_asr`, `path=owner_audio_asr->android_stt`, 또는 `path=android_stt`, `status=command_complete`로 끝나고, `owner_gate`, `speech_parse`, `speech_access`, `command_access`가 체감 지연을 설명할 수 있는 낮은 값으로 유지되는 것이다. `fallback_to_local` 또는 `local_asr`가 포함된 live trace는 Android STT가 발화를 감지한 뒤 실패해 local fallback을 탔다는 뜻이므로 별도 튜닝 대상으로 본다. `speech_idle_retry`는 command window 안에서 아무 발화가 감지되지 않아 조용히 다시 듣는 정상 idle retry로 본다.
+스크립트는 `trace`, `total`, `path`, `command`, `status`, `owner_gate`, `listen`, `listen_ready`, `parsed`, `speech_parse`, `access`, `speech_access`, `command_access`, `bus`를 한 줄로 출력한다. 하위 줄에는 `owner_acceptance`, `owner_auth_speech`, `owner_gate_elapsed`, `owner_attempts`, `owner_endpoint`, `owner_elapsed`, `owner_text`, `local_endpoint`, `local_elapsed`, `local_text`, `android_ready`, `speech_begin`, `speech_end`, `error`, `peak_rms`, `mean_rms`, `asr_gain`을 출력해 owner gate, owner audio activation ASR, live Android STT, local fallback 병목을 분리한다. `owner_gate`/`owner_gate_elapsed`는 owner verification loop 시작부터 통과와 activation 후속 캡처까지 걸린 시간이고, `owner_attempts`는 해당 window에서 embedding 비교가 수행된 횟수다. `listen`은 Android STT 시작 시점이고, `listen_ready`는 Android STT 시작부터 `ready_for_speech`까지의 시간이다. `parsed`는 trace 시작부터 명령 파싱까지의 누적 시간이고, `speech_parse`는 Android STT가 발화를 감지한 뒤 명령 파싱까지의 시간이다. `speech_access`는 Android STT 발화 시작부터 접근성 서비스 수신까지, `command_access`는 명령 파싱부터 접근성 서비스 수신까지의 시간이다. `jarvis-command-trace.sh`는 debug APK의 no-display `JarvisDebugStartActivity`를 먼저 호출해 Jarvis 서비스를 재시작하려고 시도한다. release APK에는 이 Activity가 포함되지 않으며, 자동 시작은 `JARVIS_START_DEBUG_ACTIVITY=0`으로 끌 수 있다. 구버전 단일 embedding 상태에서 강제로 측정하려면 `JARVIS_SKIP_PROFILE_CHECK=1`을 지정한다. 측정 중에는 `자비스 실행`을 말한 뒤 초록 `JARVIS` 표시 또는 준비음/진동이 나오면 `카메라 실행` 같은 짧은 명령을 말한다. 이 스크립트는 `status=command_complete`가 하나도 없으면 실패 종료하고 `owner_authorized`, `owner_audio_activation`, `ready_for_speech`, `speech_begin`, `partial_results`, `command_parsed` 카운터로 어느 단계에서 멈췄는지 출력한다. 같은 경로의 `.diagnostic` 로그에는 `OwnerVoiceGate`, `JarvisVoiceService`, `JarvisLatency` 원본을 함께 저장해 owner voice 점수와 activation 거절 사유를 확인할 수 있다. `jarvis-latency-audit.sh <log>`는 기존 측정 로그와 `.diagnostic` 로그를 함께 읽어 `PASS`, `FAIL_LEGACY_PROFILE`, `FAIL_NO_OWNER_AUTH`, `FAIL_NO_ACTIVATION`, `FAIL_NO_SPEECH`, `FAIL_NO_COMMAND`, `FAIL_NO_COMMAND_COMPLETE`, `FAIL_SLOW`로 분류하고 `max_score`, `max_peak_rms`, `max_noise_rms`, owner gate 거절 사유 상위 항목을 출력한다. `FAIL_LEGACY_PROFILE`은 저장된 owner profile이 2개 미만의 embedding이라 activation/command latency 판정에 사용할 수 없다는 뜻이고, `FAIL_NO_ACTIVATION`은 소유자 목소리 통과 후 owner audio local ASR이 `자비스 실행` activation phrase를 확인하지 못했다는 뜻이다. 명령이 실행됐더라도 기본 기준 `owner_gate<=2500ms`, `speech_begin`이 있는 trace에서는 `speech_parse<=2500ms`, `speech_begin`이 없는 trace에서는 `parsed<=2500ms`, 접근성 실행이 있는 경우 `speech_access<=4000ms`와 `command_access<=1200ms`도 함께 검사한다. 기준은 `JARVIS_MAX_OWNER_GATE_MS`, `JARVIS_MAX_SPEECH_PARSED_MS`, `JARVIS_MAX_PARSED_MS`, `JARVIS_MAX_ACCESS_MS`, `JARVIS_MAX_COMMAND_ACCESS_MS` 환경 변수로 조정한다. 목표는 activation 후 command window 안의 정상 명령이 `path=owner_audio_asr->android_stt`, `path=android_stt`, 또는 Android 실패 후 `path=local_asr`, `status=command_complete`로 끝나고, `owner_gate`, `speech_parse`, `speech_access`, `command_access`가 체감 지연을 설명할 수 있는 낮은 값으로 유지되는 것이다. `fallback_to_local` 또는 `local_asr`가 포함된 live trace는 Android STT가 발화를 감지한 뒤 실패해 local fallback을 탔다는 뜻이므로 별도 튜닝 대상으로 본다. `speech_idle_retry`는 command window 안에서 아무 발화가 감지되지 않아 조용히 다시 듣는 정상 idle retry로 본다.
 
 주요 이벤트:
 
 - `owner_authorized`: 소유자 목소리 인증 통과
 - `owner_audio_asr_start` / `owner_audio_asr_complete`: owner gate 통과 직전 음성 window의 즉시 local ASR 시작/종료
-- `owner_audio_wake_only`: owner gate 직전 음성 window에서 wake-only 발화 확인
+- `owner_audio_activation`: owner gate 직전 음성 window에서 `자비스 실행` activation 발화 확인
 - `listen_start`: Android STT 또는 local ASR 리스닝 시작
 - `local_partial`: local ASR partial text 수신
 - `local_complete`: local ASR 종료. endpoint, local elapsed, active speech, trailing silence, peak/mean RMS, ASR gain을 함께 기록
@@ -339,8 +340,8 @@ scripts/jarvis-command-trace.sh 45
 - `ready_for_speech`: Android `SpeechRecognizer` 준비 완료 callback. 사용자 준비음/진동은 이 시점에 발생
 - `speech_begin` / `speech_end`: Android `SpeechRecognizer` 발화 시작/끝 callback
 - `partial_results`: partial STT 결과 수신
-- `wake_only_partial`: partial STT에서 wake-only 발화가 파싱되어 command-ready 표시와 window 연장을 즉시 수행. recognizer는 유지하며 같은 발화 안의 명령 파싱을 우선한다.
-- `partial_wake_complete`: partial wake 처리 완료
+- `activation_partial`: partial STT에서 activation 발화가 파싱되어 command-ready 표시와 30초 window 갱신을 즉시 수행
+- `partial_activation_complete`: partial activation 처리 완료
 - `final_results`: final STT 결과 수신
 - `command_parsed`: 명령 파싱 완료
 - `command_execute_start` / `command_execute_return`: `JarvisCommandExecutor` 실행 진입/반환
@@ -373,11 +374,11 @@ scripts/jarvis-command-trace.sh 45
 
 실행/종료, 켜기/끄기처럼 자연스러운 반대 동작이 있는 명령은 항상 페어로 등록한다. 새 명령을 추가할 때는 파서, Command Model, 테스트 문장, README 지원 명령 목록에 양쪽 표현을 함께 반영한다.
 
-기본 명령은 `자비스` 계열 호출어를 포함해야 한다. 현재 허용 호출어는 `자비스`, `자베스`, `쟈비스`, `제비스`, `차비스`, `jarvis`다. 이는 우발적인 반응을 줄이는 장치이며, 등록된 소유자 목소리 인증을 통과한 경우에만 명령 인식 window를 연다.
+Idle 상태에서 command window를 여는 activation phrase는 `자비스 실행`이다. ASR 흔들림을 고려해 `자베스`, `쟈비스`, `제비스`, `차비스`, `jarvis` + `실행`도 activation으로 인정한다. `자비스` 단독, `헤이 자비스` 단독, `자비스 카메라 실행`은 idle에서 command window를 열지 않는다. 이는 owner voice gate가 사용자의 목소리를 통과시키더라도 로컬 activation ASR이 실패하면 Android command STT와 overlay/비프음을 시작하지 않기 위한 제약이다.
 
-예외: owner voice gate를 통과해 12초 인증 window가 열린 동안에는 이어지는 명령에서 호출어를 생략할 수 있다. 예를 들어 `자비스` 또는 `헤이 자비스`만 먼저 말해 command window를 열고, 다음 발화로 `카메라 셀피 모드로 실행해`를 말할 수 있다. owner gate 직전 buffered audio에서 wake-only 발화가 인식되면 window를 다시 12초로 연장하고 다음 명령 인식을 시작한다. live partial에서 wake-only가 먼저 인식되면 command-ready 표시와 window 연장만 수행하고 recognizer를 유지해, 같은 발화 안에 뒤따르는 명령이 있으면 명령 파싱이 우선한다.
+예외: 30초 command window가 열린 동안에는 이어지는 명령에서 호출어를 생략한다. 예를 들어 `자비스 실행`으로 초록 `JARVIS` overlay가 보인 뒤 `카메라 셀피 모드로 실행해`를 말할 수 있다. command window 안에서 `자비스 실행` activation phrase가 다시 들어오면 window를 다시 30초로 갱신할 수 있지만, 일반 명령 파싱이 우선된다.
 
-카메라 세션 명령은 처리 후에도 인증 window를 다시 30초로 연다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`, `home`, `back`이다. 따라서 `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 호출어 없이 연속 처리할 수 있어야 한다. Jarvis는 이 30초를 `JarvisVoiceService`의 hard deadline으로 별도 관리한다. 30초 안에 다음 명령이 없으면 active recognizer를 취소하고 owner gate 대기로 돌아가며, local ASR 또는 Android STT fallback은 남은 시간 안에서만 허용된다. owner gate가 통과한 직전 800ms 음성 window는 즉시 local ASR에 넣어 같은 문장 안의 명령이나 wake-only를 먼저 시도한다. owner audio ASR은 Android STT와 병렬로 동작하고, live command는 Android System Intelligence(AiAi) `SpeechRecognizer`가 먼저 듣고 partial/final 결과에서 명령을 파싱한다. live partial wake-only는 recognizer를 취소하지 않으며, 같은 STT session의 partial/final 결과에서 명령이 나오면 명령이 우선된다. Android STT command window는 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 300ms, possibly-complete silence 150ms, complete silence 300ms를 사용한다. Android STT가 발화 시작이나 partial을 감지한 뒤 실패했거나 사용할 수 없을 때만 local ASR fallback을 사용하며, fallback은 `0.0035` RMS 이상의 160ms active speech, 최소 560ms 청취, 240ms trailing silence가 감지되면 6초 live listen timeout 전에도 final decode를 실행한다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패음/빨간 표시 없이 command window 안에서 조용히 다시 듣고, command window deadline은 연장하지 않는다. local ASR 입력은 원본 RMS가 `0.0025` 이상일 때 목표 RMS `0.04`, 최대 `10x`까지 gain을 적용한다. owner gate 통과 직후 live command STT는 추가 대기 없이 시작하고, 실제 사용자 준비음/진동은 Android STT `ready_for_speech` callback에서 낸다. 명령 처리 후 연속 command STT는 80ms 뒤에 시작한다. deadline 이후 Android STT가 speech-active 상태로 결과를 붙잡고 있으면 3.5초 grace 뒤 취소하며, listening timeout은 발화 중인 recognizer를 먼저 취소하지 않는다. `home`, `back`은 현재 앱만 제어하고 command window를 유지한다. `stop_listening`, `wake_screen`, `sleep_screen`도 partial command path에서 빠르게 실행할 수 있다. `stop_listening`은 command window만 닫고 owner gate 대기로 돌아가며, Jarvis 음성 서비스는 계속 유지한다.
+카메라 세션 명령은 처리 후에도 command window를 다시 30초로 연다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`, `home`, `back`이다. 따라서 `자비스 실행` 후 `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 호출어 없이 연속 처리할 수 있어야 한다. Jarvis는 이 30초를 `JarvisVoiceService`의 hard deadline으로 별도 관리한다. 30초 안에 다음 명령이 없으면 active recognizer를 취소하고 owner gate 대기로 돌아가며, local ASR 또는 Android STT fallback은 남은 시간 안에서만 허용된다. owner gate가 통과한 직전 1800ms 음성 window와 통과 후 350ms 추가 캡처는 즉시 local ASR에 넣어 activation phrase만 확인한다. live command는 Android System Intelligence(AiAi) `SpeechRecognizer`가 먼저 듣고 partial/final 결과에서 명령을 파싱한다. Android STT command window는 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 300ms, possibly-complete silence 150ms, complete silence 300ms를 사용한다. Android STT가 발화 시작이나 partial을 감지한 뒤 실패했거나 사용할 수 없을 때만 local ASR fallback을 사용하며, fallback은 `0.0035` RMS 이상의 160ms active speech, 최소 560ms 청취, 240ms trailing silence가 감지되면 6초 live listen timeout 전에도 final decode를 실행한다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패음/빨간 표시 없이 command window 안에서 조용히 다시 듣고, command window deadline은 연장하지 않는다. local ASR 입력은 원본 RMS가 `0.0010` 이상일 때 목표 RMS `0.04`, 최대 `10x`까지 gain을 적용한다. activation 직후 live command STT는 추가 대기 없이 시작하고, 실제 사용자 준비음/진동은 Android STT `ready_for_speech` callback에서 낸다. 명령 처리 후 연속 command STT는 80ms 뒤에 시작한다. deadline 이후 Android STT가 speech-active 상태로 결과를 붙잡고 있으면 3.5초 grace 뒤 취소하며, listening timeout은 발화 중인 recognizer를 먼저 취소하지 않는다. `home`, `back`은 현재 앱만 제어하고 command window를 유지한다. `stop_listening`, `wake_screen`, `sleep_screen`도 partial command path에서 빠르게 실행할 수 있다. `stop_listening`은 command window만 닫고 owner gate 대기로 돌아가며, Jarvis 음성 서비스는 계속 유지한다.
 
 ## 8.1 Owner Voice Gate
 
@@ -387,7 +388,7 @@ scripts/jarvis-command-trace.sh 45
 - Model: `3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx`
 - 저장 방식: 소유자 embedding `FloatArray` 묶음을 little-endian bytes로 변환한 뒤 Base64 인코딩하여 앱 private `SharedPreferences`에 저장한다. v1 단일 embedding은 읽기 fallback으로 유지하고, 신규 등록은 v2 다중 embedding을 저장한다.
 - 등록 시 전체 6초 음성 embedding과 1.4초 window / 700ms step 구간 embedding을 합쳐 최소 2개, 최대 8개를 저장한다. verification은 등록 embedding 묶음 중 가장 높은 cosine similarity를 사용한다.
-- 기본 허용 threshold는 `0.50`이다. 등록/일반 embedding은 최소 peak RMS `0.002`를 유지하고, owner verification 경로는 짧고 작은 호출어를 놓치지 않도록 최소 peak RMS `0.00075`, 최소 active RMS `0.00050`, floor 대비 최소 상승폭 `0.00032`를 사용한다. 짧은 호출어 보정을 위해 다중 embedding 프로필에서 말소리 구간이 450ms 이상이고 similarity `0.36` 이상인 고신뢰 점수는 1회만으로 통과시키며, similarity `0.28` 이상인 근접 점수는 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. 단발 soft wake는 600ms 이상 말소리에서 similarity `0.20` 이상일 때 허용하고, 낮은 점수 soft wake는 400ms 이상 말소리에서 similarity `0.14` 이상이 4회 연속 나와야 보조 경로로 통과시킨다. soft wake 연속 판정은 중간에 similarity `0.10` 이상 애매한 점수 1회까지 허용한다. owner gate가 통과하면 command window는 초록 overlay로 표시한다. Android STT가 실제 발화를 감지하지 못하면 8초 동안 낮은 점수 연속 soft wake만 억제해 idle false accept 반복을 줄이고, high confidence/near/single soft wake는 억제하지 않아 사용자의 재호출이 같이 막히지 않게 한다. 인증 중에는 800ms rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다.
+- 기본 허용 threshold는 `0.50`이다. 등록/일반 embedding은 최소 peak RMS `0.002`를 유지하고, owner verification 경로는 짧고 작은 호출을 놓치지 않도록 최소 peak RMS `0.00075`, 최소 active RMS `0.00050`, floor 대비 최소 상승폭 `0.00022`를 사용한다. 다중 embedding 프로필에서 말소리 구간이 450ms 이상이고 similarity `0.36` 이상인 고신뢰 점수는 1회만으로 통과시키며, similarity `0.28` 이상인 근접 점수는 2회 연속 나오면 같은 소유자 발화로 보고 통과시킨다. 단발 soft score는 600ms 이상 말소리에서 similarity `0.20` 이상일 때 허용하고, 낮은 점수 soft score는 400ms 이상 말소리에서 similarity `0.14` 이상이 4회 연속 나와야 보조 경로로 통과시킨다. soft score 연속 판정은 중간에 similarity `0.10` 이상 애매한 점수 1회까지 허용한다. owner gate가 통과해도 command window를 바로 열지 않으며, 통과 직전 1800ms window와 통과 후 350ms 추가 캡처를 local ASR로 해석해 `자비스 실행` activation phrase가 확인될 때만 초록 overlay와 Android command STT를 시작한다. 인증 중에는 1800ms rolling window의 noise floor와 peak RMS를 비교해 일정한 배경음이 전체 window를 active speech로 채우는 경우를 배제한다.
 - 현재 APK는 Xiaomi 15 Ultra를 우선해 `arm64-v8a` ABI만 패키징한다.
 
 현재 구현 흐름:
@@ -396,25 +397,25 @@ scripts/jarvis-command-trace.sh 45
 2. `OwnerVoiceEngine`이 16kHz mono PCM을 녹음하고 sherpa-onnx로 전체 음성과 짧은 구간 speaker embedding을 계산한다. embedding이 2개 미만이면 등록 실패로 보고 다시 녹음하게 한다.
 3. 계산된 embedding 묶음을 `OwnerVoiceStore`에 저장한다.
 4. 이후 `JarvisVoiceService`는 `OwnerVoiceGate`를 통해 owner embedding 묶음이 있는지 확인하고, owner gate 대기 중 `AudioRecord`를 계속 열어 둔다.
-5. 최근 800ms rolling audio window에서 RMS 기반으로 말소리 앞뒤 무음을 줄인다. 인증 경로에서는 noise floor 대비 peak가 충분한 구간만 candidate embedding으로 만들고, speaker embedding 입력은 최소 1.2초로 padding한 뒤 60ms마다 저장된 embedding 묶음과 cosine similarity 최고점을 비교한다.
-6. similarity가 `0.50` 이상이거나 짧은 호출어 보정 near/soft wake 조건을 만족하면 `AudioRecord`를 닫고 12초 인증 window를 열며 초록 `JARVIS` overlay를 표시한다.
-7. owner gate 통과 직전 800ms 음성 window를 즉시 local ASR로 재해석한다. 이 window에서 명령이 파싱되면 live listening을 기다리지 않고 바로 실행한다.
-8. owner audio ASR은 live Android STT와 병렬로 실행된다. window 안에서 명령이 없으면 이미 시작된 Android System Intelligence(AiAi) `SpeechRecognizer`가 live command text를 먼저 시도한다.
+5. 최근 1800ms rolling audio window에서 RMS 기반으로 말소리 앞뒤 무음을 줄인다. 인증 경로에서는 noise floor 대비 peak가 충분한 구간만 candidate embedding으로 만들고, speaker embedding 입력은 최소 1.2초로 padding한 뒤 60ms마다 저장된 embedding 묶음과 cosine similarity 최고점을 비교한다.
+6. similarity가 `0.50` 이상이거나 near/soft score 조건을 만족하면 owner gate는 통과로 판단하되, 아직 command window를 열거나 overlay/비프음을 내지 않는다.
+7. owner gate 통과 후 같은 `AudioRecord`에서 350ms를 추가 캡처해 activation phrase 끝부분을 포함시킨 뒤, 직전 1800ms 음성 window를 즉시 local ASR로 재해석한다.
+8. local ASR 결과가 `자비스 실행` 또는 허용된 alias + `실행`이면 30초 command window를 열고 Android System Intelligence(AiAi) `SpeechRecognizer` live command STT를 시작한다. activation phrase가 아니면 `owner_audio_activation_rejected`로 trace를 끝내고 조용히 owner gate 대기로 돌아간다.
 9. Android STT partial 결과에서 빠른 명령이 파싱되면 final 결과를 기다리지 않고 즉시 실행한다.
 10. Android STT가 실제 발화를 감지한 뒤 실패했거나 사용할 수 없으면 `LocalCommandSession`이 로컬 한국어 streaming ASR fallback을 시도한다. 발화가 감지되지 않은 `NO_MATCH`/timeout은 idle retry로 처리한다.
-11. 카메라 세션 명령과 `home` 종료 명령은 owner audio ASR, Android STT, local fallback 결과에서 먼저 해석되면 즉시 실행한다.
+11. 카메라 세션 명령과 `home` 종료 명령은 Android STT 또는 local fallback 결과에서 먼저 해석되면 즉시 실행한다.
 12. 카메라 세션 명령 또는 `home`/`back` 앱 제어 명령이면 30초 command window를 새로 열고 바로 다음 명령 인식을 시작한다.
 13. 30초 command window 안에서 명령이 없으면 active recognizer/local fallback을 정리하고 조용히 소유자 확인 상태로 돌아간다.
-14. `stop_listening`은 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다. foreground service는 유지하므로 이후 `자비스`로 다시 command window를 열 수 있다.
-15. 그 외 명령 처리 후에는 인증 window를 닫고 다시 소유자 확인 상태로 돌아간다.
+14. `stop_listening`은 command window를 닫고 다시 소유자 확인 상태로 돌아간다. foreground service는 유지하므로 이후 `자비스 실행`으로 다시 command window를 열 수 있다.
+15. 그 외 명령 처리 후에는 command window를 닫고 다시 소유자 확인 상태로 돌아간다.
 
 제약:
 
 - Android `SpeechRecognizer`는 텍스트 결과만 안정적으로 제공하고 원음 PCM을 제공하지 않는다.
-- 현재 버전은 완전한 동시 speaker verification + STT 파이프라인은 아니지만, owner gate 통과 직전 음성 window를 local ASR에 재사용해 한 문장 안의 짧은 명령을 먼저 시도한다.
+- 현재 버전은 완전한 동시 speaker verification + STT 파이프라인은 아니지만, owner gate 통과 직전 음성 window와 통과 후 350ms 추가 캡처를 local ASR에 재사용해 activation phrase를 확인한다.
 - `LocalCommandRecognizer`는 owner gate 통과 직전 buffered audio와 command window live audio에서 동작한다. owner voice gate와 command recognition을 하나의 streaming raw audio pipeline으로 완전히 합치는 작업은 별도 과제다.
 - owner gate 대기 중에는 Android 상태바의 마이크 개인정보 표시가 켜져 있는 것이 정상이다. Android 정책상 앱이 이 표시를 숨길 수 없다.
-- 빅스비처럼 자연스러운 단일 발화 UX를 만들려면 wake word, speaker verification, command recognition을 하나의 raw audio pipeline으로 재구성해야 한다.
+- 빅스비처럼 자연스러운 단일 발화 UX를 만들려면 activation phrase, speaker verification, command recognition을 하나의 raw audio pipeline으로 재구성해야 한다.
 - 현재 speaker verification 모델과 native library는 source tree에 포함된다. 한국어 streaming ASR 모델은 파일 크기 때문에 source tree에 커밋하지 않고 Gradle 빌드 시 다운로드해 APK에 포함한다.
 
 명령 추가 시 규칙:
@@ -509,35 +510,37 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 ### Voice Test
 
-- `자비스` 호출어가 없는 `찍어`, `필터`, `뒤로`는 무시된다.
-- `자비스, 카메라 열어`가 기본 카메라 앱을 연다.
-- `자비스` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리한다.
+- Idle 상태에서 `자비스` 단독, `헤이 자비스`, `자비스 카메라 실행`은 command window를 열지 않는다.
+- Idle 상태에서 `자비스 실행`이 owner voice + activation phrase를 통과하면 초록 `JARVIS` overlay가 표시되고 30초 command window가 열린다.
+- `자비스 실행` 후 `카메라 실행`, `후면`, `전면`, `찍어`를 호출어 없이 연속 처리한다.
+- command window 안에서 `카메라 열어`가 기본 카메라 앱을 연다.
 - 카메라 세션의 `후면`, `전면`, `찍어`, `종료`는 partial STT 결과에서 먼저 실행되어도 final STT 결과에서 중복 실행되지 않는다.
-- `자비스, 카메라 실행`이 기본 카메라 앱을 연다.
-- `헤이 자비스, 카메라 셀피 모드로 실행해`가 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.
-- `자비스, 셀피`와 `자비스, 전면`이 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.
-- `자비스, 셀피 모드`가 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.
-- `자비스, 카메라 후면 모드로 실행해`가 기본 카메라 앱을 후면 카메라 힌트와 함께 연다.
-- `자비스, 후면`, `자비스, 후면 모드`, `자비스, 후면으로 전환`이 기본 카메라 앱을 후면 카메라 힌트와 함께 연다.
-- `자비스, 찍어`가 카메라 화면에서 셔터를 누른다.
-- `자비스, 사진 찍기`가 카메라를 열고 촬영을 시도한다.
-- `자비스, 카메라 전환`이 전후면 카메라 전환을 시도한다.
-- 카메라 앱이 열리지 않은 상태에서 `자비스, 카메라 찍어`가 카메라를 열고 촬영을 시도한다.
-- `자비스, 카메라 종료해`가 홈으로 이동한다.
-- `자비스, 종료`가 홈으로 이동한다.
-- `자비스, 화면 켜`가 꺼진 화면을 깨워 잠금화면을 표시한다.
-- `자비스, 화면 꺼`가 접근성 잠금화면 전역 액션으로 기기를 잠근다.
-- `자비스, 멈춰`가 command window만 닫고 음성 서비스는 유지한다.
+- command window 안에서 `카메라 실행`이 기본 카메라 앱을 연다.
+- command window 안에서 `카메라 셀피 모드로 실행해`가 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.
+- command window 안에서 `셀피`와 `전면`이 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.
+- command window 안에서 `셀피 모드`가 기본 카메라 앱을 전면 카메라 힌트와 함께 연다.
+- command window 안에서 `카메라 후면 모드로 실행해`가 기본 카메라 앱을 후면 카메라 힌트와 함께 연다.
+- command window 안에서 `후면`, `후면 모드`, `후면으로 전환`이 기본 카메라 앱을 후면 카메라 힌트와 함께 연다.
+- command window 안에서 `찍어`가 카메라 화면에서 셔터를 누른다.
+- command window 안에서 `사진 찍기`가 카메라를 열고 촬영을 시도한다.
+- command window 안에서 `카메라 전환`이 전후면 카메라 전환을 시도한다.
+- 카메라 앱이 열리지 않은 상태에서 `카메라 찍어`가 카메라를 열고 촬영을 시도한다.
+- command window 안에서 `카메라 종료해`가 홈으로 이동한다.
+- command window 안에서 `종료`가 홈으로 이동한다.
+- command window 안에서 `화면 켜`가 꺼진 화면을 깨워 잠금화면을 표시한다.
+- command window 안에서 `화면 꺼`가 접근성 잠금화면 전역 액션으로 기기를 잠근다.
+- command window 안에서 `멈춰`가 command window만 닫고 음성 서비스는 유지한다.
 - 카메라 세션 명령 후 30초 동안 다음 명령이 없으면 overlay가 사라지고 owner gate 대기로 돌아간다.
 - `adb logcat -v time -s JarvisLatency`로 한 사이클을 측정했을 때 같은 trace id 안에서 STT 수신, 명령 파싱, 실행, 접근성 수신 이벤트가 확인된다.
 
 ### State Feedback Test
 
-- owner gate 통과 또는 wake-only 발화 후 작은 iPhone-style pill `JARVIS` green dot overlay, 확인음 2회, 짧은 진동 1회가 발생한다.
+- `자비스 실행` activation 통과 후 작은 iPhone-style pill `JARVIS` green dot overlay, 확인음 2회, 짧은 진동 1회가 발생한다.
+- owner gate 통과만으로는 overlay, 확인음, command STT가 발생하지 않는다.
 - 카메라 명령 처리 후 작은 iPhone-style pill `JARVIS` blue dot overlay, 확인음 1회, 짧은 진동 1회가 발생한다.
 - command window 안에서 인식 실패 시 작은 iPhone-style pill `JARVIS` red dot overlay, 실패음 2회, 짧은 진동 2회가 발생한다.
 - local command ASR 실패 후 Android `SpeechRecognizer` fallback이 시작되면 red dot이 green dot으로 돌아간다.
-- owner gate 대기, 호출어 대기, command window 종료 상태에서는 overlay가 사라진다.
+- owner gate 대기, activation 확인, command window 종료 상태에서는 overlay가 사라진다.
 - command window 자동 만료 시 실패음/종료음 없이 overlay가 사라진다.
 
 ### Camera Automation Test

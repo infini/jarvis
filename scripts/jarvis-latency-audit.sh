@@ -37,7 +37,11 @@ count_pattern() {
 count_event() {
   local file="$1"
   local event="$2"
-  count_pattern "$file" "event=${event}"
+  if [[ ! -f "$file" ]]; then
+    echo 0
+    return
+  fi
+  grep -Ec "event=${event}([[:space:]]|$)" "$file" || true
 }
 
 slow_command_lines() {
@@ -173,8 +177,11 @@ status_hint() {
     FAIL_SLOW)
       echo "hint=command_complete exists, but one or more latency thresholds were exceeded."
       ;;
-    FAIL_NO_OWNER_WAKE)
-      echo "hint=Owner voice gate did not authorize wake. Check peak RMS, reject reasons, distance, and owner voice enrollment."
+    FAIL_NO_OWNER_AUTH)
+      echo "hint=Owner voice gate did not authorize the speaker. Check peak RMS, reject reasons, distance, and owner voice enrollment."
+      ;;
+    FAIL_NO_ACTIVATION)
+      echo "hint=Owner voice was authorized, but local ASR did not recognize the activation phrase '자비스 실행'."
       ;;
     FAIL_LEGACY_PROFILE)
       echo "hint=Owner profile has fewer than 2 embeddings. Re-register owner voice before judging wake or command latency."
@@ -220,9 +227,8 @@ audit_file() {
   local speech_begin
   local partial_results
   local command_parsed
-  local wake_only_partial
-  local owner_audio_wake_only
-  local non_strict_idle_suppressed
+  local activation_partial
+  local owner_audio_activation
   local fallback_to_local
   local command_complete_count
   local owner_accepted
@@ -235,9 +241,8 @@ audit_file() {
   speech_begin="$(count_event "$log_file" speech_begin)"
   partial_results="$(count_event "$log_file" partial_results)"
   command_parsed="$(count_event "$log_file" command_parsed)"
-  wake_only_partial="$(count_event "$log_file" wake_only_partial)"
-  owner_audio_wake_only="$(count_event "$log_file" owner_audio_wake_only)"
-  non_strict_idle_suppressed="$(count_event "$log_file" non_strict_wake_idle_suppressed)"
+  activation_partial="$(count_event "$log_file" activation_partial)"
+  owner_audio_activation="$(count_event "$log_file" owner_audio_activation)"
   fallback_to_local="$(count_event "$log_file" fallback_to_local)"
   command_complete_count="$(
     printf '%s\n' "$command_complete_lines" | awk 'NF > 0 { count++ } END { print count + 0 }'
@@ -256,7 +261,9 @@ audit_file() {
       status="PASS"
     fi
   elif [[ "$owner_authorized" -eq 0 ]]; then
-    status="FAIL_NO_OWNER_WAKE"
+    status="FAIL_NO_OWNER_AUTH"
+  elif [[ "$owner_audio_activation" -eq 0 ]]; then
+    status="FAIL_NO_ACTIVATION"
   elif [[ "$speech_begin" -eq 0 && "$partial_results" -eq 0 ]]; then
     status="FAIL_NO_SPEECH"
   elif [[ "$command_parsed" -eq 0 ]]; then
@@ -267,7 +274,7 @@ audit_file() {
 
   echo "== $log_file =="
   printf '%s\n' "$report_output"
-  echo "events: owner_authorized=${owner_authorized}, ready_for_speech=${ready_for_speech}, speech_begin=${speech_begin}, partial_results=${partial_results}, command_parsed=${command_parsed}, wake_only_partial=${wake_only_partial}, owner_audio_wake_only=${owner_audio_wake_only}, non_strict_wake_idle_suppressed=${non_strict_idle_suppressed}, fallback_to_local=${fallback_to_local}"
+  echo "events: owner_authorized=${owner_authorized}, owner_audio_activation=${owner_audio_activation}, ready_for_speech=${ready_for_speech}, speech_begin=${speech_begin}, partial_results=${partial_results}, command_parsed=${command_parsed}, activation_partial=${activation_partial}, fallback_to_local=${fallback_to_local}"
   if [[ -n "$profile_embeddings" ]]; then
     echo "profile_embeddings=${profile_embeddings}"
   fi
