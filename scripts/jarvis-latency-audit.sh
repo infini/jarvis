@@ -216,6 +216,7 @@ audit_file() {
   slow_lines="$(slow_command_lines "$command_complete_lines")"
 
   local activation_asr_complete
+  local activation_rejected_segment
   local activation_owner_verified
   local ready_for_speech
   local speech_begin
@@ -231,6 +232,7 @@ audit_file() {
   local profile_embeddings
 
   activation_asr_complete="$(count_event "$log_file" activation_asr_complete)"
+  activation_rejected_segment="$(count_event "$log_file" activation_asr_rejected_segment)"
   activation_owner_verified="$(count_event "$log_file" activation_owner_verified)"
   ready_for_speech="$(count_event "$log_file" ready_for_speech)"
   speech_begin="$(count_event "$log_file" speech_begin)"
@@ -267,7 +269,7 @@ audit_file() {
 
   echo "== $log_file =="
   printf '%s\n' "$report_output"
-  echo "events: activation_asr_complete=${activation_asr_complete}, activation_owner_verified=${activation_owner_verified}, owner_audio_activation=${owner_audio_activation}, ready_for_speech=${ready_for_speech}, speech_begin=${speech_begin}, partial_results=${partial_results}, command_parsed=${command_parsed}, activation_partial=${activation_partial}, fallback_to_local=${fallback_to_local}"
+  echo "events: activation_asr_complete=${activation_asr_complete}, activation_asr_rejected_segment=${activation_rejected_segment}, activation_owner_verified=${activation_owner_verified}, owner_audio_activation=${owner_audio_activation}, ready_for_speech=${ready_for_speech}, speech_begin=${speech_begin}, partial_results=${partial_results}, command_parsed=${command_parsed}, activation_partial=${activation_partial}, fallback_to_local=${fallback_to_local}"
   if [[ -n "$profile_embeddings" ]]; then
     echo "profile_embeddings=${profile_embeddings}"
   fi

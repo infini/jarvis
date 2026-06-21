@@ -82,6 +82,7 @@ count_event() {
 }
 
 ACTIVATION_ASR_COMPLETE_COUNT="$(count_event activation_asr_complete)"
+ACTIVATION_REJECTED_SEGMENT_COUNT="$(count_event activation_asr_rejected_segment)"
 ACTIVATION_OWNER_VERIFIED_COUNT="$(count_event activation_owner_verified)"
 READY_FOR_SPEECH_COUNT="$(count_event ready_for_speech)"
 SPEECH_BEGIN_COUNT="$(count_event speech_begin)"
@@ -100,12 +101,12 @@ COMMAND_COMPLETE_LINES="$(
 if [[ -z "$COMMAND_COMPLETE_LINES" ]]; then
   echo "FAIL: no command_complete trace found in $LOG_FILE." >&2
   echo "Diagnostic log: $DIAGNOSTIC_LOG_FILE" >&2
-  echo "Diagnostics: activation_asr_complete=${ACTIVATION_ASR_COMPLETE_COUNT}, activation_owner_verified=${ACTIVATION_OWNER_VERIFIED_COUNT}, owner_audio_activation=${OWNER_AUDIO_ACTIVATION_COUNT}, ready_for_speech=${READY_FOR_SPEECH_COUNT}, speech_begin=${SPEECH_BEGIN_COUNT}, partial_results=${PARTIAL_RESULTS_COUNT}, command_parsed=${COMMAND_PARSED_COUNT}, activation_partial=${ACTIVATION_PARTIAL_COUNT}, fallback_to_local=${FALLBACK_TO_LOCAL_COUNT}" >&2
+  echo "Diagnostics: activation_asr_complete=${ACTIVATION_ASR_COMPLETE_COUNT}, activation_asr_rejected_segment=${ACTIVATION_REJECTED_SEGMENT_COUNT}, activation_owner_verified=${ACTIVATION_OWNER_VERIFIED_COUNT}, owner_audio_activation=${OWNER_AUDIO_ACTIVATION_COUNT}, ready_for_speech=${READY_FOR_SPEECH_COUNT}, speech_begin=${SPEECH_BEGIN_COUNT}, partial_results=${PARTIAL_RESULTS_COUNT}, command_parsed=${COMMAND_PARSED_COUNT}, activation_partial=${ACTIVATION_PARTIAL_COUNT}, fallback_to_local=${FALLBACK_TO_LOCAL_COUNT}" >&2
   echo "OwnerVoiceGate: accepted=${OWNER_ACCEPTED_COUNT}, rejected=${OWNER_REJECTED_COUNT}, suppressed=${OWNER_SUPPRESSED_COUNT}" >&2
-  if [[ "$ACTIVATION_ASR_COMPLETE_COUNT" == "0" ]]; then
-    echo "Local activation ASR did not complete. Check microphone permission, foreground service state, and local ASR assets." >&2
+  if [[ "$ACTIVATION_ASR_COMPLETE_COUNT" == "0" && "$ACTIVATION_REJECTED_SEGMENT_COUNT" == "0" ]]; then
+    echo "Local activation ASR did not produce any segment. Check microphone permission, foreground service state, and local ASR assets." >&2
   elif [[ "$OWNER_AUDIO_ACTIVATION_COUNT" == "0" ]]; then
-    echo "Activation did not open a command window. Check activation_asr_complete text and activation_owner_verified owner score in the diagnostic log." >&2
+    echo "Activation did not open a command window. Check activation_asr_complete or activation_asr_rejected_segment text and activation_owner_verified owner score in the diagnostic log." >&2
   elif [[ "$SPEECH_BEGIN_COUNT" == "0" && "$PARTIAL_RESULTS_COUNT" == "0" ]]; then
     echo "Jarvis opened a command window, but Android STT did not detect a spoken command. Say the command after the green JARVIS indicator appears or the ready tone/vibration plays." >&2
   elif [[ "$COMMAND_PARSED_COUNT" == "0" ]]; then

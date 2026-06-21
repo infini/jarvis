@@ -28,6 +28,8 @@ object LocalCommandRecognizer {
     private const val ACTIVATION_MIN_ACTIVE_SPEECH_MS = 320L
     private const val ACTIVATION_TRAILING_SILENCE_MS = 360L
     private const val ACTIVATION_EARLY_ENDPOINT_MIN_LISTEN_MS = 760L
+    private const val ACTIVATION_BUFFERED_CHECK_INTERVAL_MS = 800L
+    private const val ACTIVATION_MAX_SEGMENT_MS = 8000L
     private const val ACTIVATION_ROLLING_AUDIO_MS = 3600L
     private const val LOCAL_ASR_TARGET_RMS = 0.04f
     private const val LOCAL_ASR_GAIN_MIN_RMS = 0.0010f
@@ -152,20 +154,23 @@ object LocalCommandRecognizer {
         timeoutMs: Long,
         shouldContinue: () -> Boolean,
         onText: (String) -> Unit = {},
+        onRejected: (ActivationResult) -> Unit = {},
     ): ActivationResult {
         if (!isAvailable(context)) {
             return ActivationResult(text = "", samples = FloatArray(0), elapsedMs = 0L, unavailable = true)
         }
 
+        val applicationContext = context.applicationContext
         val startedAt = SystemClock.elapsedRealtime()
-        val localRecognizer = getActivationRecognizer(context.applicationContext)
-        val stream = localRecognizer.createStream()
+        val localRecognizer = getActivationRecognizer(applicationContext)
+        var stream = localRecognizer.createStream()
         val recorder = createRecorder()
         val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
         val rollingSamples = (SAMPLE_RATE_HZ * ACTIVATION_ROLLING_AUDIO_MS / 1000L).toInt()
         val chunks = ArrayDeque<FloatArray>()
         val buffer = ShortArray(readSize)
         var totalSamples = 0
+        var segmentStartedAt = startedAt
         var lastText = ""
         var speechSeen = false
         var activeSpeechMs = 0L
@@ -176,6 +181,7 @@ object LocalCommandRecognizer {
         var rmsSum = 0.0
         var rmsFrameCount = 0
         var maxAsrGain = 1f
+        var lastBufferedCheckAtMs = 0L
 
         fun currentSamples(): FloatArray {
             return flattenLastSamples(
@@ -185,10 +191,27 @@ object LocalCommandRecognizer {
             )
         }
 
+        fun resetSegment(now: Long = SystemClock.elapsedRealtime()) {
+            stream.release()
+            stream = localRecognizer.createStream()
+            segmentStartedAt = now
+            lastText = ""
+            speechSeen = false
+            activeSpeechMs = 0L
+            lastSpeechAtMs = 0L
+            endpoint = "timeout"
+            finalTrailingSilenceMs = 0L
+            peakRms = 0f
+            rmsSum = 0.0
+            rmsFrameCount = 0
+            maxAsrGain = 1f
+            lastBufferedCheckAtMs = 0L
+        }
+
         fun result(
             text: String,
             endpoint: String,
-            elapsedMs: Long = SystemClock.elapsedRealtime() - startedAt,
+            elapsedMs: Long = SystemClock.elapsedRealtime() - segmentStartedAt,
         ): ActivationResult {
             val trailing = if (finalTrailingSilenceMs == 0L) {
                 trailingSilenceMs(lastSpeechAtMs)
@@ -206,6 +229,53 @@ object LocalCommandRecognizer {
                 meanRms = meanRms(rmsSum, rmsFrameCount),
                 asrGain = maxAsrGain,
             )
+        }
+
+        fun bufferedActivationResult(streamingResult: ActivationResult): ActivationResult? {
+            if (!speechSeen && streamingResult.text.isBlank()) return null
+
+            val buffered = recognizeBufferedActivation(
+                context = applicationContext,
+                samples = streamingResult.samples,
+                endpoint = "${streamingResult.endpoint}_live_buffered",
+            )
+            if (!CommandInterpreter.isActivationWakeAsrEquivalent(buffered.text)) return null
+
+            return ActivationResult(
+                text = buffered.text,
+                samples = streamingResult.samples,
+                elapsedMs = SystemClock.elapsedRealtime() - segmentStartedAt,
+                endpoint = buffered.endpoint,
+                activeSpeechMs = activeSpeechMs,
+                trailingSilenceMs = streamingResult.trailingSilenceMs,
+                peakRms = peakRms,
+                meanRms = meanRms(rmsSum, rmsFrameCount),
+                asrGain = maxOf(maxAsrGain, buffered.asrGain),
+            )
+        }
+
+        fun finishSegment(finalEndpoint: String): ActivationResult {
+            acceptTailPadding(stream)
+            stream.inputFinished()
+            while (localRecognizer.isReady(stream)) {
+                localRecognizer.decode(stream)
+            }
+            val finalText = localRecognizer.getResult(stream).text.trim()
+            if (finalText.isNotBlank() && finalText != lastText) {
+                Log.d(TAG, "Local activation final text='$finalText'")
+                onText(finalText)
+            }
+            val endpointForResult = when {
+                CommandInterpreter.isActivationWakeAsrEquivalent(finalText) -> "${finalEndpoint}_activation"
+                !speechSeen && finalText.isBlank() -> "no_speech_timeout"
+                else -> finalEndpoint
+            }
+            val streamingResult = result(text = finalText, endpoint = endpointForResult)
+            return if (CommandInterpreter.isActivationWakeAsrEquivalent(streamingResult.text)) {
+                streamingResult
+            } else {
+                bufferedActivationResult(streamingResult) ?: streamingResult
+            }
         }
 
         try {
@@ -246,44 +316,54 @@ object LocalCommandRecognizer {
                     onText(text)
                 }
                 if (CommandInterpreter.isActivationWakeAsrEquivalent(text)) {
-                    return result(text = text, endpoint = "partial_activation", elapsedMs = now - startedAt)
+                    return result(text = text, endpoint = "partial_activation", elapsedMs = now - segmentStartedAt)
                 }
 
-                val elapsedMs = now - startedAt
+                val elapsedMs = now - segmentStartedAt
+                if (
+                    speechSeen &&
+                    activeSpeechMs >= ACTIVATION_MIN_ACTIVE_SPEECH_MS &&
+                    now - lastBufferedCheckAtMs >= ACTIVATION_BUFFERED_CHECK_INTERVAL_MS
+                ) {
+                    lastBufferedCheckAtMs = now
+                    bufferedActivationResult(
+                        result(
+                            text = text,
+                            endpoint = "rolling_buffer",
+                            elapsedMs = elapsedMs,
+                        ),
+                    )?.let { return it }
+                }
+
                 val trailingSilenceMs = trailingSilenceMs(lastSpeechAtMs, now)
                 if (
                     speechSeen &&
                     activeSpeechMs >= ACTIVATION_MIN_ACTIVE_SPEECH_MS &&
                     elapsedMs >= ACTIVATION_EARLY_ENDPOINT_MIN_LISTEN_MS &&
-                    trailingSilenceMs >= ACTIVATION_TRAILING_SILENCE_MS
+                    (trailingSilenceMs >= ACTIVATION_TRAILING_SILENCE_MS || elapsedMs >= ACTIVATION_MAX_SEGMENT_MS)
                 ) {
-                    endpoint = "trailing_silence"
+                    endpoint = if (trailingSilenceMs >= ACTIVATION_TRAILING_SILENCE_MS) {
+                        "trailing_silence"
+                    } else {
+                        "segment_timeout"
+                    }
                     finalTrailingSilenceMs = trailingSilenceMs
                     Log.d(
                         TAG,
                         "Local activation endpoint: elapsed=${elapsedMs}ms, " +
                             "speech=${activeSpeechMs}ms, silence=${trailingSilenceMs}ms",
                     )
-                    break
+                    val segmentResult = finishSegment(endpoint)
+                    if (CommandInterpreter.isActivationWakeAsrEquivalent(segmentResult.text)) {
+                        return segmentResult
+                    }
+
+                    onRejected(segmentResult)
+                    resetSegment(now)
                 }
             }
 
-            acceptTailPadding(stream)
-            stream.inputFinished()
-            while (localRecognizer.isReady(stream)) {
-                localRecognizer.decode(stream)
-            }
-            val finalText = localRecognizer.getResult(stream).text.trim()
-            if (finalText.isNotBlank() && finalText != lastText) {
-                Log.d(TAG, "Local activation final text='$finalText'")
-                onText(finalText)
-            }
-            val finalEndpoint = when {
-                CommandInterpreter.isActivationWakeAsrEquivalent(finalText) -> "${endpoint}_activation"
-                !speechSeen && finalText.isBlank() -> "no_speech_timeout"
-                else -> endpoint
-            }
-            return result(text = finalText, endpoint = finalEndpoint)
+            return finishSegment(endpoint)
         } finally {
             runCatching { recorder.stop() }
             recorder.release()

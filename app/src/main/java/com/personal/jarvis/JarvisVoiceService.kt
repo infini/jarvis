@@ -506,15 +506,40 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 }
                 Log.d(TAG, "Local activation partial text: $text")
             },
+            onRejected = ::handleLocalActivationRejectedSegment,
             onComplete = ::handleLocalActivationOutcome,
         )
         Log.d(TAG, "Local activation listening started")
+    }
+
+    private fun handleLocalActivationRejectedSegment(result: LocalCommandRecognizer.ActivationResult) {
+        markLatency(
+            "activation_asr_rejected_segment",
+            "endpoint=${result.endpoint} elapsedMs=${result.elapsedMs} " +
+                "speechMs=${result.activeSpeechMs} trailingMs=${result.trailingSilenceMs} " +
+                "peakRms=${result.peakRms} meanRms=${result.meanRms} " +
+                "asrGain=${result.asrGain} text=${result.text}",
+        )
+        saveActivationAttemptDebugCapture(
+            samples = result.samples,
+            result = result,
+            accepted = false,
+        )
     }
 
     private fun handleLocalActivationOutcome(outcome: LocalActivationSession.Outcome) {
         if (destroyed) return
 
         val result = outcome.result
+        val acceptedResult = result?.takeIf {
+            CommandInterpreter.isActivationWakeAsrEquivalent(it.text)
+        }
+        if (acceptedResult != null) {
+            startLatencyTrace(
+                "idle_activation_detected",
+                "engine=local_activation_asr elapsedMs=${acceptedResult.elapsedMs} text=${acceptedResult.text}",
+            )
+        }
         if (result != null) {
             markLatency(
                 "activation_asr_complete",
@@ -535,8 +560,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 finishLatency("activation_asr_unavailable")
                 scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
             }
-            result != null && CommandInterpreter.isActivationWakeAsrEquivalent(result.text) -> {
-                startActivationOwnerVerification(result)
+            acceptedResult != null -> {
+                startActivationOwnerVerification(acceptedResult)
             }
             else -> {
                 finishLatency(
@@ -1350,7 +1375,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val COMMAND_SESSION_AUTH_WINDOW_MS = 30000L
         private const val COMMAND_RETRY_GRACE_MS = 2000L
         private const val LOCAL_COMMAND_TIMEOUT_MS = 6000L
-        private const val LOCAL_ACTIVATION_TIMEOUT_MS = 3200L
+        private const val LOCAL_ACTIVATION_TIMEOUT_MS = 60000L
         private const val LOCAL_FALLBACK_AUTH_EXTENSION_MS = 6000L
         private const val LOCAL_ANDROID_FALLBACK_MIN_SPEECH_MS = 360L
         private const val OWNER_VERIFY_AUDIO_MS = 1800L

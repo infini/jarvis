@@ -22,6 +22,7 @@ class LocalActivationSession(
     fun start(
         timeoutMs: Long,
         onText: (String) -> Unit,
+        onRejected: (LocalCommandRecognizer.ActivationResult) -> Unit,
         onComplete: (Outcome) -> Unit,
     ) {
         if (active) return
@@ -37,6 +38,7 @@ class LocalActivationSession(
                         active && !Thread.currentThread().isInterrupted
                     },
                     onText = onText,
+                    onRejected = onRejected,
                 )
             }.onFailure {
                 failed = true
