@@ -23,22 +23,26 @@ object SpeechRecognitionIntentFactory {
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,
-                if (commandWindowOpen) COMMAND_INPUT_MINIMUM_LENGTH_MS else DEFAULT_INPUT_MINIMUM_LENGTH_MS,
+                if (commandWindowOpen) COMMAND_INPUT_MINIMUM_LENGTH_MS else IDLE_WAKE_INPUT_MINIMUM_LENGTH_MS,
             )
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
-                if (commandWindowOpen) COMMAND_POSSIBLY_COMPLETE_SILENCE_MS else DEFAULT_POSSIBLY_COMPLETE_SILENCE_MS,
+                if (commandWindowOpen) {
+                    COMMAND_POSSIBLY_COMPLETE_SILENCE_MS
+                } else {
+                    IDLE_WAKE_POSSIBLY_COMPLETE_SILENCE_MS
+                },
             )
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
-                if (commandWindowOpen) COMMAND_COMPLETE_SILENCE_MS else DEFAULT_COMPLETE_SILENCE_MS,
+                if (commandWindowOpen) COMMAND_COMPLETE_SILENCE_MS else IDLE_WAKE_COMPLETE_SILENCE_MS,
             )
         }
     }
 
-    private const val DEFAULT_INPUT_MINIMUM_LENGTH_MS = 1200L
-    private const val DEFAULT_POSSIBLY_COMPLETE_SILENCE_MS = 700L
-    private const val DEFAULT_COMPLETE_SILENCE_MS = 1000L
+    private const val IDLE_WAKE_INPUT_MINIMUM_LENGTH_MS = 600L
+    private const val IDLE_WAKE_POSSIBLY_COMPLETE_SILENCE_MS = 250L
+    private const val IDLE_WAKE_COMPLETE_SILENCE_MS = 600L
     private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 300L
     private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 150L
     private const val COMMAND_COMPLETE_SILENCE_MS = 300L

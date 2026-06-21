@@ -5,7 +5,7 @@ DURATION_SECONDS="${1:-20}"
 LOG_FILE="${2:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_LOG_FILE=""
-START_DEBUG_ACTIVITY="${JARVIS_START_DEBUG_ACTIVITY:-0}"
+START_DEBUG_ACTIVITY="${JARVIS_START_DEBUG_ACTIVITY:-1}"
 START_SERVICE="${JARVIS_START_SERVICE:-1}"
 RESET_SERVICE="${JARVIS_RESET_SERVICE:-1}"
 SKIP_PROFILE_CHECK="${JARVIS_SKIP_PROFILE_CHECK:-0}"
@@ -59,7 +59,7 @@ IDLE_READY=""
 for _ in {1..30}; do
   IDLE_READY="$(
     adb logcat -d -v time -s JarvisLatency JarvisLocalCommand JarvisVoiceService |
-      grep -E "event=(activation_listen_start|activation_partial|activation_asr_rejected_segment)|AudioRecord initialized source=|Local activation listening started" |
+      grep -E "event=(activation_listen_start|activation_partial|activation_asr_rejected_segment)|Idle Android wake listening started|AudioRecord initialized source=|Local activation listening started" |
       tail -1 || true
   )"
   if [[ -z "$IDLE_READY" && "$RESET_SERVICE" != "1" ]]; then
@@ -95,7 +95,7 @@ echo "Speak now: say '자비스 깨어나' within ${DURATION_SECONDS}s, then wai
 sleep "$DURATION_SECONDS"
 
 adb logcat -d -v time \
-  -s JarvisLatency JarvisVoiceService JarvisLocalCommand JarvisStateIndicator JarvisFeedback \
+  -s JarvisLatency JarvisVoiceService JarvisLocalCommand JarvisIdleWakeAudio JarvisStateIndicator JarvisFeedback \
   > "$LOG_FILE"
 
 count_event() {
@@ -129,6 +129,9 @@ max_metric() {
 ACTIVATION_COMPLETE_COUNT="$(count_event activation_asr_complete)"
 ACTIVATION_PARTIAL_COUNT="$(count_event activation_partial)"
 ACTIVATION_REJECTED_SEGMENT_COUNT="$(count_event activation_asr_rejected_segment)"
+ANDROID_ACTIVATION_DETECTED_COUNT="$(count_event android_activation_detected)"
+ANDROID_ACTIVATION_AUDIO_COUNT="$(count_event android_activation_audio_snapshot)"
+ANDROID_ACTIVATION_DISABLED_COUNT="$(count_event android_activation_disabled)"
 ACTIVATION_OWNER_VERIFIED_COUNT="$(count_event activation_owner_verified)"
 OWNER_AUDIO_ACTIVATION_COUNT="$(count_event owner_audio_activation)"
 READY_FOR_SPEECH_COUNT="$(count_event ready_for_speech)"
@@ -140,11 +143,11 @@ MAX_PEAK_RMS="$(max_metric peakRms)"
 MAX_SPEECH_MS="$(max_metric speechMs)"
 
 echo "log_file=$LOG_FILE"
-echo "summary activation_asr_complete=$ACTIVATION_COMPLETE_COUNT activation_partial=$ACTIVATION_PARTIAL_COUNT activation_asr_rejected_segment=$ACTIVATION_REJECTED_SEGMENT_COUNT activation_owner_verified=$ACTIVATION_OWNER_VERIFIED_COUNT owner_audio_activation=$OWNER_AUDIO_ACTIVATION_COUNT ready_for_speech=$READY_FOR_SPEECH_COUNT command_ready_feedback=$COMMAND_READY_FEEDBACK_COUNT overlay_ready=$OVERLAY_READY_COUNT activation_owner_rejected=$OWNER_REJECTED_COUNT activation_phrase_missing=$PHRASE_MISSING_COUNT"
+echo "summary activation_asr_complete=$ACTIVATION_COMPLETE_COUNT activation_partial=$ACTIVATION_PARTIAL_COUNT activation_asr_rejected_segment=$ACTIVATION_REJECTED_SEGMENT_COUNT android_activation_detected=$ANDROID_ACTIVATION_DETECTED_COUNT android_activation_audio_snapshot=$ANDROID_ACTIVATION_AUDIO_COUNT android_activation_disabled=$ANDROID_ACTIVATION_DISABLED_COUNT activation_owner_verified=$ACTIVATION_OWNER_VERIFIED_COUNT owner_audio_activation=$OWNER_AUDIO_ACTIVATION_COUNT ready_for_speech=$READY_FOR_SPEECH_COUNT command_ready_feedback=$COMMAND_READY_FEEDBACK_COUNT overlay_ready=$OVERLAY_READY_COUNT activation_owner_rejected=$OWNER_REJECTED_COUNT activation_phrase_missing=$PHRASE_MISSING_COUNT"
 echo "audio max_peak_rms=$MAX_PEAK_RMS max_speech_ms=$MAX_SPEECH_MS"
 
 echo "recent_activation_events:"
-grep -E "event=(activation_partial|activation_asr_complete|activation_asr_rejected_segment|activation_owner_verified|owner_audio_activation|activation_owner_rejected|activation_phrase_missing|ready_for_speech)" "$LOG_FILE" | tail -20 || true
+grep -E "event=(activation_partial|activation_asr_complete|activation_asr_rejected_segment|android_activation_detected|android_activation_audio_snapshot|android_activation_disabled|activation_owner_verified|owner_audio_activation|activation_owner_rejected|activation_phrase_missing|ready_for_speech)" "$LOG_FILE" | tail -20 || true
 
 echo "recent_overlay_events:"
 grep "JarvisStateIndicator" "$LOG_FILE" | tail -10 || true
@@ -166,9 +169,9 @@ if [[ "$ACTIVATION_OWNER_VERIFIED_COUNT" -gt 0 && "$OWNER_REJECTED_COUNT" -gt 0 
   exit 1
 fi
 
-if [[ "$ACTIVATION_COMPLETE_COUNT" -eq 0 && "$ACTIVATION_REJECTED_SEGMENT_COUNT" -eq 0 ]]; then
-  echo "FAIL: local activation ASR did not produce any segment." >&2
-  echo "hint=If no one spoke during the window, rerun and say '자비스 깨어나'. If you did speak, check microphone permission, foreground service state, and local ASR assets." >&2
+if [[ "$ACTIVATION_COMPLETE_COUNT" -eq 0 && "$ACTIVATION_REJECTED_SEGMENT_COUNT" -eq 0 && "$ANDROID_ACTIVATION_DETECTED_COUNT" -eq 0 && "$ANDROID_ACTIVATION_AUDIO_COUNT" -eq 0 ]]; then
+  echo "FAIL: idle activation did not produce any speech segment or Android wake result." >&2
+  echo "hint=If no one spoke during the window, rerun and say '자비스 깨어나'. If you did speak, check microphone permission, foreground service state, Android SpeechRecognizer availability, and local ASR assets." >&2
   exit 1
 fi
 
