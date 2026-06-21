@@ -16,6 +16,7 @@ esac
 WINDOW_MS=$((WINDOW_SECONDS * 1000))
 WAIT_SECONDS=$((WINDOW_SECONDS + 8))
 LOG_FILE="/tmp/jarvis-ready-feedback-once-${REQUEST_ID}.log"
+CLOSE_EVENT_REGEX="event=command_window_timeout|event=command_window_expired_after_speech_grace|event=command_window_expired_on_listen_timeout|event=command_window_expired_after_local_no_command|event=command_window_expired_after_speech_error|event=command_window_expired_after_final_no_command"
 
 adb logcat -c
 adb shell am start \
@@ -28,10 +29,10 @@ adb logcat -d -v time -s $LOG_TAGS > "$LOG_FILE"
 
 READY_COUNT="$(grep -c "event=ready_for_speech" "$LOG_FILE" || true)"
 READY_FEEDBACK_COUNT="$(grep -c "feedback=command_ready" "$LOG_FILE" || true)"
-CLOSE_LINE="$(grep -E "event=command_window_timeout|event=command_window_expired_after_speech_grace" "$LOG_FILE" | tail -1 || true)"
+CLOSE_LINE="$(grep -E "$CLOSE_EVENT_REGEX" "$LOG_FILE" | tail -1 || true)"
 READY_AFTER_CLOSE="$(
   awk '
-    /event=command_window_timeout|event=command_window_expired_after_speech_grace/ { seen_close=1; next }
+    /event=command_window_timeout|event=command_window_expired_after_speech_grace|event=command_window_expired_on_listen_timeout|event=command_window_expired_after_local_no_command|event=command_window_expired_after_speech_error|event=command_window_expired_after_final_no_command/ { seen_close=1; next }
     seen_close && /event=ready_for_speech/ { print }
   ' "$LOG_FILE" | tail -1 || true
 )"

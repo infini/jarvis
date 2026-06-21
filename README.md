@@ -105,14 +105,15 @@ scripts/jarvis-owner-enroll.sh 6
 
 새 측정은 저장된 owner profile이 현재 activation 등록 상태인지 먼저 확인한 뒤, 로그를 비우고 정해진 시간 동안 녹화해 바로 요약합니다.
 
-activation 디버깅은 사용자가 같은 문장을 반복해 말하는 방식으로 진행하지 않습니다. debug APK는 owner gate 통과 후 activation ASR에 사용한 원본 1800ms WAV와 JSON 메타데이터를 앱 cache의 `jarvis-activation-attempts/`에 자동 저장합니다. 이후 같은 샘플을 현재 APK의 activation ASR로 다시 돌릴 때는 다음 스크립트를 사용합니다.
+activation 디버깅은 사용자가 같은 문장을 반복해 말하는 방식으로 진행하지 않습니다. debug APK는 owner gate 통과 후 activation ASR에 사용한 원본 3200ms rolling WAV와 JSON 메타데이터를 앱 cache의 `jarvis-activation-attempts/`에 자동 저장합니다. 이후 같은 샘플을 현재 APK의 activation ASR로 다시 돌릴 때는 다음 스크립트를 사용합니다.
 
 ```bash
+scripts/jarvis-wake-diagnose.sh
 scripts/jarvis-activation-replay.sh
 scripts/jarvis-activation-captures.sh
 ```
 
-`jarvis-activation-replay.sh`는 저장된 WAV들을 앱 내부에서 재디코딩해 accepted/text/RMS를 로그로 요약합니다. `jarvis-activation-captures.sh`는 WAV/JSON 묶음을 `/tmp`로 가져와 사람이 직접 확인하거나 별도 분석에 사용할 수 있게 합니다. 이 흐름으로 ASR rule과 threshold 변경은 저장 샘플로 먼저 검증하고, 사용자의 실시간 발화는 최종 확인 단계에서만 요청합니다.
+`jarvis-wake-diagnose.sh`는 프로필 상태, 저장된 activation WAV replay, 최신 캡처 메타데이터, 관련 logcat을 한 번에 묶어 wake 실패 원인을 먼저 분류합니다. `jarvis-activation-replay.sh`는 저장된 WAV들을 앱 내부에서 재디코딩해 accepted/text/RMS를 로그로 요약합니다. `jarvis-activation-captures.sh`는 WAV/JSON 묶음을 `/tmp`로 가져와 사람이 직접 확인하거나 별도 분석에 사용할 수 있게 합니다. 이 흐름으로 ASR rule과 threshold 변경은 저장 샘플로 먼저 검증하고, 사용자의 실시간 발화는 최종 확인 단계에서만 요청합니다.
 
 30초 command window timeout은 사용자가 발화하지 않아도 debug APK에서 검증할 수 있습니다.
 
@@ -125,7 +126,7 @@ scripts/jarvis-overlay-timeout.sh 30 open_camera
 scripts/jarvis-ready-feedback-once.sh 30
 ```
 
-`jarvis-idle-guard.sh`는 idle 상태에서 지정 시간 동안 accepted activation 또는 command STT의 `listen_start`/`ready_for_speech`가 발생하지 않는지 확인합니다. `owner_audio_activation_rejected`는 호출어가 아니어서 조용히 거절된 정상 idle 경로로 봅니다. 성공 시에는 요약과 원본 logcat 파일 경로만 출력하고, 실패 시에는 원인 이벤트를 함께 출력합니다. `jarvis-command-window-timeout.sh`는 debug no-display Activity로 command window를 열고, 지정한 시간 뒤 `command_window_timeout`이 발생하며 이후 `ready_for_speech`가 다시 나오지 않는지 확인합니다. 두 번째 인자로 command id를 넘기면 `open_camera`, `open_front_camera`, `open_rear_camera`, `take_photo`, `home` 같은 명령 실행 후 command window가 다시 열린 뒤 timeout되는 경로를 검증합니다. `jarvis-command-window-timeout-matrix.sh`는 기본 command window와 `open_camera`, `open_front_camera`, `open_rear_camera`, `take_photo`, `home`을 같은 기준으로 순차 검증합니다. `jarvis-overlay-timeout.sh`는 command window에서 `JARVIS` overlay가 표시되고 command window close 뒤 `overlay_hidden`으로 사라지는지 확인합니다. `jarvis-ready-feedback-once.sh`는 command window 안에서 Android STT가 여러 번 `ready_for_speech`로 재시작돼도 준비음은 한 번만 발생하는지 확인합니다.
+`jarvis-idle-guard.sh`는 idle 상태에서 지정 시간 동안 accepted activation 또는 command STT의 `listen_start`/`ready_for_speech`가 발생하지 않는지 확인합니다. `owner_audio_activation_rejected`는 호출어가 아니어서 조용히 거절된 정상 idle 경로로 봅니다. 성공 시에는 요약과 원본 logcat 파일 경로만 출력하고, 실패 시에는 원인 이벤트를 함께 출력합니다. `jarvis-command-window-timeout.sh`는 debug no-display Activity로 command window를 열고, 지정한 시간 뒤 command window close가 발생하며 이후 `ready_for_speech`가 다시 나오지 않는지 확인합니다. 두 번째 인자로 command id를 넘기면 `open_camera`, `open_front_camera`, `open_rear_camera`, `take_photo`, `home` 같은 명령 실행 후 command window가 다시 열린 뒤 닫히는 경로를 검증합니다. close 이벤트는 일반 timeout, active speech grace 만료, listen timeout 만료, deadline 이후 speech error/final/local no-command 종료를 모두 포함합니다. `jarvis-command-window-timeout-matrix.sh`는 기본 command window와 `open_camera`, `open_front_camera`, `open_rear_camera`, `take_photo`, `home`을 같은 기준으로 순차 검증합니다. `jarvis-overlay-timeout.sh`는 command window에서 `JARVIS` overlay가 표시되고 command window close 뒤 `overlay_hidden`으로 사라지는지 확인합니다. `jarvis-ready-feedback-once.sh`는 command window 안에서 Android STT가 여러 번 `ready_for_speech`로 재시작돼도 준비음은 한 번만 발생하는지 확인합니다.
 
 ```bash
 scripts/jarvis-command-trace.sh 45
@@ -175,7 +176,7 @@ USB 디버깅이 연결되어 있으면 `scripts/jarvis-owner-enroll.sh 6`으로
 
 `화면 켜`는 꺼진 디스플레이를 깨워 잠금화면을 보이게 하는 동작입니다. `화면 꺼`는 접근성 서비스의 잠금화면 전역 액션으로 기기를 잠그는 동작입니다. Android 보안 정책상 비밀번호, 지문, 얼굴인식 같은 잠금 해제는 자동으로 우회하지 않습니다.
 
-소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 마이크를 열어 둔 채 최근 1800ms 음성 window를 60ms마다 반복 검사합니다. speaker embedding 입력은 내부에서 최소 1.2초로 padding합니다. 등록 시에는 `자비스 깨어나`를 반복한 전체 6초 음성을 먼저 activation hotwords ASR로 확인하고, activation phrase가 확인된 경우에만 1.4초 단위 짧은 구간에서 최소 2개, 최대 8개의 embedding을 저장하며 `profile_phrase_id=jarvis_activation_v3` 메타데이터를 함께 저장합니다. verification은 이 묶음 중 가장 높은 similarity를 사용합니다. owner gate는 말소리 앞뒤의 무음을 줄여 embedding을 만들고, 기본 threshold `0.50`을 넘으면 통과합니다. 인증 중에는 일정한 배경음이 계속 말소리로 처리되지 않도록 배경음 floor 대비 피크가 충분한 구간만 embedding으로 계산합니다. 기존 Xiaomi 15 Ultra debug enrollment에서 낮은 RMS 녹음이 확인되어 등록/일반 embedding 최소 peak RMS는 `0.0012`, 최소 active RMS는 `0.00085`로 둡니다. owner verification 경로는 짧은 호출 발화가 peak RMS `0.0009`대까지 낮게 들어오는 로그가 확인되어 최소 peak RMS `0.00075`, 최소 active RMS `0.00050`, floor 대비 최소 상승폭 `0.00022`로 분리했습니다. 다중 embedding 프로필에서 active speech가 450ms 이상이고 similarity `0.36` 이상인 고신뢰 점수는 1회만으로 통과시키고, 그보다 낮은 `0.28` 이상 근접 점수는 2회 연속 나오면 통과시킵니다. near/soft 보조 통과는 peak RMS `0.0035` 이상일 때만 허용합니다. 850ms 이상 말소리에서 `0.16` 이상 soft 점수가 1회 나오거나, 400ms 이상 말소리에서 `0.14` 이상 soft 점수가 4회 연속 나오면 같은 소유자 발화로 봅니다.
+소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 마이크를 열어 둔 채 최근 1800ms 음성 window를 60ms마다 반복 검사하고, activation ASR용 원본 audio는 별도 3200ms rolling window로 보존합니다. speaker embedding 입력은 내부에서 최소 1.2초로 padding합니다. 등록 시에는 `자비스 깨어나`를 반복한 전체 6초 음성을 먼저 activation hotwords ASR로 확인하고, activation phrase가 확인된 경우에만 1.4초 단위 짧은 구간에서 최소 2개, 최대 8개의 embedding을 저장하며 `profile_phrase_id=jarvis_activation_v3` 메타데이터를 함께 저장합니다. verification은 이 묶음 중 가장 높은 similarity를 사용합니다. owner gate는 말소리 앞뒤의 무음을 줄여 embedding을 만들고, 기본 threshold `0.50`을 넘으면 통과합니다. 인증 중에는 일정한 배경음이 계속 말소리로 처리되지 않도록 배경음 floor 대비 피크가 충분한 구간만 embedding으로 계산합니다. 기존 Xiaomi 15 Ultra debug enrollment에서 낮은 RMS 녹음이 확인되어 등록/일반 embedding 최소 peak RMS는 `0.0012`, 최소 active RMS는 `0.00085`로 둡니다. owner verification 경로는 짧은 호출 발화가 peak RMS `0.0009`대까지 낮게 들어오는 로그가 확인되어 최소 peak RMS `0.00075`, 최소 active RMS `0.00050`, floor 대비 최소 상승폭 `0.00022`로 분리했습니다. 다중 embedding 프로필에서 active speech가 450ms 이상이고 similarity `0.36` 이상인 고신뢰 점수는 1회만으로 통과시키고, 그보다 낮은 `0.28` 이상 근접 점수는 2회 연속 나오면 통과시킵니다. near/soft 보조 통과는 peak RMS `0.0035` 이상일 때만 허용합니다. 850ms 이상 말소리에서 `0.16` 이상 soft 점수가 1회 나오거나, 400ms 이상 말소리에서 `0.14` 이상 soft 점수가 4회 연속 나오면 같은 소유자 발화로 봅니다.
 
 중요한 점은 owner gate 통과가 곧 command window 오픈은 아니라는 것입니다. owner gate가 통과하면 앱은 추가로 약 900ms를 캡처해 activation 발화 끝부분을 포함시키고, 이 owner audio의 원본 rolling window를 activation 전용 한국어 hotwords ASR로 재해석합니다. activation ASR에는 speaker embedding용으로 잘라낸 샘플을 쓰지 않아 `자비스 깨어나` 앞뒤 음소가 잘리지 않게 합니다. hotwords ASR 결과가 `자비스 깨어나` 계열 문장일 때만 30초 command window를 열고 초록 `JARVIS` overlay와 준비음/진동을 제공합니다. `자비스` 단독, `헤이 자비스 깨어나`, `자비스 카메라 실행`, 주변 대화, 소유자의 다른 말은 idle 상태에서 Android STT를 열지 않습니다. 이후 live command window는 Android System Intelligence(AiAi) `SpeechRecognizer`를 먼저 사용하고, Android STT가 실패하거나 사용할 수 없을 때만 local ASR fallback을 사용합니다. 로컬 ASR fallback은 짧은 명령 후 trailing silence를 감지하면 timeout 전에도 final decode를 실행합니다. command window는 서비스 레벨의 30초 deadline으로 닫히므로 fallback 재시도 때문에 무한히 유지되지 않습니다. 이 때문에 Jarvis 대기 중에는 Android의 초록색 마이크 표시가 켜져 있는 것이 정상입니다.
 

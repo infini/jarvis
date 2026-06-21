@@ -17,6 +17,7 @@ esac
 WINDOW_MS=$((WINDOW_SECONDS * 1000))
 WAIT_SECONDS=$((WINDOW_SECONDS + 8))
 LOG_FILE="/tmp/jarvis-overlay-timeout-${REQUEST_ID}.log"
+CLOSE_EVENT_REGEX="event=command_window_timeout|event=command_window_expired_after_speech_grace|event=command_window_expired_on_listen_timeout|event=command_window_expired_after_local_no_command|event=command_window_expired_after_speech_error|event=command_window_expired_after_final_no_command"
 
 adb logcat -c
 adb shell am start \
@@ -30,16 +31,16 @@ adb logcat -d -v time -s $LOG_TAGS > "$LOG_FILE"
 
 OPEN_LINE="$(grep "debug_command_window_open" "$LOG_FILE" | grep "request_id=${REQUEST_ID}" | tail -1 || true)"
 VISIBLE_LINE="$(grep "JarvisStateIndicator" "$LOG_FILE" | grep "overlay_visible" | tail -1 || true)"
-CLOSE_LINE="$(grep -E "event=command_window_timeout|event=command_window_expired_after_speech_grace" "$LOG_FILE" | tail -1 || true)"
+CLOSE_LINE="$(grep -E "$CLOSE_EVENT_REGEX" "$LOG_FILE" | tail -1 || true)"
 HIDDEN_AFTER_TIMEOUT="$(
   awk '
-    /event=command_window_timeout|event=command_window_expired_after_speech_grace/ { seen_timeout=1; next }
+    /event=command_window_timeout|event=command_window_expired_after_speech_grace|event=command_window_expired_on_listen_timeout|event=command_window_expired_after_local_no_command|event=command_window_expired_after_speech_error|event=command_window_expired_after_final_no_command/ { seen_timeout=1; next }
     seen_timeout && /JarvisStateIndicator.*overlay_hidden/ { print }
   ' "$LOG_FILE" | tail -1 || true
 )"
 READY_AFTER_TIMEOUT="$(
   awk '
-    /event=command_window_timeout|event=command_window_expired_after_speech_grace/ { seen_timeout=1; next }
+    /event=command_window_timeout|event=command_window_expired_after_speech_grace|event=command_window_expired_on_listen_timeout|event=command_window_expired_after_local_no_command|event=command_window_expired_after_speech_error|event=command_window_expired_after_final_no_command/ { seen_timeout=1; next }
     seen_timeout && /event=ready_for_speech/ { print }
   ' "$LOG_FILE" | tail -1 || true
 )"

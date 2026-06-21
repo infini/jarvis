@@ -18,6 +18,7 @@ esac
 WINDOW_MS=$((WINDOW_SECONDS * 1000))
 WAIT_SECONDS=$((WINDOW_SECONDS + 8))
 LOG_FILE="/tmp/jarvis-command-window-timeout-${REQUEST_ID}.log"
+CLOSE_EVENT_REGEX="event=command_window_timeout|event=command_window_expired_after_speech_grace|event=command_window_expired_on_listen_timeout|event=command_window_expired_after_local_no_command|event=command_window_expired_after_speech_error|event=command_window_expired_after_final_no_command"
 
 adb logcat -c
 AM_ARGS=(
@@ -35,14 +36,14 @@ sleep "$WAIT_SECONDS"
 adb logcat -d -v time -s $LOG_TAG > "$LOG_FILE"
 
 OPEN_LINE="$(grep "debug_command_window_open" "$LOG_FILE" | grep "request_id=${REQUEST_ID}" | tail -1 || true)"
-TIMEOUT_LINE="$(grep "event=command_window_timeout" "$LOG_FILE" | tail -1 || true)"
+CLOSE_LINE="$(grep -E "$CLOSE_EVENT_REGEX" "$LOG_FILE" | tail -1 || true)"
 COMMAND_LINE=""
 if [[ -n "$COMMAND" ]]; then
   COMMAND_LINE="$(grep "event=command_complete" "$LOG_FILE" | grep "keepWindow=true" | tail -1 || true)"
 fi
 LAST_READY_AFTER_TIMEOUT="$(
   awk '
-    /event=command_window_timeout/ { seen_timeout=1; next }
+    /event=command_window_timeout|event=command_window_expired_after_speech_grace|event=command_window_expired_on_listen_timeout|event=command_window_expired_after_local_no_command|event=command_window_expired_after_speech_error|event=command_window_expired_after_final_no_command/ { seen_timeout=1; next }
     seen_timeout && /event=ready_for_speech/ { print }
   ' "$LOG_FILE" | tail -1 || true
 )"
@@ -57,8 +58,8 @@ if [[ -z "$OPEN_LINE" ]]; then
   exit 1
 fi
 
-if [[ -z "$TIMEOUT_LINE" ]]; then
-  echo "FAIL: command_window_timeout was not observed." >&2
+if [[ -z "$CLOSE_LINE" ]]; then
+  echo "FAIL: command window close event was not observed." >&2
   exit 1
 fi
 
@@ -68,7 +69,7 @@ if [[ -n "$COMMAND" && -z "$COMMAND_LINE" ]]; then
 fi
 
 if [[ -n "$LAST_READY_AFTER_TIMEOUT" ]]; then
-  echo "FAIL: ready_for_speech appeared after command_window_timeout." >&2
+  echo "FAIL: ready_for_speech appeared after command window close." >&2
   exit 1
 fi
 

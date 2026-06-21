@@ -258,11 +258,13 @@ object OwnerVoiceEngine {
         onMatch: (Match) -> Unit = {},
         shouldAccept: (Match) -> Boolean = { true },
         postAcceptAudioMs: Long = 0L,
+        captureWindowMs: Long = windowMs,
     ): Match? {
         val recorder = createRecorder()
         val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
         val buffer = ShortArray(readSize)
-        val maxWindowSamples = (SAMPLE_RATE_HZ * windowMs / 1000L).toInt()
+        val verificationWindowSamples = (SAMPLE_RATE_HZ * windowMs / 1000L).toInt()
+        val captureWindowSamples = (SAMPLE_RATE_HZ * maxOf(windowMs, captureWindowMs) / 1000L).toInt()
         val chunks = ArrayDeque<FloatArray>()
         var totalSamples = 0
         var lastVerificationAt = 0L
@@ -281,17 +283,17 @@ object OwnerVoiceEngine {
                 chunks.addLast(samples)
                 totalSamples += read
 
-                while (chunks.isNotEmpty() && totalSamples - chunks.first.size >= maxWindowSamples) {
+                while (chunks.isNotEmpty() && totalSamples - chunks.first.size >= captureWindowSamples) {
                     totalSamples -= chunks.removeFirst().size
                 }
 
                 val now = System.currentTimeMillis()
-                if (totalSamples >= maxWindowSamples && now - lastVerificationAt >= verificationIntervalMs) {
+                if (totalSamples >= verificationWindowSamples && now - lastVerificationAt >= verificationIntervalMs) {
                     lastVerificationAt = now
                     verificationAttempts += 1
                     val match = verifyOwner(
                         context = context,
-                        samples = flattenLastSamples(chunks, maxWindowSamples, totalSamples),
+                        samples = flattenLastSamples(chunks, verificationWindowSamples, totalSamples),
                         ownerEmbeddings = ownerEmbeddings,
                     )
                     val adjustedMatch = applyConsecutiveAcceptPolicy(match, consecutiveAcceptState)
@@ -308,7 +310,7 @@ object OwnerVoiceEngine {
                                 buffer = buffer,
                                 chunks = chunks,
                                 totalSamples = totalSamples,
-                                maxWindowSamples = maxWindowSamples,
+                                captureWindowSamples = captureWindowSamples,
                                 postAcceptAudioMs = postAcceptAudioMs,
                                 startedAt = startedAt,
                                 match = timedMatch,
@@ -333,7 +335,7 @@ object OwnerVoiceEngine {
         buffer: ShortArray,
         chunks: ArrayDeque<FloatArray>,
         totalSamples: Int,
-        maxWindowSamples: Int,
+        captureWindowSamples: Int,
         postAcceptAudioMs: Long,
         startedAt: Long,
         match: Match,
@@ -349,14 +351,14 @@ object OwnerVoiceEngine {
             chunks.addLast(samples)
             currentTotalSamples += read
 
-            while (chunks.isNotEmpty() && currentTotalSamples - chunks.first.size >= maxWindowSamples) {
+            while (chunks.isNotEmpty() && currentTotalSamples - chunks.first.size >= captureWindowSamples) {
                 currentTotalSamples -= chunks.removeFirst().size
             }
         }
 
         val commandWindowSamples = flattenLastSamples(
             chunks = chunks,
-            sampleCount = maxWindowSamples,
+            sampleCount = captureWindowSamples,
             totalSamples = currentTotalSamples,
         )
         return match.copy(

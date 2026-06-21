@@ -40,6 +40,7 @@ class OwnerVoiceGate(
         audioWindowMs: Long,
         verificationIntervalMs: Long,
         postAcceptAudioMs: Long,
+        activationAudioWindowMs: Long = audioWindowMs,
     ) {
         if (verifying) return
 
@@ -73,6 +74,7 @@ class OwnerVoiceGate(
                         )
                     },
                     postAcceptAudioMs = postAcceptAudioMs,
+                    captureWindowMs = activationAudioWindowMs,
                 )
                 if (!verifying || Thread.currentThread().isInterrupted) return@Thread
 

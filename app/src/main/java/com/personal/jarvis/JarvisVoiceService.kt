@@ -706,6 +706,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             audioWindowMs = OWNER_VERIFY_AUDIO_MS,
             verificationIntervalMs = OWNER_VERIFY_INTERVAL_MS,
             postAcceptAudioMs = OWNER_POST_ACCEPT_AUDIO_MS,
+            activationAudioWindowMs = OWNER_ACTIVATION_AUDIO_MS,
         )
     }
 
@@ -1142,6 +1143,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val LOCAL_FALLBACK_AUTH_EXTENSION_MS = 6000L
         private const val LOCAL_ANDROID_FALLBACK_MIN_SPEECH_MS = 360L
         private const val OWNER_VERIFY_AUDIO_MS = 1800L
+        private const val OWNER_ACTIVATION_AUDIO_MS = 3200L
         private const val OWNER_VERIFY_INTERVAL_MS = 60L
         private const val OWNER_POST_ACCEPT_AUDIO_MS = 900L
         private const val OWNER_VERIFY_RETRY_MS = 200L
