@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_LOG_FILE=""
 START_DEBUG_ACTIVITY="${JARVIS_START_DEBUG_ACTIVITY:-0}"
 START_SERVICE="${JARVIS_START_SERVICE:-1}"
+RESET_SERVICE="${JARVIS_RESET_SERVICE:-1}"
 SKIP_PROFILE_CHECK="${JARVIS_SKIP_PROFILE_CHECK:-0}"
 PROMPT_DELAY_SECONDS="${JARVIS_WAKE_PROMPT_DELAY_SECONDS:-2}"
 PROMPT_VIBRATE_MS="${JARVIS_WAKE_PROMPT_VIBRATE_MS:-250}"
@@ -42,6 +43,10 @@ if [[ "$START_DEBUG_ACTIVITY" == "1" ]]; then
     -n com.personal.jarvis/.debug.JarvisDebugStartActivity \
     --ez reset_voice_service true >/dev/null 2>&1 || true
 elif [[ "$START_SERVICE" == "1" ]]; then
+  if [[ "$RESET_SERVICE" == "1" ]]; then
+    adb shell am stopservice -n "$SERVICE_COMPONENT" >/dev/null 2>&1 || true
+    sleep 0.6
+  fi
   adb shell am start-foreground-service \
     -n "$SERVICE_COMPONENT" \
     --es start_source wake_live_check >/dev/null 2>&1 ||
@@ -51,13 +56,13 @@ elif [[ "$START_SERVICE" == "1" ]]; then
 fi
 
 IDLE_READY=""
-for _ in {1..15}; do
+for _ in {1..30}; do
   IDLE_READY="$(
-    adb logcat -d -v time -s JarvisLatency |
-      grep -E "event=activation_listen_start .*engine=local_activation_asr" |
+    adb logcat -d -v time -s JarvisLatency JarvisLocalCommand JarvisVoiceService |
+      grep -E "event=(activation_listen_start|activation_partial|activation_asr_rejected_segment)|AudioRecord initialized source=|Local activation listening started" |
       tail -1 || true
   )"
-  if [[ -z "$IDLE_READY" ]]; then
+  if [[ -z "$IDLE_READY" && "$RESET_SERVICE" != "1" ]]; then
     IDLE_READY="$(
       adb shell dumpsys activity services 2>/dev/null |
         grep -A35 "$SERVICE_COMPONENT" |
@@ -122,6 +127,7 @@ max_metric() {
 }
 
 ACTIVATION_COMPLETE_COUNT="$(count_event activation_asr_complete)"
+ACTIVATION_PARTIAL_COUNT="$(count_event activation_partial)"
 ACTIVATION_REJECTED_SEGMENT_COUNT="$(count_event activation_asr_rejected_segment)"
 ACTIVATION_OWNER_VERIFIED_COUNT="$(count_event activation_owner_verified)"
 OWNER_AUDIO_ACTIVATION_COUNT="$(count_event owner_audio_activation)"
@@ -134,11 +140,11 @@ MAX_PEAK_RMS="$(max_metric peakRms)"
 MAX_SPEECH_MS="$(max_metric speechMs)"
 
 echo "log_file=$LOG_FILE"
-echo "summary activation_asr_complete=$ACTIVATION_COMPLETE_COUNT activation_asr_rejected_segment=$ACTIVATION_REJECTED_SEGMENT_COUNT activation_owner_verified=$ACTIVATION_OWNER_VERIFIED_COUNT owner_audio_activation=$OWNER_AUDIO_ACTIVATION_COUNT ready_for_speech=$READY_FOR_SPEECH_COUNT command_ready_feedback=$COMMAND_READY_FEEDBACK_COUNT overlay_ready=$OVERLAY_READY_COUNT activation_owner_rejected=$OWNER_REJECTED_COUNT activation_phrase_missing=$PHRASE_MISSING_COUNT"
+echo "summary activation_asr_complete=$ACTIVATION_COMPLETE_COUNT activation_partial=$ACTIVATION_PARTIAL_COUNT activation_asr_rejected_segment=$ACTIVATION_REJECTED_SEGMENT_COUNT activation_owner_verified=$ACTIVATION_OWNER_VERIFIED_COUNT owner_audio_activation=$OWNER_AUDIO_ACTIVATION_COUNT ready_for_speech=$READY_FOR_SPEECH_COUNT command_ready_feedback=$COMMAND_READY_FEEDBACK_COUNT overlay_ready=$OVERLAY_READY_COUNT activation_owner_rejected=$OWNER_REJECTED_COUNT activation_phrase_missing=$PHRASE_MISSING_COUNT"
 echo "audio max_peak_rms=$MAX_PEAK_RMS max_speech_ms=$MAX_SPEECH_MS"
 
 echo "recent_activation_events:"
-grep -E "event=(activation_asr_complete|activation_asr_rejected_segment|activation_owner_verified|owner_audio_activation|activation_owner_rejected|activation_phrase_missing|ready_for_speech)" "$LOG_FILE" | tail -20 || true
+grep -E "event=(activation_partial|activation_asr_complete|activation_asr_rejected_segment|activation_owner_verified|owner_audio_activation|activation_owner_rejected|activation_phrase_missing|ready_for_speech)" "$LOG_FILE" | tail -20 || true
 
 echo "recent_overlay_events:"
 grep "JarvisStateIndicator" "$LOG_FILE" | tail -10 || true

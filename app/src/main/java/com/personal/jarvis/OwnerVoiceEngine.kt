@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractor
 import com.k2fsa.sherpa.onnx.SpeakerEmbeddingExtractorConfig
 import java.util.ArrayDeque
@@ -12,6 +13,7 @@ import kotlin.math.min
 import kotlin.math.sqrt
 
 object OwnerVoiceEngine {
+    private const val TAG = "OwnerVoiceEngine"
     const val SAMPLE_RATE_HZ = 16000
     private const val EMBEDDING_MIN_AUDIO_MS = 1200L
     private const val MIN_ACTIVE_SPEECH_MS = 240L
@@ -127,6 +129,11 @@ object OwnerVoiceEngine {
         val peakRms: Float = 0f,
         val noiseFloorRms: Float = 0f,
         val activeThresholdRms: Float = 0f,
+    )
+
+    private data class RecorderSource(
+        val source: Int,
+        val label: String,
     )
 
     internal data class ConsecutiveAcceptState(
@@ -529,15 +536,29 @@ object OwnerVoiceEngine {
         require(minBufferBytes > 0) { "AudioRecord buffer size is not available: $minBufferBytes" }
 
         val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
-        val recorder = AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            SAMPLE_RATE_HZ,
-            channelConfig,
-            audioFormat,
-            maxOf(minBufferBytes, readSize * Short.SIZE_BYTES * 2),
+        val bufferBytes = maxOf(minBufferBytes, readSize * Short.SIZE_BYTES * 2)
+        val sources = listOf(
+            RecorderSource(MediaRecorder.AudioSource.VOICE_RECOGNITION, "VOICE_RECOGNITION"),
+            RecorderSource(MediaRecorder.AudioSource.MIC, "MIC"),
         )
-        require(recorder.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord was not initialized" }
-        return recorder
+        var lastSource: String? = null
+        for (source in sources) {
+            val recorder = AudioRecord(
+                source.source,
+                SAMPLE_RATE_HZ,
+                channelConfig,
+                audioFormat,
+                bufferBytes,
+            )
+            if (recorder.state == AudioRecord.STATE_INITIALIZED) {
+                Log.d(TAG, "AudioRecord initialized source=${source.label} bufferBytes=$bufferBytes")
+                return recorder
+            }
+
+            lastSource = source.label
+            recorder.release()
+        }
+        error("AudioRecord was not initialized; lastSource=$lastSource")
     }
 
     private fun flattenLastSamples(

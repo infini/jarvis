@@ -20,11 +20,11 @@ object LocalCommandRecognizer {
     private const val TAG = "JarvisLocalCommand"
     private const val SAMPLE_RATE_HZ = 16000
     private const val READ_INTERVAL_MS = 40L
-    private const val LOCAL_SPEECH_RMS_THRESHOLD = 0.0035f
+    private const val LOCAL_SPEECH_RMS_THRESHOLD = 0.0020f
     private const val LOCAL_MIN_ACTIVE_SPEECH_MS = 160L
     private const val LOCAL_TRAILING_SILENCE_MS = 240L
     private const val LOCAL_EARLY_ENDPOINT_MIN_LISTEN_MS = 560L
-    private const val ACTIVATION_SPEECH_RMS_THRESHOLD = 0.0025f
+    private const val ACTIVATION_SPEECH_RMS_THRESHOLD = 0.0012f
     private const val ACTIVATION_MIN_ACTIVE_SPEECH_MS = 320L
     private const val ACTIVATION_TRAILING_SILENCE_MS = 360L
     private const val ACTIVATION_EARLY_ENDPOINT_MIN_LISTEN_MS = 760L
@@ -77,6 +77,11 @@ object LocalCommandRecognizer {
     private data class AudioLevelStats(
         val peakRms: Float,
         val meanRms: Float,
+    )
+
+    private data class RecorderSource(
+        val source: Int,
+        val label: String,
     )
 
     fun isAvailable(context: Context): Boolean {
@@ -717,15 +722,29 @@ object LocalCommandRecognizer {
         require(minBufferBytes > 0) { "AudioRecord buffer size is not available: $minBufferBytes" }
 
         val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
-        return AudioRecord(
-            MediaRecorder.AudioSource.MIC,
-            SAMPLE_RATE_HZ,
-            channelConfig,
-            audioFormat,
-            maxOf(minBufferBytes, readSize * Short.SIZE_BYTES * 2),
-        ).also {
-            require(it.state == AudioRecord.STATE_INITIALIZED) { "AudioRecord was not initialized" }
+        val bufferBytes = maxOf(minBufferBytes, readSize * Short.SIZE_BYTES * 2)
+        val sources = listOf(
+            RecorderSource(MediaRecorder.AudioSource.VOICE_RECOGNITION, "VOICE_RECOGNITION"),
+            RecorderSource(MediaRecorder.AudioSource.MIC, "MIC"),
+        )
+        var lastSource: String? = null
+        for (source in sources) {
+            val recorder = AudioRecord(
+                source.source,
+                SAMPLE_RATE_HZ,
+                channelConfig,
+                audioFormat,
+                bufferBytes,
+            )
+            if (recorder.state == AudioRecord.STATE_INITIALIZED) {
+                Log.d(TAG, "AudioRecord initialized source=${source.label} bufferBytes=$bufferBytes")
+                return recorder
+            }
+
+            lastSource = source.label
+            recorder.release()
         }
+        error("AudioRecord was not initialized; lastSource=$lastSource")
     }
 
     private fun assetExists(context: Context, assetPath: String): Boolean {
