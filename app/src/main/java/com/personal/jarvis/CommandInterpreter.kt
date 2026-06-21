@@ -76,7 +76,8 @@ object CommandInterpreter {
             text = text,
             wakeWords = ACTIVATION_ASR_EQUIVALENT_WAKE_WORDS,
             activationWords = ACTIVATION_ASR_EQUIVALENT_WORDS,
-        ) || isFuzzyActivationWakeEquivalent(normalized)
+        ) || isActivationWordOnlyEquivalent(normalized) ||
+            isFuzzyActivationWakeEquivalent(normalized)
     }
 
     private fun isActivationWakeWithWords(
@@ -118,6 +119,10 @@ object CommandInterpreter {
         }
     }
 
+    private fun isActivationWordOnlyEquivalent(normalized: String): Boolean {
+        return normalized in ACTIVATION_ASR_WORD_ONLY_EQUIVALENTS
+    }
+
     private fun levenshteinDistance(left: String, right: String): Int {
         if (left == right) return 0
         if (left.isEmpty()) return right.length
@@ -149,6 +154,7 @@ object CommandInterpreter {
     private val ACTIVATION_WORDS = listOf("깨어나")
     private val ACTIVATION_ASR_EQUIVALENT_WORDS = ACTIVATION_WORDS + listOf("게임", "때어나")
     private val ACTIVATION_FUZZY_TARGETS = listOf("자비스깨어나")
+    private val ACTIVATION_ASR_WORD_ONLY_EQUIVALENTS = setOf("깨어나", "깨우나", "깨워나", "때어나")
 
     private val WAKE_WORDS = listOf(
         "자비스",
