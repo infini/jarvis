@@ -299,6 +299,20 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (destroyed || listening || ownerVoiceGate.isVerifying) return
 
         val commandWindowOpen = isCommandWindowOpen()
+        if (shouldUseOwnerGate() && !commandWindowOpen) {
+            currentListeningAllowsCommandWithoutWake = false
+            forceLocalCommandOnce = false
+            forceAndroidCommandOnce = false
+            androidListenAfterLocal = false
+            partialCommandHandled = false
+            partialCommandKeepsWindowOpen = false
+            partialActivationHandled = false
+            commandFeedbackEnabled = false
+            speechStartedInCurrentListen = false
+            feedbackController.showOwnerVerifying()
+            scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
+            return
+        }
         suppressCancelledRecognizerCallbacks = false
         if (commandWindowOpen && forceLocalCommandOnce && localCommandSession.canStart()) {
             ensureLatencyTrace("listen_cycle_start", "engine=local_asr mode=fallback_after_android")
@@ -660,13 +674,19 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     private fun closeCommandWindow(playFeedback: Boolean) {
         commandWindowDeadlineAt = 0L
+        currentListeningAllowsCommandWithoutWake = false
         forceLocalCommandOnce = false
         forceAndroidCommandOnce = false
         androidListenAfterLocal = false
+        partialCommandHandled = false
+        partialCommandKeepsWindowOpen = false
         commandFeedbackEnabled = false
         partialActivationHandled = false
         commandWindowSpeechGraceUntil = 0L
+        speechStartedInCurrentListen = false
         ownerVoiceGate.clearAuthorization()
+        handler.removeCallbacks(startListeningRunnable)
+        handler.removeCallbacks(partialCommandFinalize)
         handler.removeCallbacks(commandWindowTimeout)
         notificationController.reset()
         if (playFeedback) {
