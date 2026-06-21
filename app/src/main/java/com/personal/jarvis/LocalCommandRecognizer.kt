@@ -11,6 +11,7 @@ import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
 import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import kotlin.math.sqrt
 
@@ -25,6 +26,7 @@ object LocalCommandRecognizer {
     private const val LOCAL_ASR_TARGET_RMS = 0.04f
     private const val LOCAL_ASR_GAIN_MIN_RMS = 0.0010f
     private const val LOCAL_ASR_MAX_GAIN = 30f
+    private const val BUFFERED_TAIL_PADDING_SAMPLES = SAMPLE_RATE_HZ / 2
     private const val MODEL_DIR = "sherpa-korean-streaming"
     private const val ENCODER = "$MODEL_DIR/encoder-epoch-99-avg-1.int8.onnx"
     private const val DECODER = "$MODEL_DIR/decoder-epoch-99-avg-1.onnx"
@@ -83,35 +85,13 @@ object LocalCommandRecognizer {
             return Result(command = null, text = "", elapsedMs = 0L, unavailable = true)
         }
 
-        val startedAt = SystemClock.elapsedRealtime()
-        val localRecognizer = getRecognizer(context.applicationContext)
-        val stream = localRecognizer.createStream()
-        val audioLevelStats = audioLevelStats(samples)
-        val asrGain = asrGainForRms(audioLevelStats.peakRms)
-        val asrSamples = applyAsrGain(samples, asrGain)
-        return try {
-            stream.acceptWaveform(asrSamples, SAMPLE_RATE_HZ)
-            stream.inputFinished()
-            while (localRecognizer.isReady(stream)) {
-                localRecognizer.decode(stream)
-            }
-
-            val text = localRecognizer.getResult(stream).text.trim()
-            val command = commandFromText(text)
-            Log.d(TAG, "Buffered local command text='$text' command=$command")
-            Result(
-                command = command,
-                text = text,
-                elapsedMs = SystemClock.elapsedRealtime() - startedAt,
-                endpoint = endpoint,
-                activeSpeechMs = samples.size * 1000L / SAMPLE_RATE_HZ,
-                peakRms = audioLevelStats.peakRms,
-                meanRms = audioLevelStats.meanRms,
-                asrGain = asrGain,
-            )
-        } finally {
-            stream.release()
-        }
+        return decodeBufferedSamples(
+            recognizer = getRecognizer(context.applicationContext),
+            samples = samples,
+            endpoint = endpoint,
+            parseCommand = true,
+            logLabel = "Buffered local command",
+        )
     }
 
     fun recognizeBufferedActivation(
@@ -123,33 +103,27 @@ object LocalCommandRecognizer {
             return Result(command = null, text = "", elapsedMs = 0L, unavailable = true)
         }
 
-        val startedAt = SystemClock.elapsedRealtime()
-        val localRecognizer = getActivationRecognizer(context.applicationContext)
-        val stream = localRecognizer.createStream()
-        val audioLevelStats = audioLevelStats(samples)
-        val asrGain = asrGainForRms(audioLevelStats.peakRms)
-        val asrSamples = applyAsrGain(samples, asrGain)
-        return try {
-            stream.acceptWaveform(asrSamples, SAMPLE_RATE_HZ)
-            stream.inputFinished()
-            while (localRecognizer.isReady(stream)) {
-                localRecognizer.decode(stream)
-            }
+        val applicationContext = context.applicationContext
+        val hotwordResult = decodeBufferedSamples(
+            recognizer = getActivationRecognizer(applicationContext),
+            samples = samples,
+            endpoint = "${endpoint}_hotword",
+            parseCommand = false,
+            logLabel = "Buffered activation hotword",
+        )
+        if (CommandInterpreter.isActivationWake(hotwordResult.text)) return hotwordResult
 
-            val text = localRecognizer.getResult(stream).text.trim()
-            Log.d(TAG, "Buffered activation hotword text='$text'")
-            Result(
-                command = null,
-                text = text,
-                elapsedMs = SystemClock.elapsedRealtime() - startedAt,
-                endpoint = "${endpoint}_hotword",
-                activeSpeechMs = samples.size * 1000L / SAMPLE_RATE_HZ,
-                peakRms = audioLevelStats.peakRms,
-                meanRms = audioLevelStats.meanRms,
-                asrGain = asrGain,
-            )
-        } finally {
-            stream.release()
+        val greedyResult = decodeBufferedSamples(
+            recognizer = getRecognizer(applicationContext),
+            samples = samples,
+            endpoint = "${endpoint}_greedy_after_hotword",
+            parseCommand = false,
+            logLabel = "Buffered activation greedy fallback",
+        )
+        return when {
+            CommandInterpreter.isActivationWake(greedyResult.text) -> greedyResult
+            hotwordResult.text.isNotBlank() -> hotwordResult
+            else -> greedyResult
         }
     }
 
@@ -246,6 +220,7 @@ object LocalCommandRecognizer {
                 }
             }
 
+            acceptTailPadding(stream)
             stream.inputFinished()
             while (localRecognizer.isReady(stream)) {
                 localRecognizer.decode(stream)
@@ -287,6 +262,48 @@ object LocalCommandRecognizer {
     private fun commandFromText(text: String): String? {
         if (text.isBlank()) return null
         return CommandInterpreter.parse(text = text, requireWakeWord = false)
+    }
+
+    private fun decodeBufferedSamples(
+        recognizer: OnlineRecognizer,
+        samples: FloatArray,
+        endpoint: String,
+        parseCommand: Boolean,
+        logLabel: String,
+    ): Result {
+        val startedAt = SystemClock.elapsedRealtime()
+        val stream = recognizer.createStream()
+        val audioLevelStats = audioLevelStats(samples)
+        val asrGain = asrGainForRms(audioLevelStats.peakRms)
+        val asrSamples = applyAsrGain(samples, asrGain)
+        return try {
+            stream.acceptWaveform(asrSamples, SAMPLE_RATE_HZ)
+            acceptTailPadding(stream)
+            stream.inputFinished()
+            while (recognizer.isReady(stream)) {
+                recognizer.decode(stream)
+            }
+
+            val text = recognizer.getResult(stream).text.trim()
+            val command = if (parseCommand) commandFromText(text) else null
+            Log.d(TAG, "$logLabel text='$text' command=$command endpoint=$endpoint")
+            Result(
+                command = command,
+                text = text,
+                elapsedMs = SystemClock.elapsedRealtime() - startedAt,
+                endpoint = endpoint,
+                activeSpeechMs = samples.size * 1000L / SAMPLE_RATE_HZ,
+                peakRms = audioLevelStats.peakRms,
+                meanRms = audioLevelStats.meanRms,
+                asrGain = asrGain,
+            )
+        } finally {
+            stream.release()
+        }
+    }
+
+    private fun acceptTailPadding(stream: OnlineStream) {
+        stream.acceptWaveform(FloatArray(BUFFERED_TAIL_PADDING_SAMPLES), SAMPLE_RATE_HZ)
     }
 
     private fun frameRms(buffer: ShortArray, read: Int): Float {

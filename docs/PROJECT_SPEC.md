@@ -64,7 +64,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 접근성 서비스가 같은 프로세스에 살아 있으면 `CommandBus`는 broadcast 전에 direct receiver를 호출한다. trace는 `transport=direct|broadcast`, `speech_access`, `command_access`를 기록하고 기본 audit은 `command_access<=1200ms`를 함께 검사한다.
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 - sherpa-onnx 한국어 streaming 모델은 공식 예제의 `model_type=""`, `modeling_unit="cjkchar"` 설정을 따른다. 앱에서는 `modelType`을 강제로 지정하지 않고 `modelingUnit=cjkchar`만 설정한다.
-- activation 확인은 일반 greedy local ASR과 분리해 `modified_beam_search`, `jarvis-activation-hotwords.txt`, `hotwordsScore=8.0`, `maxActivePaths=8`을 쓰는 전용 recognizer로 수행한다.
+- activation 확인은 일반 greedy local ASR과 분리해 `modified_beam_search`, `jarvis-activation-hotwords.txt`, `hotwordsScore=8.0`, `maxActivePaths=8`을 쓰는 전용 recognizer로 수행한다. buffered streaming decode에는 500ms zero tail padding을 추가하고, hotwords 결과가 activation phrase가 아니면 같은 buffered audio를 일반 greedy ASR로 한 번 더 확인한다. 두 경로 중 하나가 정확한 activation phrase를 반환할 때만 command window를 연다.
 - debug owner enrollment service는 마지막 6초 녹음을 앱 cache의 `jarvis-owner-enroll-last.wav`로 저장하고 `debug_wav` 로그에 경로를 남긴다.
 - 2026-06-21 현재 Xiaomi 15 Ultra 저장 프로필은 `profile_phrase_id=jarvis_activation_v1`이라 `profile_configured=false`다. activation hotwords ASR 적용 APK 설치와 build/test는 통과했지만, v2 재등록은 사용자가 `Speak now` 직후 충분히 또렷하게 `자비스 실행`을 발화하는 실기기 재시도가 남아 있다.
 - 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
