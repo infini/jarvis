@@ -496,7 +496,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         ownerAudioActivationThread = Thread({
             var failed = false
             val result = runCatching {
-                LocalCommandRecognizer.recognizeBufferedCommand(
+                LocalCommandRecognizer.recognizeBufferedActivation(
                     context = applicationContext,
                     samples = samples,
                     endpoint = "owner_audio",

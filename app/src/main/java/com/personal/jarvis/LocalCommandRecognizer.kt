@@ -30,10 +30,12 @@ object LocalCommandRecognizer {
     private const val DECODER = "$MODEL_DIR/decoder-epoch-99-avg-1.onnx"
     private const val JOINER = "$MODEL_DIR/joiner-epoch-99-avg-1.int8.onnx"
     private const val TOKENS = "$MODEL_DIR/tokens.txt"
-    private val REQUIRED_ASSETS = listOf(ENCODER, DECODER, JOINER, TOKENS)
+    private const val ACTIVATION_HOTWORDS = "jarvis-activation-hotwords.txt"
+    private val REQUIRED_ASSETS = listOf(ENCODER, DECODER, JOINER, TOKENS, ACTIVATION_HOTWORDS)
 
     private val initLock = Any()
     @Volatile private var recognizer: OnlineRecognizer? = null
+    @Volatile private var activationRecognizer: OnlineRecognizer? = null
     @Volatile private var warmUpStarted = false
 
     data class Result(
@@ -64,6 +66,7 @@ object LocalCommandRecognizer {
         Thread({
             runCatching {
                 getRecognizer(context.applicationContext)
+                getActivationRecognizer(context.applicationContext)
                 Log.d(TAG, "Local command recognizer warmed up")
             }.onFailure {
                 Log.w(TAG, "Local command recognizer warm-up failed: ${it.message}")
@@ -101,6 +104,45 @@ object LocalCommandRecognizer {
                 text = text,
                 elapsedMs = SystemClock.elapsedRealtime() - startedAt,
                 endpoint = endpoint,
+                activeSpeechMs = samples.size * 1000L / SAMPLE_RATE_HZ,
+                peakRms = audioLevelStats.peakRms,
+                meanRms = audioLevelStats.meanRms,
+                asrGain = asrGain,
+            )
+        } finally {
+            stream.release()
+        }
+    }
+
+    fun recognizeBufferedActivation(
+        context: Context,
+        samples: FloatArray,
+        endpoint: String = "buffered_activation",
+    ): Result {
+        if (!isAvailable(context)) {
+            return Result(command = null, text = "", elapsedMs = 0L, unavailable = true)
+        }
+
+        val startedAt = SystemClock.elapsedRealtime()
+        val localRecognizer = getActivationRecognizer(context.applicationContext)
+        val stream = localRecognizer.createStream()
+        val audioLevelStats = audioLevelStats(samples)
+        val asrGain = asrGainForRms(audioLevelStats.peakRms)
+        val asrSamples = applyAsrGain(samples, asrGain)
+        return try {
+            stream.acceptWaveform(asrSamples, SAMPLE_RATE_HZ)
+            stream.inputFinished()
+            while (localRecognizer.isReady(stream)) {
+                localRecognizer.decode(stream)
+            }
+
+            val text = localRecognizer.getResult(stream).text.trim()
+            Log.d(TAG, "Buffered activation hotword text='$text'")
+            Result(
+                command = null,
+                text = text,
+                elapsedMs = SystemClock.elapsedRealtime() - startedAt,
+                endpoint = "${endpoint}_hotword",
                 activeSpeechMs = samples.size * 1000L / SAMPLE_RATE_HZ,
                 peakRms = audioLevelStats.peakRms,
                 meanRms = audioLevelStats.meanRms,
@@ -323,22 +365,9 @@ object LocalCommandRecognizer {
         synchronized(initLock) {
             recognizer?.let { return it }
 
-            val transducer = OnlineTransducerModelConfig().apply {
-                encoder = ENCODER
-                decoder = DECODER
-                joiner = JOINER
-            }
-            val onlineModel = OnlineModelConfig().apply {
-                this.transducer = transducer
-                tokens = TOKENS
-                numThreads = 4
-                debug = false
-                provider = "cpu"
-                modelType = "zipformer"
-            }
             val config = OnlineRecognizerConfig().apply {
                 featConfig = FeatureConfig(sampleRate = SAMPLE_RATE_HZ, featureDim = 80)
-                modelConfig = onlineModel
+                modelConfig = onlineModelConfig()
                 decodingMethod = "greedy_search"
                 maxActivePaths = 4
                 enableEndpoint = false
@@ -347,6 +376,44 @@ object LocalCommandRecognizer {
             return OnlineRecognizer(context.assets, config).also {
                 recognizer = it
             }
+        }
+    }
+
+    private fun getActivationRecognizer(context: Context): OnlineRecognizer {
+        activationRecognizer?.let { return it }
+
+        synchronized(initLock) {
+            activationRecognizer?.let { return it }
+
+            val config = OnlineRecognizerConfig().apply {
+                featConfig = FeatureConfig(sampleRate = SAMPLE_RATE_HZ, featureDim = 80)
+                modelConfig = onlineModelConfig()
+                decodingMethod = "modified_beam_search"
+                maxActivePaths = 8
+                hotwordsFile = ACTIVATION_HOTWORDS
+                hotwordsScore = 8.0f
+                enableEndpoint = false
+            }
+
+            return OnlineRecognizer(context.assets, config).also {
+                activationRecognizer = it
+            }
+        }
+    }
+
+    private fun onlineModelConfig(): OnlineModelConfig {
+        val transducer = OnlineTransducerModelConfig().apply {
+            encoder = ENCODER
+            decoder = DECODER
+            joiner = JOINER
+        }
+        return OnlineModelConfig().apply {
+            this.transducer = transducer
+            tokens = TOKENS
+            numThreads = 4
+            debug = false
+            provider = "cpu"
+            modelingUnit = "cjkchar"
         }
     }
 

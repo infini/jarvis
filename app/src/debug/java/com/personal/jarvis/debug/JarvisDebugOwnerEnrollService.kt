@@ -13,6 +13,9 @@ import com.personal.jarvis.CommandInterpreter
 import com.personal.jarvis.LocalCommandRecognizer
 import com.personal.jarvis.OwnerVoiceEngine
 import com.personal.jarvis.OwnerVoiceStore
+import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class JarvisDebugOwnerEnrollService : Service() {
     @Volatile private var enrolling = false
@@ -57,8 +60,10 @@ class JarvisDebugOwnerEnrollService : Service() {
                     durationMs = durationMs,
                     shouldContinue = { enrolling },
                 )
+                val debugWav = writeDebugWav(samples)
                 Log.i(TAG, "request_id=$requestId status=embedding samples=${samples.size}")
-                val activationCheck = LocalCommandRecognizer.recognizeBufferedCommand(
+                Log.i(TAG, "request_id=$requestId status=debug_wav path=${debugWav.absolutePath}")
+                val activationCheck = LocalCommandRecognizer.recognizeBufferedActivation(
                     context = this,
                     samples = samples,
                     endpoint = "owner_enrollment",
@@ -127,10 +132,38 @@ class JarvisDebugOwnerEnrollService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    private fun writeDebugWav(samples: FloatArray): File {
+        val file = File(cacheDir, "jarvis-owner-enroll-last.wav")
+        val dataBytes = samples.size * Short.SIZE_BYTES
+        val buffer = ByteBuffer.allocate(WAV_HEADER_BYTES + dataBytes).order(ByteOrder.LITTLE_ENDIAN)
+
+        buffer.put("RIFF".toByteArray(Charsets.US_ASCII))
+        buffer.putInt(WAV_HEADER_BYTES - 8 + dataBytes)
+        buffer.put("WAVE".toByteArray(Charsets.US_ASCII))
+        buffer.put("fmt ".toByteArray(Charsets.US_ASCII))
+        buffer.putInt(16)
+        buffer.putShort(1)
+        buffer.putShort(1)
+        buffer.putInt(SAMPLE_RATE_HZ)
+        buffer.putInt(SAMPLE_RATE_HZ * Short.SIZE_BYTES)
+        buffer.putShort(Short.SIZE_BYTES.toShort())
+        buffer.putShort(16)
+        buffer.put("data".toByteArray(Charsets.US_ASCII))
+        buffer.putInt(dataBytes)
+        samples.forEach { sample ->
+            val pcm = (sample.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
+            buffer.putShort(pcm)
+        }
+        file.writeBytes(buffer.array())
+        return file
+    }
+
     companion object {
         private const val TAG = "JarvisDebugEnroll"
         private const val DEFAULT_DURATION_MS = 6_000L
         private const val MIN_DURATION_MS = 3_000L
         private const val MAX_DURATION_MS = 12_000L
+        private const val SAMPLE_RATE_HZ = 16_000
+        private const val WAV_HEADER_BYTES = 44
     }
 }
