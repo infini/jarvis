@@ -111,7 +111,7 @@ object LocalCommandRecognizer {
             parseCommand = false,
             logLabel = "Buffered activation hotword",
         )
-        if (CommandInterpreter.isActivationWake(hotwordResult.text)) return hotwordResult
+        if (CommandInterpreter.isActivationWakeAsrEquivalent(hotwordResult.text)) return hotwordResult
 
         val greedyResult = decodeBufferedSamples(
             recognizer = getRecognizer(applicationContext),
@@ -121,7 +121,7 @@ object LocalCommandRecognizer {
             logLabel = "Buffered activation greedy fallback",
         )
         return when {
-            CommandInterpreter.isActivationWake(greedyResult.text) -> greedyResult
+            CommandInterpreter.isActivationWakeAsrEquivalent(greedyResult.text) -> greedyResult
             hotwordResult.text.isNotBlank() -> hotwordResult
             else -> greedyResult
         }

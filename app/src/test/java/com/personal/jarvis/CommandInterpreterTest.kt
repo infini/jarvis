@@ -48,14 +48,43 @@ class CommandInterpreterTest {
         assertTrue(CommandInterpreter.isActivationWake("자비스 깨어나"))
         assertTrue(CommandInterpreter.isActivationWake("자베스 깨어나"))
         assertTrue(CommandInterpreter.isActivationWake("쟈비스 깨어나"))
+        assertTrue(CommandInterpreter.isActivationWake("잡비스 깨어나."))
+        assertTrue(CommandInterpreter.isActivationWake("잡스 깨어나."))
         assertFalse(CommandInterpreter.isActivationWake("헤이 자비스 깨어나"))
         assertFalse(CommandInterpreter.isActivationWake("자비스 실행"))
         assertFalse(CommandInterpreter.isActivationWake("자비스"))
         assertFalse(CommandInterpreter.isActivationWake("헤이 자비스"))
         assertFalse(CommandInterpreter.isActivationWake("자비스 찍어"))
         assertFalse(CommandInterpreter.isActivationWake("자비스 카메라 실행"))
+        assertFalse(CommandInterpreter.isActivationWake("자비스 게임"))
         assertFalse(CommandInterpreter.isActivationWake("카메라 실행"))
         assertNull(CommandInterpreter.parse("자비스 깨어나"))
+        assertNull(CommandInterpreter.parse("자비스, 깨어나."))
+    }
+
+    @Test
+    fun acceptsLocalActivationAsrEquivalentWithoutChangingExplicitWakePhrase() {
+        assertTrue(CommandInterpreter.isActivationWakeAsrEquivalent("자비스게임?"))
+        assertTrue(CommandInterpreter.isActivationWakeAsrEquivalent("잡비스 게임"))
+        assertTrue(CommandInterpreter.isActivationWakeAsrEquivalent("다비스때어나"))
+        assertTrue(CommandInterpreter.isActivationWakeAsrEquivalent("아에스에어나"))
+        assertFalse(CommandInterpreter.isActivationWake("자비스게임?"))
+        assertFalse(CommandInterpreter.isActivationWake("다비스 때어나"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("헤이 자비스 게임"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("자비스 카메라 실행"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("카메라 실행"))
+        assertNull(CommandInterpreter.parse("다비스 카메라 실행"))
+    }
+
+    @Test
+    fun detectsRepeatedWakePhraseForOwnerEnrollmentOnly() {
+        assertTrue(CommandInterpreter.containsActivationWake("잡스 깨어나 자비스 깨어나 자베스 깨어나"))
+        assertTrue(CommandInterpreter.containsActivationWake("잡비스깨어나."))
+        assertTrue(CommandInterpreter.containsActivationWake("자비스게임?"))
+        assertTrue(CommandInterpreter.containsActivationWake("다비스때어나"))
+        assertTrue(CommandInterpreter.containsActivationWake("자비스깨어나자베스깨어나"))
+        assertFalse(CommandInterpreter.isActivationWake("자비스깨어나자베스깨어나"))
+        assertFalse(CommandInterpreter.containsActivationWake("자비스 실행"))
     }
 
     @Test

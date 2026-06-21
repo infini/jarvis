@@ -255,7 +255,7 @@ class OwnerVoiceEngineTest {
     @Test
     fun acceptsSingleSoftWakeWhenScoreAndSpeechAreEnough() {
         val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.21f, activeSpeechMs = 675L),
+            match = ownerMatch(score = 0.16f, activeSpeechMs = 850L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
 
@@ -276,7 +276,7 @@ class OwnerVoiceEngineTest {
     @Test
     fun rejectsWeakSingleSoftWakeUntilScoresAreConsecutive() {
         val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
-            match = ownerMatch(score = 0.17f, activeSpeechMs = 675L),
+            match = ownerMatch(score = 0.15f, activeSpeechMs = 900L),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
 
@@ -287,6 +287,16 @@ class OwnerVoiceEngineTest {
     fun rejectsWeakSingleSoftWakeWhenWakeWordIsShort() {
         val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
             match = ownerMatch(score = 0.17f, activeSpeechMs = 450L),
+            previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
+        )
+
+        assertFalse(result.first.accepted)
+    }
+
+    @Test
+    fun rejectsRelaxedOwnerScoresWhenPeakRmsIsTooLowForActivationAsr() {
+        val result = OwnerVoiceEngine.applyConsecutiveAcceptPolicy(
+            match = ownerMatch(score = 0.18f, activeSpeechMs = 1200L, peakRms = 0.0025f),
             previousState = OwnerVoiceEngine.ConsecutiveAcceptState(),
         )
 
@@ -368,12 +378,14 @@ class OwnerVoiceEngineTest {
         score: Float,
         activeSpeechMs: Long,
         ownerEmbeddingCount: Int = 0,
+        peakRms: Float = 0.01f,
     ): OwnerVoiceEngine.Match {
         return OwnerVoiceEngine.Match(
             score = score,
             accepted = false,
             activeSpeechMs = activeSpeechMs,
             ownerEmbeddingCount = ownerEmbeddingCount,
+            peakRms = peakRms,
         )
     }
 }

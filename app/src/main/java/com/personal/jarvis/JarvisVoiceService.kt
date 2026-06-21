@@ -3,6 +3,7 @@ package com.personal.jarvis
 import android.app.Service
 import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -10,6 +11,8 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.SpeechRecognizer
 import android.util.Log
+import java.io.File
+import org.json.JSONObject
 
 class JarvisVoiceService : Service(), RecognitionListener {
     private val handler = Handler(Looper.getMainLooper())
@@ -519,6 +522,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 failed = true
                 Log.w(TAG, "Owner audio command recognition failed: ${it.message}")
             }.getOrNull()
+            result?.let {
+                saveActivationAttemptDebugCapture(
+                    samples = samples,
+                    result = it,
+                    accepted = CommandInterpreter.isActivationWakeAsrEquivalent(it.text),
+                )
+            }
 
             handler.post {
                 if (!ownerAudioActivationActive) return@post
@@ -529,6 +539,64 @@ class JarvisVoiceService : Service(), RecognitionListener {
             }
         }, "JarvisOwnerAudioActivation").also { it.start() }
         return true
+    }
+
+    private fun saveActivationAttemptDebugCapture(
+        samples: FloatArray,
+        result: LocalCommandRecognizer.Result,
+        accepted: Boolean,
+    ) {
+        if (!isDebuggableApp()) return
+
+        runCatching {
+            val dir = File(cacheDir, ACTIVATION_CAPTURE_DIR)
+            val timestampMs = System.currentTimeMillis()
+            val outcome = if (accepted) "accepted" else "rejected"
+            val baseName = "activation-${timestampMs}-$outcome"
+            val wavFile = File(dir, "$baseName.wav")
+            val metadataFile = File(dir, "$baseName.json")
+
+            PcmWavFile.writeMono16(
+                file = wavFile,
+                samples = samples,
+                sampleRateHz = OwnerVoiceEngine.SAMPLE_RATE_HZ,
+            )
+            val metadata = JSONObject()
+                .put("timestampMs", timestampMs)
+                .put("accepted", accepted)
+                .put("text", result.text)
+                .put("endpoint", result.endpoint)
+                .put("elapsedMs", result.elapsedMs)
+                .put("activeSpeechMs", result.activeSpeechMs)
+                .put("peakRms", result.peakRms)
+                .put("meanRms", result.meanRms)
+                .put("asrGain", result.asrGain)
+                .put("sampleCount", samples.size)
+                .put("sampleRateHz", OwnerVoiceEngine.SAMPLE_RATE_HZ)
+            metadataFile.writeText(metadata.toString(2), Charsets.UTF_8)
+            pruneActivationAttemptDebugCaptures(dir)
+            Log.i(
+                TAG,
+                "activation_debug_capture wav=${wavFile.absolutePath} " +
+                    "metadata=${metadataFile.absolutePath} accepted=$accepted text=${result.text}",
+            )
+        }.onFailure {
+            Log.w(TAG, "Failed to write activation debug capture: ${it.message}")
+        }
+    }
+
+    private fun isDebuggableApp(): Boolean {
+        return (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    }
+
+    private fun pruneActivationAttemptDebugCaptures(dir: File) {
+        val files = dir.listFiles()
+            ?.filter { it.isFile }
+            ?.sortedByDescending { it.lastModified() }
+            ?: return
+        files.drop(MAX_ACTIVATION_CAPTURE_FILES).forEach { file ->
+            runCatching { file.delete() }
+        }
     }
 
     private fun handleOwnerAudioActivationOutcome(
@@ -547,7 +615,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         }
 
         when {
-            result != null && CommandInterpreter.isActivationWake(result.text) -> {
+            result != null && CommandInterpreter.isActivationWakeAsrEquivalent(result.text) -> {
                 markLatency("owner_audio_activation", "text=${result.text}")
                 Log.d(TAG, "Parsed owner audio activation phrase from '${result.text}'")
                 commandFeedbackEnabled = true
@@ -1032,8 +1100,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val LOCAL_ANDROID_FALLBACK_MIN_SPEECH_MS = 360L
         private const val OWNER_VERIFY_AUDIO_MS = 1800L
         private const val OWNER_VERIFY_INTERVAL_MS = 60L
-        private const val OWNER_POST_ACCEPT_AUDIO_MS = 350L
+        private const val OWNER_POST_ACCEPT_AUDIO_MS = 900L
         private const val OWNER_VERIFY_RETRY_MS = 200L
+        private const val ACTIVATION_CAPTURE_DIR = "jarvis-activation-attempts"
+        private const val MAX_ACTIVATION_CAPTURE_FILES = 80
         private const val DEFAULT_RETRY_DELAY_MS = 300L
         private const val OWNER_READY_LISTEN_DELAY_MS = 0L
         private const val COMMAND_CHAIN_LISTEN_DELAY_MS = 80L

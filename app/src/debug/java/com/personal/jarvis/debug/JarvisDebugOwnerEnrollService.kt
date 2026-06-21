@@ -13,9 +13,8 @@ import com.personal.jarvis.CommandInterpreter
 import com.personal.jarvis.LocalCommandRecognizer
 import com.personal.jarvis.OwnerVoiceEngine
 import com.personal.jarvis.OwnerVoiceStore
+import com.personal.jarvis.PcmWavFile
 import java.io.File
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 class JarvisDebugOwnerEnrollService : Service() {
     @Volatile private var enrolling = false
@@ -74,7 +73,7 @@ class JarvisDebugOwnerEnrollService : Service() {
                         "text=${activationCheck.text} peakRms=${activationCheck.peakRms} " +
                         "meanRms=${activationCheck.meanRms} asrGain=${activationCheck.asrGain}",
                 )
-                if (!CommandInterpreter.isActivationWake(activationCheck.text)) {
+                if (!CommandInterpreter.containsActivationWake(activationCheck.text)) {
                     Log.e(
                         TAG,
                         "request_id=$requestId status=failed reason=activation_phrase_missing " +
@@ -134,27 +133,7 @@ class JarvisDebugOwnerEnrollService : Service() {
 
     private fun writeDebugWav(samples: FloatArray): File {
         val file = File(cacheDir, "jarvis-owner-enroll-last.wav")
-        val dataBytes = samples.size * Short.SIZE_BYTES
-        val buffer = ByteBuffer.allocate(WAV_HEADER_BYTES + dataBytes).order(ByteOrder.LITTLE_ENDIAN)
-
-        buffer.put("RIFF".toByteArray(Charsets.US_ASCII))
-        buffer.putInt(WAV_HEADER_BYTES - 8 + dataBytes)
-        buffer.put("WAVE".toByteArray(Charsets.US_ASCII))
-        buffer.put("fmt ".toByteArray(Charsets.US_ASCII))
-        buffer.putInt(16)
-        buffer.putShort(1)
-        buffer.putShort(1)
-        buffer.putInt(SAMPLE_RATE_HZ)
-        buffer.putInt(SAMPLE_RATE_HZ * Short.SIZE_BYTES)
-        buffer.putShort(Short.SIZE_BYTES.toShort())
-        buffer.putShort(16)
-        buffer.put("data".toByteArray(Charsets.US_ASCII))
-        buffer.putInt(dataBytes)
-        samples.forEach { sample ->
-            val pcm = (sample.coerceIn(-1f, 1f) * Short.MAX_VALUE).toInt().toShort()
-            buffer.putShort(pcm)
-        }
-        file.writeBytes(buffer.array())
+        PcmWavFile.writeMono16(file, samples, SAMPLE_RATE_HZ)
         return file
     }
 
@@ -164,6 +143,5 @@ class JarvisDebugOwnerEnrollService : Service() {
         private const val MIN_DURATION_MS = 3_000L
         private const val MAX_DURATION_MS = 12_000L
         private const val SAMPLE_RATE_HZ = 16_000
-        private const val WAV_HEADER_BYTES = 44
     }
 }

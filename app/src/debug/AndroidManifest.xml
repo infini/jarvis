@@ -7,6 +7,7 @@
             android:excludeFromRecents="true"
             android:exported="true"
             android:noHistory="true"
+            android:taskAffinity="com.personal.jarvis.debug"
             android:theme="@android:style/Theme.NoDisplay" />
 
         <activity
@@ -14,6 +15,7 @@
             android:excludeFromRecents="true"
             android:exported="true"
             android:noHistory="true"
+            android:taskAffinity="com.personal.jarvis.debug"
             android:theme="@android:style/Theme.NoDisplay" />
 
         <activity
@@ -21,11 +23,24 @@
             android:excludeFromRecents="true"
             android:exported="true"
             android:noHistory="true"
+            android:taskAffinity="com.personal.jarvis.debug"
+            android:theme="@android:style/Theme.NoDisplay" />
+
+        <activity
+            android:name=".debug.JarvisDebugActivationReplayActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:taskAffinity="com.personal.jarvis.debug"
             android:theme="@android:style/Theme.NoDisplay" />
 
         <service
             android:name=".debug.JarvisDebugOwnerEnrollService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".debug.JarvisDebugActivationReplayService"
+            android:exported="false" />
     </application>
 </manifest>

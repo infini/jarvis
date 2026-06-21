@@ -37,8 +37,9 @@ object OwnerVoiceEngine {
     const val NEAR_ACCEPT_THRESHOLD = 0.28f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
     private const val NEAR_ACCEPT_MIN_SPEECH_MS = 450L
-    const val SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD = 0.20f
-    private const val SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS = 600L
+    private const val RELAXED_ACCEPT_MIN_PEAK_RMS = 0.0035f
+    const val SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD = 0.16f
+    private const val SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS = 850L
     const val SOFT_WAKE_ACCEPT_THRESHOLD = 0.14f
     private const val SOFT_WAKE_ACCEPT_REQUIRED_COUNT = 4
     private const val SOFT_WAKE_ACCEPT_MIN_SPEECH_MS = 400L
@@ -358,13 +359,8 @@ object OwnerVoiceEngine {
             sampleCount = maxWindowSamples,
             totalSamples = currentTotalSamples,
         )
-        val commandSamples = prepareSamplesForEmbedding(
-            samples = commandWindowSamples,
-            requireSpeechContrast = true,
-        )?.samples ?: commandWindowSamples
-
         return match.copy(
-            commandSamples = commandSamples,
+            commandSamples = commandWindowSamples,
             verificationElapsedMs = System.currentTimeMillis() - startedAt,
         )
     }
@@ -388,6 +384,7 @@ object OwnerVoiceEngine {
         }
 
         if (match.score >= NEAR_ACCEPT_THRESHOLD && match.activeSpeechMs >= NEAR_ACCEPT_MIN_SPEECH_MS) {
+            if (!hasRelaxedAcceptPeak(match)) return match to ConsecutiveAcceptState()
             val nearAcceptCount = previousState.nearCount + 1
             if (nearAcceptCount >= NEAR_ACCEPT_REQUIRED_COUNT) {
                 return match.copy(
@@ -402,7 +399,8 @@ object OwnerVoiceEngine {
 
         if (
             match.score >= SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD &&
-            match.activeSpeechMs >= SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS
+            match.activeSpeechMs >= SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS &&
+            hasRelaxedAcceptPeak(match)
         ) {
             return match.copy(
                 accepted = true,
@@ -413,7 +411,8 @@ object OwnerVoiceEngine {
 
         if (
             match.score >= SOFT_WAKE_ACCEPT_THRESHOLD &&
-            match.activeSpeechMs >= SOFT_WAKE_ACCEPT_MIN_SPEECH_MS
+            match.activeSpeechMs >= SOFT_WAKE_ACCEPT_MIN_SPEECH_MS &&
+            hasRelaxedAcceptPeak(match)
         ) {
             val softWakeCount = previousState.softWakeCount + 1
             if (softWakeCount >= SOFT_WAKE_ACCEPT_REQUIRED_COUNT) {
@@ -431,12 +430,17 @@ object OwnerVoiceEngine {
             previousState.softWakeCount > 0 &&
             !previousState.softWakeBridgeUsed &&
             match.score >= SOFT_WAKE_BRIDGE_THRESHOLD &&
-            match.activeSpeechMs >= SOFT_WAKE_ACCEPT_MIN_SPEECH_MS
+            match.activeSpeechMs >= SOFT_WAKE_ACCEPT_MIN_SPEECH_MS &&
+            hasRelaxedAcceptPeak(match)
         ) {
             return match to previousState.copy(softWakeBridgeUsed = true)
         }
 
         return match to ConsecutiveAcceptState()
+    }
+
+    private fun hasRelaxedAcceptPeak(match: Match): Boolean {
+        return match.peakRms >= RELAXED_ACCEPT_MIN_PEAK_RMS
     }
 
     @SuppressLint("MissingPermission")
