@@ -52,6 +52,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - owner audio ASR은 idle에서 Android STT를 열기 전 activation phrase만 확인한다. owner audio ASR에서 `자비스 깨어나`를 잡으면 30초 command window와 Android command STT를 시작하고, 그렇지 않으면 overlay/비프음 없이 owner gate 대기로 돌아간다.
 - activation 디버깅은 반복 수동 발화를 요구하지 않도록 변경한다. debug APK는 owner gate 통과 후 activation ASR에 사용한 1800ms 원본 WAV와 JSON 메타데이터를 cache `jarvis-activation-attempts/`에 자동 저장하며, `scripts/jarvis-activation-replay.sh`는 저장된 WAV들을 현재 APK의 local activation ASR로 재디코딩한다. `scripts/jarvis-activation-captures.sh`는 저장 샘플을 host `/tmp`로 가져온다.
 - idle guard와 command window timeout은 사용자의 발화 없이 검증한다. `scripts/jarvis-idle-guard.sh 20`은 idle 상태에서 accepted activation 또는 command STT `listen_start`/`ready_for_speech`가 발생하지 않는지 검사한다. `owner_audio_activation_rejected`는 호출어가 아니어서 조용히 거절된 정상 idle 경로로 본다. 성공 시에는 요약과 원본 logcat 파일 경로만 출력하고, 실패 시에는 원인 이벤트를 함께 출력한다. `scripts/jarvis-command-window-timeout.sh 30`은 debug APK의 no-display `JarvisDebugCommandWindowActivity`로 command window를 30초 열고 `command_window_timeout` 이후 `ready_for_speech`가 다시 발생하지 않는지 검사한다. `scripts/jarvis-command-window-timeout.sh 30 open_camera`처럼 command id를 넘기면 실제 명령 처리 후 command window가 다시 열린 뒤 timeout되는 경로를 검증한다.
+- 2026-06-21 실기기 자동 검증에서 `scripts/jarvis-idle-guard.sh 20`, `scripts/jarvis-command-window-timeout.sh 30`, `scripts/jarvis-command-window-timeout.sh 30 open_camera`가 모두 통과했다. `open_camera` 후에는 `command_complete keepWindow=true nextWindowMs=30000` 이후 `command_window_timeout`이 발생했고, timeout 뒤 `ready_for_speech` 재시작은 없었다.
 - 2026-06-21 실기기 trace에서 AiAi STT partial `카메라 실행해 줘`가 `open_camera`로 파싱되고 카메라 foreground 실행이 확인되었다. 해당 trace의 `speech_parse`는 648ms였다.
 - 사용자 준비음/진동은 owner authorization 직후가 아니라 `자비스 깨어나` activation으로 열린 Android STT `ready_for_speech` callback 시점에 낸다.
 - command listening timeout이 발화 진행 중인 Android STT를 먼저 취소하지 않도록, `speech_begin` 이후에는 active speech deadline grace가 command window 종료를 담당한다. active speech grace는 3.5초다.
@@ -67,15 +68,15 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 접근성 서비스가 같은 프로세스에 살아 있으면 `CommandBus`는 broadcast 전에 direct receiver를 호출한다. trace는 `transport=direct|broadcast`, `speech_access`, `command_access`를 기록하고 기본 audit은 `command_access<=1200ms`를 함께 검사한다.
 - 한국어 streaming ASR 모델은 Gradle `downloadKoreanStreamingAsrModel` 태스크가 Hugging Face에서 받아 `app/build/generated/sherpaAssets`에 캐시하고 APK asset에 포함한다.
 - sherpa-onnx 한국어 streaming 모델은 공식 예제의 `model_type=""`, `modeling_unit="cjkchar"` 설정을 따른다. 앱에서는 `modelType`을 강제로 지정하지 않고 `modelingUnit=cjkchar`만 설정한다.
-- activation 확인은 일반 greedy local ASR과 분리해 `modified_beam_search`, `jarvis-activation-hotwords.txt`, `hotwordsScore=8.0`, `maxActivePaths=8`을 쓰는 전용 recognizer로 수행한다. buffered streaming decode에는 500ms zero tail padding을 추가하고, hotwords 결과가 activation phrase가 아니면 같은 buffered audio를 일반 greedy ASR로 한 번 더 확인한다. 두 경로 중 하나가 정확한 activation phrase를 반환할 때만 command window를 연다.
+- activation 확인은 일반 greedy local ASR과 분리해 `modified_beam_search`, `jarvis-activation-hotwords.txt`, `hotwordsScore=8.0`, `maxActivePaths=8`을 쓰는 전용 recognizer로 수행한다. buffered streaming decode에는 500ms zero tail padding을 추가하고, hotwords 결과가 activation phrase가 아니면 같은 buffered audio를 일반 greedy ASR로 한 번 더 확인한다. 두 경로 중 하나가 `자비스 깨어나` 계열 activation phrase 또는 local activation ASR 한정 equivalent를 반환할 때만 command window를 연다.
 - debug owner enrollment service는 마지막 6초 녹음을 앱 cache의 `jarvis-owner-enroll-last.wav`로 저장하고 `debug_wav` 로그에 경로를 남긴다.
-- 2026-06-21 현재 Xiaomi 15 Ultra 저장 프로필은 `profile_phrase_id=jarvis_activation_v1`이라 `profile_configured=false`다. activation phrase를 `자비스 깨어나`로 변경해 새 기준은 `profile_phrase_id=jarvis_activation_v3`이며, 사용자가 `Speak now` 직후 충분히 또렷하게 `자비스 깨어나`를 발화하는 실기기 재등록이 남아 있다.
+- 2026-06-21 현재 Xiaomi 15 Ultra 저장 프로필은 `profile_configured=true`, `profile_embeddings=8`, `profile_phrase_id=jarvis_activation_v3`로 확인됐다. 구버전 v1 프로필은 더 이상 현재 기기 상태가 아니다.
 - 2026-06-20 리팩토링으로 비대했던 음성/접근성/UI 클래스의 책임을 `OwnerVoiceGate`, `LocalCommandSession`, `JarvisCommandExecutor`, `JarvisNotificationController`, `CameraAccessibilityController`, `AccessibilityNodeMatcher`, `OwnerVoiceEnrollmentController`로 분리했다.
 - 명령 가능 여부를 사용자가 확실히 알 수 있도록 소리, 진동, 접근성 overlay 기반 Jarvis 상태 표시를 추가했다.
 
 다음 우선순위:
 
-1. Xiaomi 15 Ultra에서 `자비스 깨어나` 재등록을 실제 사용자 발화 타이밍으로 재시도하고 activation hotwords ASR 성공 여부 확인
+1. 실제 `자비스 깨어나` 발화가 저장된 activation capture를 확보한 뒤 replay로 hotwords ASR 성공/실패 원인 분석
 2. owner voice gate 통과 후 activation audio 품질과 명령 인식 UX 보정
 3. 재부팅 후 시작 알림 및 HyperOS 자동 시작/배터리 설정 실기기 검증
 4. 실제 카메라 화면에서 셔터/필터/전환 좌표 보정
@@ -325,7 +326,7 @@ scripts/jarvis-profile-status.sh
 scripts/jarvis-owner-enroll.sh 6
 ```
 
-스크립트가 `Speak now`를 출력하면 사용자는 6초 동안 `자비스 깨어나`를 여러 번 또렷하게 말한다. debug no-display Activity는 Android `Theme.NoDisplay` resume 제약을 피하기 위해 즉시 foreground enrollment service를 시작하고 종료한다. Service는 등록 중 `JarvisVoiceServiceStarter.setOwnerEnrollmentActive(true)`로 watchdog 재시작을 막고, 기존 `JarvisVoiceService`를 잠시 중지한 뒤 전체 녹음을 activation hotwords ASR로 확인한다. debug 등록은 반복 발화 ASR 결과 안에 `자비스 깨어나` 계열 activation phrase가 포함되면 통과시키지만, 실제 idle activation은 정확한 단일 activation phrase만 인정한다. 등록 검증을 통과한 녹음만 `OwnerVoiceEngine.createEnrollmentEmbeddings`로 최소 2개 이상의 embedding을 만들고 `OwnerVoiceStore.saveEmbeddings`를 호출한다. 이때 `profile_phrase_id=jarvis_activation_v3`도 함께 저장한다. debug service는 마지막 녹음을 앱 cache의 `jarvis-owner-enroll-last.wav`로 저장하고 `debug_wav` 로그에 경로를 남긴다. embedding이 부족하면 `peakRms`, `meanRms`, 녹음 duration을 실패 로그에 남긴다. 완료 후에는 Jarvis 음성 서비스 시작을 다시 요청하고, 스크립트는 `jarvis-profile-status.sh`를 실행해 저장 상태를 확인한다. profile status/enrollment 스크립트는 request id로 자기 실행 로그만 필터링하고 전체 logcat을 비우지 않으므로 기존 `JarvisLatency` 로그를 보존한다.
+스크립트가 `Speak now`를 출력하면 사용자는 6초 동안 `자비스 깨어나`를 여러 번 또렷하게 말한다. debug no-display Activity는 Android `Theme.NoDisplay` resume 제약을 피하기 위해 즉시 foreground enrollment service를 시작하고 종료한다. Service는 등록 중 `JarvisVoiceServiceStarter.setOwnerEnrollmentActive(true)`로 watchdog 재시작을 막고, 기존 `JarvisVoiceService`를 잠시 중지한 뒤 전체 녹음을 activation hotwords ASR로 확인한다. debug 등록은 반복 발화 ASR 결과 안에 `자비스 깨어나` 계열 activation phrase가 포함되면 통과시킨다. 실제 idle activation은 `자비스 깨어나` 계열 단일 activation phrase 또는 local activation ASR에서만 허용되는 제한된 equivalent를 인정하며, 일반 command parsing wake word로 확장하지 않는다. 등록 검증을 통과한 녹음만 `OwnerVoiceEngine.createEnrollmentEmbeddings`로 최소 2개 이상의 embedding을 만들고 `OwnerVoiceStore.saveEmbeddings`를 호출한다. 이때 `profile_phrase_id=jarvis_activation_v3`도 함께 저장한다. debug service는 마지막 녹음을 앱 cache의 `jarvis-owner-enroll-last.wav`로 저장하고 `debug_wav` 로그에 경로를 남긴다. embedding이 부족하면 `peakRms`, `meanRms`, 녹음 duration을 실패 로그에 남긴다. 완료 후에는 Jarvis 음성 서비스 시작을 다시 요청하고, 스크립트는 `jarvis-profile-status.sh`를 실행해 저장 상태를 확인한다. profile status/enrollment 스크립트는 request id로 자기 실행 로그만 필터링하고 전체 logcat을 비우지 않으므로 기존 `JarvisLatency` 로그를 보존한다.
 
 새 실기기 측정은 `profile_configured=true`를 먼저 확인한 뒤 로그를 비우고 정해진 시간 동안 녹화해 바로 요약한다.
 

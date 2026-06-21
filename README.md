@@ -101,7 +101,7 @@ debug no-display Activity는 별도 task affinity를 사용하므로 ADB 검증 
 scripts/jarvis-owner-enroll.sh 6
 ```
 
-스크립트가 `Speak now`를 출력하면 6초 동안 `자비스 깨어나`를 여러 번 또렷하게 말합니다. debug enrollment는 반복 발화 ASR 결과 안에 `자비스 깨어나` 계열 activation phrase가 포함되면 등록 검증을 통과시키지만, 실제 idle activation은 여전히 정확한 단일 activation phrase만 인정합니다. debug enrollment는 마지막 녹음을 앱 cache의 `jarvis-owner-enroll-last.wav`로 저장하고 `debug_wav` 로그에 경로를 남겨 activation ASR 실패를 재현할 수 있게 합니다. 등록이 끝나면 Jarvis 서비스를 다시 시작하고, 자동으로 `jarvis-profile-status.sh`를 실행합니다. `profile_configured=true`일 때만 속도 측정을 진행합니다.
+스크립트가 `Speak now`를 출력하면 6초 동안 `자비스 깨어나`를 여러 번 또렷하게 말합니다. debug enrollment는 반복 발화 ASR 결과 안에 `자비스 깨어나` 계열 activation phrase가 포함되면 등록 검증을 통과시킵니다. 실제 idle activation은 `자비스 깨어나` 계열 단일 activation phrase 또는 local activation ASR에서만 허용되는 제한된 equivalent를 인정하며, 일반 command parsing wake word로 확장하지 않습니다. debug enrollment는 마지막 녹음을 앱 cache의 `jarvis-owner-enroll-last.wav`로 저장하고 `debug_wav` 로그에 경로를 남겨 activation ASR 실패를 재현할 수 있게 합니다. 등록이 끝나면 Jarvis 서비스를 다시 시작하고, 자동으로 `jarvis-profile-status.sh`를 실행합니다. `profile_configured=true`일 때만 속도 측정을 진행합니다.
 
 새 측정은 저장된 owner profile이 현재 activation 등록 상태인지 먼저 확인한 뒤, 로그를 비우고 정해진 시간 동안 녹화해 바로 요약합니다.
 
