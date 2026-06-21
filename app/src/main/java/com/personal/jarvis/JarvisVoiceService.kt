@@ -58,6 +58,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private val localCommandSession by lazy {
         LocalCommandSession(applicationContext, handler)
     }
+    private val localActivationSession by lazy {
+        LocalActivationSession(applicationContext, handler)
+    }
     private val feedbackController by lazy {
         JarvisFeedbackController(applicationContext, handler)
     }
@@ -80,6 +83,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var suppressCancelledRecognizerCallbacks = false
     @Volatile private var ownerAudioActivationActive = false
     private var ownerAudioActivationThread: Thread? = null
+    @Volatile private var activationOwnerVerificationActive = false
+    private var activationOwnerVerificationThread: Thread? = null
     private val startListeningRunnable = Runnable {
         startListening()
     }
@@ -89,7 +94,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (shouldUseOwnerGate() && !isCommandWindowOpen()) {
             notificationController.reset()
             feedbackController.showOwnerVerifying()
-            startOwnerVerification()
+            if (localActivationSession.canStart()) {
+                startIdleActivationListening()
+            } else {
+                startOwnerVerification()
+            }
         } else {
             startListening()
         }
@@ -217,6 +226,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         handler.removeCallbacksAndMessages(null)
         ownerVoiceGate.stop()
         stopOwnerAudioActivationRecognition()
+        stopActivationOwnerVerification()
+        localActivationSession.stop()
         localCommandSession.stop()
         recognizer?.destroy()
         recognizer = null
@@ -317,10 +328,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
             suppressCancelledRecognizerCallbacks = true
             runCatching { recognizer?.cancel() }
         }
+        localActivationSession.stop()
+        stopActivationOwnerVerification()
     }
 
     private fun scheduleListening(delayMs: Long) {
         if (destroyed) return
+        localActivationSession.stop()
         handler.removeCallbacks(nextCaptureRunnable)
         handler.removeCallbacks(startListeningRunnable)
         handler.postDelayed(startListeningRunnable, delayMs)
@@ -334,7 +348,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     private fun startListening() {
-        if (destroyed || listening || ownerVoiceGate.isVerifying) return
+        if (destroyed || listening || ownerVoiceGate.isVerifying || localActivationSession.isActive) return
 
         val commandWindowOpen = isCommandWindowOpen()
         if (shouldUseOwnerGate() && !commandWindowOpen) {
@@ -417,7 +431,15 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     private fun startLocalCommandListening(mode: String) {
-        if (destroyed || listening || ownerVoiceGate.isVerifying || localCommandSession.isActive) return
+        if (
+            destroyed ||
+            listening ||
+            ownerVoiceGate.isVerifying ||
+            localActivationSession.isActive ||
+            localCommandSession.isActive
+        ) {
+            return
+        }
 
         suppressCancelledRecognizerCallbacks = false
         listening = true
@@ -443,6 +465,146 @@ class JarvisVoiceService : Service(), RecognitionListener {
             onComplete = ::handleLocalCommandOutcome,
         )
         Log.d(TAG, "Local command listening started")
+    }
+
+    private fun startIdleActivationListening() {
+        if (
+            destroyed ||
+            listening ||
+            ownerVoiceGate.isVerifying ||
+            localActivationSession.isActive ||
+            localCommandSession.isActive ||
+            isCommandWindowOpen()
+        ) {
+            return
+        }
+
+        currentListeningAllowsCommandWithoutWake = false
+        forceLocalCommandOnce = false
+        forceAndroidCommandOnce = false
+        androidListenAfterLocal = false
+        partialCommandHandled = false
+        partialCommandKeepsWindowOpen = false
+        partialActivationHandled = false
+        commandFeedbackEnabled = false
+        speechStartedInCurrentListen = false
+        feedbackController.showWakeWaiting()
+        startLatencyTrace(
+            "idle_activation_listen_start",
+            "engine=local_activation_asr timeoutMs=$LOCAL_ACTIVATION_TIMEOUT_MS",
+        )
+        markLatency(
+            "activation_listen_start",
+            "engine=local_activation_asr timeoutMs=$LOCAL_ACTIVATION_TIMEOUT_MS",
+        )
+
+        localActivationSession.start(
+            timeoutMs = LOCAL_ACTIVATION_TIMEOUT_MS,
+            onText = { text ->
+                if (text.isNotBlank()) {
+                    markLatency("activation_partial", "source=local_activation_asr text=$text")
+                }
+                Log.d(TAG, "Local activation partial text: $text")
+            },
+            onComplete = ::handleLocalActivationOutcome,
+        )
+        Log.d(TAG, "Local activation listening started")
+    }
+
+    private fun handleLocalActivationOutcome(outcome: LocalActivationSession.Outcome) {
+        if (destroyed) return
+
+        val result = outcome.result
+        if (result != null) {
+            markLatency(
+                "activation_asr_complete",
+                "endpoint=${result.endpoint} elapsedMs=${result.elapsedMs} " +
+                    "speechMs=${result.activeSpeechMs} trailingMs=${result.trailingSilenceMs} " +
+                    "peakRms=${result.peakRms} meanRms=${result.meanRms} " +
+                    "asrGain=${result.asrGain} text=${result.text}",
+            )
+            saveActivationAttemptDebugCapture(
+                samples = result.samples,
+                result = result,
+                accepted = CommandInterpreter.isActivationWakeAsrEquivalent(result.text),
+            )
+        }
+
+        when {
+            outcome.unavailable -> {
+                finishLatency("activation_asr_unavailable")
+                scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
+            }
+            result != null && CommandInterpreter.isActivationWakeAsrEquivalent(result.text) -> {
+                startActivationOwnerVerification(result)
+            }
+            else -> {
+                finishLatency(
+                    "activation_phrase_missing",
+                    "text=${result?.text.orEmpty()} endpoint=${result?.endpoint.orEmpty()}",
+                )
+                scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
+            }
+        }
+    }
+
+    private fun startActivationOwnerVerification(result: LocalCommandRecognizer.ActivationResult) {
+        if (activationOwnerVerificationActive) return
+
+        activationOwnerVerificationActive = true
+        markLatency("activation_owner_verify_start", "samples=${result.samples.size} text=${result.text}")
+        activationOwnerVerificationThread = Thread({
+            val ownerMatch = runCatching {
+                OwnerVoiceEngine.acceptActivationPhraseMatch(
+                    OwnerVoiceEngine.verifyOwner(applicationContext, result.samples),
+                )
+            }.onFailure {
+                Log.w(TAG, "Activation owner verification failed: ${it.message}")
+            }.getOrElse {
+                OwnerVoiceEngine.Match(
+                    score = 0f,
+                    accepted = false,
+                    rejectReason = OwnerVoiceEngine.RejectReason.EMBEDDING_NOT_READY,
+                )
+            }
+
+            handler.post {
+                if (!activationOwnerVerificationActive || destroyed) return@post
+
+                activationOwnerVerificationActive = false
+                activationOwnerVerificationThread = null
+                handleActivationOwnerVerificationOutcome(result, ownerMatch)
+            }
+        }, "JarvisActivationOwnerVerify").also { it.start() }
+    }
+
+    private fun handleActivationOwnerVerificationOutcome(
+        result: LocalCommandRecognizer.ActivationResult,
+        ownerMatch: OwnerVoiceEngine.Match,
+    ) {
+        markLatency(
+            "activation_owner_verified",
+            "accepted=${ownerMatch.accepted} acceptance=${ownerMatch.acceptance} " +
+                "score=${ownerMatch.score} speechMs=${ownerMatch.activeSpeechMs} " +
+                "peakRms=${ownerMatch.peakRms} reason=${ownerMatch.rejectReason ?: "none"}",
+        )
+        if (ownerMatch.accepted) {
+            markLatency("owner_audio_activation", "source=local_activation_asr text=${result.text}")
+            Log.d(TAG, "Parsed local activation phrase from '${result.text}'")
+            commandFeedbackEnabled = true
+            openCommandWindow(COMMAND_SESSION_AUTH_WINDOW_MS)
+            signalCommandReady()
+            scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
+        } else {
+            finishLatency("activation_owner_rejected", "text=${result.text} score=${ownerMatch.score}")
+            scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
+        }
+    }
+
+    private fun stopActivationOwnerVerification() {
+        activationOwnerVerificationActive = false
+        activationOwnerVerificationThread?.interrupt()
+        activationOwnerVerificationThread = null
     }
 
     private fun handleLocalCommandOutcome(outcome: LocalCommandSession.Outcome) {
@@ -581,6 +743,51 @@ class JarvisVoiceService : Service(), RecognitionListener {
         result: LocalCommandRecognizer.Result,
         accepted: Boolean,
     ) {
+        saveActivationAttemptDebugCapture(
+            samples = samples,
+            accepted = accepted,
+            text = result.text,
+            endpoint = result.endpoint,
+            elapsedMs = result.elapsedMs,
+            activeSpeechMs = result.activeSpeechMs,
+            trailingSilenceMs = result.trailingSilenceMs,
+            peakRms = result.peakRms,
+            meanRms = result.meanRms,
+            asrGain = result.asrGain,
+        )
+    }
+
+    private fun saveActivationAttemptDebugCapture(
+        samples: FloatArray,
+        result: LocalCommandRecognizer.ActivationResult,
+        accepted: Boolean,
+    ) {
+        saveActivationAttemptDebugCapture(
+            samples = samples,
+            accepted = accepted,
+            text = result.text,
+            endpoint = result.endpoint,
+            elapsedMs = result.elapsedMs,
+            activeSpeechMs = result.activeSpeechMs,
+            trailingSilenceMs = result.trailingSilenceMs,
+            peakRms = result.peakRms,
+            meanRms = result.meanRms,
+            asrGain = result.asrGain,
+        )
+    }
+
+    private fun saveActivationAttemptDebugCapture(
+        samples: FloatArray,
+        accepted: Boolean,
+        text: String,
+        endpoint: String,
+        elapsedMs: Long,
+        activeSpeechMs: Long,
+        trailingSilenceMs: Long,
+        peakRms: Float,
+        meanRms: Float,
+        asrGain: Float,
+    ) {
         if (!isDebuggableApp()) return
 
         runCatching {
@@ -599,13 +806,14 @@ class JarvisVoiceService : Service(), RecognitionListener {
             val metadata = JSONObject()
                 .put("timestampMs", timestampMs)
                 .put("accepted", accepted)
-                .put("text", result.text)
-                .put("endpoint", result.endpoint)
-                .put("elapsedMs", result.elapsedMs)
-                .put("activeSpeechMs", result.activeSpeechMs)
-                .put("peakRms", result.peakRms)
-                .put("meanRms", result.meanRms)
-                .put("asrGain", result.asrGain)
+                .put("text", text)
+                .put("endpoint", endpoint)
+                .put("elapsedMs", elapsedMs)
+                .put("activeSpeechMs", activeSpeechMs)
+                .put("trailingSilenceMs", trailingSilenceMs)
+                .put("peakRms", peakRms)
+                .put("meanRms", meanRms)
+                .put("asrGain", asrGain)
                 .put("sampleCount", samples.size)
                 .put("sampleRateHz", OwnerVoiceEngine.SAMPLE_RATE_HZ)
             metadataFile.writeText(metadata.toString(2), Charsets.UTF_8)
@@ -613,7 +821,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             Log.i(
                 TAG,
                 "activation_debug_capture wav=${wavFile.absolutePath} " +
-                    "metadata=${metadataFile.absolutePath} accepted=$accepted text=${result.text}",
+                    "metadata=${metadataFile.absolutePath} accepted=$accepted text=$text",
             )
         }.onFailure {
             Log.w(TAG, "Failed to write activation debug capture: ${it.message}")
@@ -701,7 +909,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     private fun startOwnerVerification() {
-        if (destroyed || ownerVoiceGate.isVerifying || listening) return
+        if (destroyed || ownerVoiceGate.isVerifying || localActivationSession.isActive || listening) return
         ownerVoiceGate.startVerification(
             audioWindowMs = OWNER_VERIFY_AUDIO_MS,
             verificationIntervalMs = OWNER_VERIFY_INTERVAL_MS,
@@ -793,6 +1001,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         handler.removeCallbacks(startListeningRunnable)
         handler.removeCallbacks(partialCommandFinalize)
         handler.removeCallbacks(commandWindowTimeout)
+        localActivationSession.stop()
+        stopActivationOwnerVerification()
         notificationController.reset()
         if (playFeedback) {
             feedbackController.commandWindowClosed()
@@ -1140,6 +1350,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val COMMAND_SESSION_AUTH_WINDOW_MS = 30000L
         private const val COMMAND_RETRY_GRACE_MS = 2000L
         private const val LOCAL_COMMAND_TIMEOUT_MS = 6000L
+        private const val LOCAL_ACTIVATION_TIMEOUT_MS = 3200L
         private const val LOCAL_FALLBACK_AUTH_EXTENSION_MS = 6000L
         private const val LOCAL_ANDROID_FALLBACK_MIN_SPEECH_MS = 360L
         private const val OWNER_VERIFY_AUDIO_MS = 1800L

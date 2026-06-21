@@ -44,6 +44,8 @@ object OwnerVoiceEngine {
     private const val SOFT_WAKE_ACCEPT_REQUIRED_COUNT = 4
     private const val SOFT_WAKE_ACCEPT_MIN_SPEECH_MS = 400L
     private const val SOFT_WAKE_BRIDGE_THRESHOLD = 0.10f
+    private const val ACTIVATION_PHRASE_ACCEPT_THRESHOLD = NEAR_ACCEPT_THRESHOLD
+    private const val ACTIVATION_PHRASE_ACCEPT_MIN_SPEECH_MS = NEAR_ACCEPT_MIN_SPEECH_MS
 
     private val initLock = Any()
     private val computeLock = Any()
@@ -439,6 +441,38 @@ object OwnerVoiceEngine {
         }
 
         return match to ConsecutiveAcceptState()
+    }
+
+    fun acceptActivationPhraseMatch(match: Match): Match {
+        if (match.accepted) return match
+
+        if (
+            match.ownerEmbeddingCount >= OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS &&
+            match.score >= HIGH_CONFIDENCE_ACCEPT_THRESHOLD &&
+            match.activeSpeechMs >= HIGH_CONFIDENCE_ACCEPT_MIN_SPEECH_MS &&
+            hasRelaxedAcceptPeak(match)
+        ) {
+            return match.copy(
+                accepted = true,
+                acceptance = Acceptance.HIGH_CONFIDENCE_SINGLE,
+                rejectReason = null,
+            )
+        }
+
+        if (
+            match.ownerEmbeddingCount >= OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS &&
+            match.score >= ACTIVATION_PHRASE_ACCEPT_THRESHOLD &&
+            match.activeSpeechMs >= ACTIVATION_PHRASE_ACCEPT_MIN_SPEECH_MS &&
+            hasRelaxedAcceptPeak(match)
+        ) {
+            return match.copy(
+                accepted = true,
+                acceptance = Acceptance.NEAR_CONSECUTIVE,
+                rejectReason = null,
+            )
+        }
+
+        return match
     }
 
     private fun hasRelaxedAcceptPeak(match: Match): Boolean {

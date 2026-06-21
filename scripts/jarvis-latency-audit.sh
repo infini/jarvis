@@ -6,7 +6,6 @@ REPORT_SCRIPT="$SCRIPT_DIR/jarvis-latency-report.sh"
 MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSED_MS="${JARVIS_MAX_SPEECH_PARSED_MS:-2500}"
 MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
-MAX_OWNER_GATE_MS="${JARVIS_MAX_OWNER_GATE_MS:-2500}"
 MAX_COMMAND_ACCESS_MS="${JARVIS_MAX_COMMAND_ACCESS_MS:-1200}"
 
 usage() {
@@ -50,7 +49,6 @@ slow_command_lines() {
     -v maxParsed="$MAX_PARSED_MS" \
     -v maxSpeechParsed="$MAX_SPEECH_PARSED_MS" \
     -v maxAccess="$MAX_ACCESS_MS" \
-    -v maxOwnerGate="$MAX_OWNER_GATE_MS" \
     -v maxCommandAccess="$MAX_COMMAND_ACCESS_MS" '
       function fieldValue(key, i, pair) {
         for (i = 1; i <= NF; i++) {
@@ -65,7 +63,6 @@ slow_command_lines() {
         access = fieldValue("access")
         speechAccess = fieldValue("speech_access")
         commandAccess = fieldValue("command_access")
-        ownerGate = fieldValue("owner_gate")
         parseBudget = speechParsed > 0 ? maxSpeechParsed : maxParsed
         parseLatency = speechParsed > 0 ? speechParsed : parsed
         accessLatency = speechAccess > 0 ? speechAccess : access
@@ -73,7 +70,6 @@ slow_command_lines() {
         slow = slow || parseLatency > parseBudget
         slow = slow || (accessLatency > 0 && accessLatency > maxAccess)
         slow = slow || (commandAccess > 0 && commandAccess > maxCommandAccess)
-        slow = slow || (ownerGate > 0 && ownerGate > maxOwnerGate)
         if (slow) print
       }
     '
@@ -177,11 +173,8 @@ status_hint() {
     FAIL_SLOW)
       echo "hint=command_complete exists, but one or more latency thresholds were exceeded."
       ;;
-    FAIL_NO_OWNER_AUTH)
-      echo "hint=Owner voice gate did not authorize the speaker. Check peak RMS, reject reasons, distance, and owner voice enrollment."
-      ;;
     FAIL_NO_ACTIVATION)
-      echo "hint=Owner voice was authorized, but local ASR did not recognize the activation phrase '자비스 깨어나'."
+      echo "hint=Local activation ASR did not recognize '자비스 깨어나', or owner verification rejected the activation audio."
       ;;
     FAIL_LEGACY_PROFILE)
       echo "hint=Owner profile has fewer than 2 embeddings. Re-register owner voice before judging wake or command latency."
@@ -222,7 +215,8 @@ audit_file() {
   )"
   slow_lines="$(slow_command_lines "$command_complete_lines")"
 
-  local owner_authorized
+  local activation_asr_complete
+  local activation_owner_verified
   local ready_for_speech
   local speech_begin
   local partial_results
@@ -236,7 +230,8 @@ audit_file() {
   local owner_suppressed
   local profile_embeddings
 
-  owner_authorized="$(count_event "$log_file" owner_authorized)"
+  activation_asr_complete="$(count_event "$log_file" activation_asr_complete)"
+  activation_owner_verified="$(count_event "$log_file" activation_owner_verified)"
   ready_for_speech="$(count_event "$log_file" ready_for_speech)"
   speech_begin="$(count_event "$log_file" speech_begin)"
   partial_results="$(count_event "$log_file" partial_results)"
@@ -260,8 +255,6 @@ audit_file() {
     else
       status="PASS"
     fi
-  elif [[ "$owner_authorized" -eq 0 ]]; then
-    status="FAIL_NO_OWNER_AUTH"
   elif [[ "$owner_audio_activation" -eq 0 ]]; then
     status="FAIL_NO_ACTIVATION"
   elif [[ "$speech_begin" -eq 0 && "$partial_results" -eq 0 ]]; then
@@ -274,7 +267,7 @@ audit_file() {
 
   echo "== $log_file =="
   printf '%s\n' "$report_output"
-  echo "events: owner_authorized=${owner_authorized}, owner_audio_activation=${owner_audio_activation}, ready_for_speech=${ready_for_speech}, speech_begin=${speech_begin}, partial_results=${partial_results}, command_parsed=${command_parsed}, activation_partial=${activation_partial}, fallback_to_local=${fallback_to_local}"
+  echo "events: activation_asr_complete=${activation_asr_complete}, activation_owner_verified=${activation_owner_verified}, owner_audio_activation=${owner_audio_activation}, ready_for_speech=${ready_for_speech}, speech_begin=${speech_begin}, partial_results=${partial_results}, command_parsed=${command_parsed}, activation_partial=${activation_partial}, fallback_to_local=${fallback_to_local}"
   if [[ -n "$profile_embeddings" ]]; then
     echo "profile_embeddings=${profile_embeddings}"
   fi
@@ -308,7 +301,6 @@ audit_file() {
 require_integer JARVIS_MAX_PARSED_MS "$MAX_PARSED_MS"
 require_integer JARVIS_MAX_SPEECH_PARSED_MS "$MAX_SPEECH_PARSED_MS"
 require_integer JARVIS_MAX_ACCESS_MS "$MAX_ACCESS_MS"
-require_integer JARVIS_MAX_OWNER_GATE_MS "$MAX_OWNER_GATE_MS"
 require_integer JARVIS_MAX_COMMAND_ACCESS_MS "$MAX_COMMAND_ACCESS_MS"
 
 if [[ "$#" -eq 0 ]]; then

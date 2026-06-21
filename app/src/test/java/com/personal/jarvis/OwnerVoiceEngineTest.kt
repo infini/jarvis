@@ -374,6 +374,56 @@ class OwnerVoiceEngineTest {
         assertFalse(secondAfterReset.first.accepted)
     }
 
+    @Test
+    fun activationPhraseOwnerMatchAcceptsNearScoreWithoutSoftWakePolicy() {
+        val result = OwnerVoiceEngine.acceptActivationPhraseMatch(
+            ownerMatch(
+                score = 0.29f,
+                activeSpeechMs = 650L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+            ),
+        )
+
+        assertTrue(result.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.NEAR_CONSECUTIVE, result.acceptance)
+    }
+
+    @Test
+    fun activationPhraseOwnerMatchRejectsSoftWakeOnlyScore() {
+        val result = OwnerVoiceEngine.acceptActivationPhraseMatch(
+            ownerMatch(
+                score = 0.17f,
+                activeSpeechMs = 900L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+            ),
+        )
+
+        assertFalse(result.accepted)
+    }
+
+    @Test
+    fun activationPhraseOwnerMatchRejectsLowPeakNearScore() {
+        val result = OwnerVoiceEngine.acceptActivationPhraseMatch(
+            ownerMatch(
+                score = 0.31f,
+                activeSpeechMs = 900L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.0025f,
+            ),
+        )
+
+        assertFalse(result.accepted)
+    }
+
+    @Test
+    fun activationPhraseOwnerMatchRejectsLegacyProfile() {
+        val result = OwnerVoiceEngine.acceptActivationPhraseMatch(
+            ownerMatch(score = 0.31f, activeSpeechMs = 900L, ownerEmbeddingCount = 1),
+        )
+
+        assertFalse(result.accepted)
+    }
+
     private fun ownerMatch(
         score: Float,
         activeSpeechMs: Long,

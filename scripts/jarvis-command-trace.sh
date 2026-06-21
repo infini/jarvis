@@ -10,7 +10,6 @@ DIAGNOSTIC_LOG_FILE=""
 MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSED_MS="${JARVIS_MAX_SPEECH_PARSED_MS:-2500}"
 MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
-MAX_OWNER_GATE_MS="${JARVIS_MAX_OWNER_GATE_MS:-2500}"
 MAX_COMMAND_ACCESS_MS="${JARVIS_MAX_COMMAND_ACCESS_MS:-1200}"
 START_DEBUG_ACTIVITY="${JARVIS_START_DEBUG_ACTIVITY:-1}"
 SKIP_PROFILE_CHECK="${JARVIS_SKIP_PROFILE_CHECK:-0}"
@@ -32,13 +31,6 @@ esac
 case "$MAX_ACCESS_MS" in
   ''|*[!0-9]*)
     echo "JARVIS_MAX_ACCESS_MS must be an integer" >&2
-    exit 2
-    ;;
-esac
-
-case "$MAX_OWNER_GATE_MS" in
-  ''|*[!0-9]*)
-    echo "JARVIS_MAX_OWNER_GATE_MS must be an integer" >&2
     exit 2
     ;;
 esac
@@ -89,7 +81,8 @@ count_event() {
   grep -Ec "event=${event}([[:space:]]|$)" "$LOG_FILE" || true
 }
 
-OWNER_AUTHORIZED_COUNT="$(count_event owner_authorized)"
+ACTIVATION_ASR_COMPLETE_COUNT="$(count_event activation_asr_complete)"
+ACTIVATION_OWNER_VERIFIED_COUNT="$(count_event activation_owner_verified)"
 READY_FOR_SPEECH_COUNT="$(count_event ready_for_speech)"
 SPEECH_BEGIN_COUNT="$(count_event speech_begin)"
 PARTIAL_RESULTS_COUNT="$(count_event partial_results)"
@@ -107,13 +100,12 @@ COMMAND_COMPLETE_LINES="$(
 if [[ -z "$COMMAND_COMPLETE_LINES" ]]; then
   echo "FAIL: no command_complete trace found in $LOG_FILE." >&2
   echo "Diagnostic log: $DIAGNOSTIC_LOG_FILE" >&2
-  echo "Diagnostics: owner_authorized=${OWNER_AUTHORIZED_COUNT}, owner_audio_activation=${OWNER_AUDIO_ACTIVATION_COUNT}, ready_for_speech=${READY_FOR_SPEECH_COUNT}, speech_begin=${SPEECH_BEGIN_COUNT}, partial_results=${PARTIAL_RESULTS_COUNT}, command_parsed=${COMMAND_PARSED_COUNT}, activation_partial=${ACTIVATION_PARTIAL_COUNT}, fallback_to_local=${FALLBACK_TO_LOCAL_COUNT}" >&2
+  echo "Diagnostics: activation_asr_complete=${ACTIVATION_ASR_COMPLETE_COUNT}, activation_owner_verified=${ACTIVATION_OWNER_VERIFIED_COUNT}, owner_audio_activation=${OWNER_AUDIO_ACTIVATION_COUNT}, ready_for_speech=${READY_FOR_SPEECH_COUNT}, speech_begin=${SPEECH_BEGIN_COUNT}, partial_results=${PARTIAL_RESULTS_COUNT}, command_parsed=${COMMAND_PARSED_COUNT}, activation_partial=${ACTIVATION_PARTIAL_COUNT}, fallback_to_local=${FALLBACK_TO_LOCAL_COUNT}" >&2
   echo "OwnerVoiceGate: accepted=${OWNER_ACCEPTED_COUNT}, rejected=${OWNER_REJECTED_COUNT}, suppressed=${OWNER_SUPPRESSED_COUNT}" >&2
-  if [[ "$OWNER_AUTHORIZED_COUNT" == "0" ]]; then
-    echo "No owner voice was authorized. Say '자비스 깨어나' clearly during the capture window or re-register the owner voice if scores stay low." >&2
-    grep "Owner voice" "$DIAGNOSTIC_LOG_FILE" | tail -12 >&2 || true
+  if [[ "$ACTIVATION_ASR_COMPLETE_COUNT" == "0" ]]; then
+    echo "Local activation ASR did not complete. Check microphone permission, foreground service state, and local ASR assets." >&2
   elif [[ "$OWNER_AUDIO_ACTIVATION_COUNT" == "0" ]]; then
-    echo "Owner voice was authorized, but the local activation phrase was not recognized as '자비스 깨어나'." >&2
+    echo "Activation did not open a command window. Check activation_asr_complete text and activation_owner_verified owner score in the diagnostic log." >&2
   elif [[ "$SPEECH_BEGIN_COUNT" == "0" && "$PARTIAL_RESULTS_COUNT" == "0" ]]; then
     echo "Jarvis opened a command window, but Android STT did not detect a spoken command. Say the command after the green JARVIS indicator appears or the ready tone/vibration plays." >&2
   elif [[ "$COMMAND_PARSED_COUNT" == "0" ]]; then
@@ -127,7 +119,6 @@ SLOW_LINES="$(
     -v maxParsed="$MAX_PARSED_MS" \
     -v maxSpeechParsed="$MAX_SPEECH_PARSED_MS" \
     -v maxAccess="$MAX_ACCESS_MS" \
-    -v maxOwnerGate="$MAX_OWNER_GATE_MS" \
     -v maxCommandAccess="$MAX_COMMAND_ACCESS_MS" '
       function fieldValue(key, i, pair) {
         for (i = 1; i <= NF; i++) {
@@ -142,7 +133,6 @@ SLOW_LINES="$(
         access = fieldValue("access")
         speechAccess = fieldValue("speech_access")
         commandAccess = fieldValue("command_access")
-        ownerGate = fieldValue("owner_gate")
         parseBudget = speechParsed > 0 ? maxSpeechParsed : maxParsed
         parseLatency = speechParsed > 0 ? speechParsed : parsed
         accessLatency = speechAccess > 0 ? speechAccess : access
@@ -150,7 +140,6 @@ SLOW_LINES="$(
         slow = slow || parseLatency > parseBudget
         slow = slow || (accessLatency > 0 && accessLatency > maxAccess)
         slow = slow || (commandAccess > 0 && commandAccess > maxCommandAccess)
-        slow = slow || (ownerGate > 0 && ownerGate > maxOwnerGate)
         if (slow) print
       }
     '
@@ -158,7 +147,7 @@ SLOW_LINES="$(
 
 if [[ -n "$SLOW_LINES" ]]; then
   echo "FAIL: command_complete trace exceeded latency threshold." >&2
-  echo "Thresholds: owner_gate<=${MAX_OWNER_GATE_MS}ms; speech_parse<=${MAX_SPEECH_PARSED_MS}ms when speech_begin is present; otherwise parsed<=${MAX_PARSED_MS}ms. speech_access<=${MAX_ACCESS_MS}ms and command_access<=${MAX_COMMAND_ACCESS_MS}ms when access is present." >&2
+  echo "Thresholds: speech_parse<=${MAX_SPEECH_PARSED_MS}ms when speech_begin is present; otherwise parsed<=${MAX_PARSED_MS}ms. speech_access<=${MAX_ACCESS_MS}ms and command_access<=${MAX_COMMAND_ACCESS_MS}ms when access is present." >&2
   printf '%s\n' "$SLOW_LINES" >&2
   exit 1
 fi

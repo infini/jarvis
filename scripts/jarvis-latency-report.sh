@@ -110,6 +110,17 @@ function printTrace(id) {
   if (ownerText[id] != "") {
     printf("  owner_text=%s\n", ownerText[id])
   }
+  if (activationEndpoint[id] != "") {
+    printf "  activation_endpoint=%s activation_elapsed=%sms speech=%sms silence=%sms", activationEndpoint[id], activationElapsed[id], activationSpeech[id], activationSilence[id]
+    if (activationPeakRms[id] != "") printf " peak_rms=%s mean_rms=%s asr_gain=%s", activationPeakRms[id], activationMeanRms[id], activationAsrGain[id]
+    printf "\n"
+  }
+  if (activationText[id] != "") {
+    printf("  activation_text=%s\n", activationText[id])
+  }
+  if (activationOwnerAccepted[id] != "") {
+    printf "  activation_owner accepted=%s acceptance=%s score=%s speech=%sms peak_rms=%s reason=%s\n", activationOwnerAccepted[id], activationOwnerAcceptance[id], activationOwnerScore[id], activationOwnerSpeech[id], activationOwnerPeakRms[id], activationOwnerReason[id]
+  }
   if (localText[id] != "") {
     printf("  local_text=%s\n", localText[id])
   }
@@ -145,6 +156,7 @@ function printTrace(id) {
   if (totalRaw != "") total[trace] = millis(totalRaw)
 
   if (contains($0, "engine=owner_audio_asr")) addPath(trace, "owner_audio_asr")
+  if (contains($0, "engine=local_activation_asr")) addPath(trace, "local_activation_asr")
   if (contains($0, "engine=local_asr")) addPath(trace, "local_asr")
   if (contains($0, "engine=android_stt")) addPath(trace, "android_stt")
   if (event == "fallback_to_android") addPath(trace, "android_stt")
@@ -171,6 +183,25 @@ function printTrace(id) {
     ownerAsrGain[trace] = value($0, "asrGain")
     text = tailValue($0, "text")
     if (text != "") ownerText[trace] = text
+  }
+  if (event == "activation_asr_complete") {
+    activationEndpoint[trace] = value($0, "endpoint")
+    activationElapsed[trace] = value($0, "elapsedMs")
+    activationSpeech[trace] = value($0, "speechMs")
+    activationSilence[trace] = value($0, "trailingMs")
+    activationPeakRms[trace] = value($0, "peakRms")
+    activationMeanRms[trace] = value($0, "meanRms")
+    activationAsrGain[trace] = value($0, "asrGain")
+    text = tailValue($0, "text")
+    if (text != "") activationText[trace] = text
+  }
+  if (event == "activation_owner_verified") {
+    activationOwnerAccepted[trace] = value($0, "accepted")
+    activationOwnerAcceptance[trace] = value($0, "acceptance")
+    activationOwnerScore[trace] = value($0, "score")
+    activationOwnerSpeech[trace] = value($0, "speechMs")
+    activationOwnerPeakRms[trace] = value($0, "peakRms")
+    activationOwnerReason[trace] = value($0, "reason")
   }
   if (event == "local_partial") localText[trace] = tailValue($0, "text")
   if (event == "local_complete") {

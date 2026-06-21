@@ -6,6 +6,7 @@ import android.os.IBinder
 import android.util.Log
 import com.personal.jarvis.CommandInterpreter
 import com.personal.jarvis.LocalCommandRecognizer
+import com.personal.jarvis.OwnerVoiceEngine
 import com.personal.jarvis.PcmWavFile
 import java.io.File
 
@@ -61,12 +62,18 @@ class JarvisDebugActivationReplayService : Service() {
                     endpoint = "debug_activation_replay",
                 )
                 val accepted = CommandInterpreter.isActivationWakeAsrEquivalent(result.text)
+                val ownerMatch = OwnerVoiceEngine.acceptActivationPhraseMatch(
+                    OwnerVoiceEngine.verifyOwner(this, samples),
+                )
                 if (accepted) acceptedCount += 1
                 Log.i(
                     TAG,
                     "request_id=$requestId status=replay file=${wavFile.name} " +
                         "accepted=$accepted endpoint=${result.endpoint} text=${result.text} " +
-                        "peakRms=${result.peakRms} meanRms=${result.meanRms} asrGain=${result.asrGain}",
+                        "peakRms=${result.peakRms} meanRms=${result.meanRms} asrGain=${result.asrGain} " +
+                        "ownerAccepted=${ownerMatch.accepted} ownerAcceptance=${ownerMatch.acceptance} " +
+                        "ownerScore=${ownerMatch.score} ownerSpeechMs=${ownerMatch.activeSpeechMs} " +
+                        "ownerReason=${ownerMatch.rejectReason ?: "none"}",
                 )
             }.onFailure {
                 Log.e(

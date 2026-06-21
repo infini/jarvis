@@ -28,11 +28,13 @@ READY_LINE="$(grep "event=ready_for_speech" "$LOG_FILE" | tail -1 || true)"
 LISTEN_LINE="$(grep "event=listen_start" "$LOG_FILE" | tail -1 || true)"
 ACTIVATION_LINE="$(grep -E "event=owner_audio_activation( |$)" "$LOG_FILE" | tail -1 || true)"
 COMMAND_READY_LINE="$(grep "event=activation_complete\\|event=partial_activation_complete" "$LOG_FILE" | tail -1 || true)"
-OWNER_AUTHORIZED_COUNT="$(grep -c "event=owner_authorized" "$LOG_FILE" || true)"
-ACTIVATION_REJECTED_COUNT="$(grep -c "event=owner_audio_activation_rejected" "$LOG_FILE" || true)"
+ACTIVATION_ASR_COUNT="$(grep -c "event=activation_asr_complete" "$LOG_FILE" || true)"
+ACTIVATION_OWNER_COUNT="$(grep -c "event=activation_owner_verified" "$LOG_FILE" || true)"
+ACTIVATION_MISSING_COUNT="$(grep -c "event=activation_phrase_missing" "$LOG_FILE" || true)"
+ACTIVATION_OWNER_REJECTED_COUNT="$(grep -c "event=activation_owner_rejected" "$LOG_FILE" || true)"
 
 echo "log_file=$LOG_FILE"
-echo "summary owner_authorized=$OWNER_AUTHORIZED_COUNT owner_audio_activation_rejected=$ACTIVATION_REJECTED_COUNT"
+echo "summary activation_asr_complete=$ACTIVATION_ASR_COUNT activation_owner_verified=$ACTIVATION_OWNER_COUNT activation_phrase_missing=$ACTIVATION_MISSING_COUNT activation_owner_rejected=$ACTIVATION_OWNER_REJECTED_COUNT"
 
 if [[ -n "$ACTIVATION_LINE" || -n "$COMMAND_READY_LINE" || -n "$READY_LINE" || -n "$LISTEN_LINE" ]]; then
   echo "FAIL: idle guard observed accepted activation or command STT." >&2

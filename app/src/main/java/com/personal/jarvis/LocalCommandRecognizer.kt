@@ -13,6 +13,7 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizer
 import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
+import java.util.ArrayDeque
 import kotlin.math.sqrt
 
 object LocalCommandRecognizer {
@@ -23,6 +24,11 @@ object LocalCommandRecognizer {
     private const val LOCAL_MIN_ACTIVE_SPEECH_MS = 160L
     private const val LOCAL_TRAILING_SILENCE_MS = 240L
     private const val LOCAL_EARLY_ENDPOINT_MIN_LISTEN_MS = 560L
+    private const val ACTIVATION_SPEECH_RMS_THRESHOLD = 0.0025f
+    private const val ACTIVATION_MIN_ACTIVE_SPEECH_MS = 320L
+    private const val ACTIVATION_TRAILING_SILENCE_MS = 360L
+    private const val ACTIVATION_EARLY_ENDPOINT_MIN_LISTEN_MS = 760L
+    private const val ACTIVATION_ROLLING_AUDIO_MS = 3600L
     private const val LOCAL_ASR_TARGET_RMS = 0.04f
     private const val LOCAL_ASR_GAIN_MIN_RMS = 0.0010f
     private const val LOCAL_ASR_MAX_GAIN = 30f
@@ -43,6 +49,19 @@ object LocalCommandRecognizer {
     data class Result(
         val command: String?,
         val text: String,
+        val elapsedMs: Long,
+        val unavailable: Boolean = false,
+        val endpoint: String = "",
+        val activeSpeechMs: Long = 0L,
+        val trailingSilenceMs: Long = 0L,
+        val peakRms: Float = 0f,
+        val meanRms: Float = 0f,
+        val asrGain: Float = 1f,
+    )
+
+    data class ActivationResult(
+        val text: String,
+        val samples: FloatArray,
         val elapsedMs: Long,
         val unavailable: Boolean = false,
         val endpoint: String = "",
@@ -124,6 +143,151 @@ object LocalCommandRecognizer {
             CommandInterpreter.isActivationWakeAsrEquivalent(greedyResult.text) -> greedyResult
             hotwordResult.text.isNotBlank() -> hotwordResult
             else -> greedyResult
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun listenForActivation(
+        context: Context,
+        timeoutMs: Long,
+        shouldContinue: () -> Boolean,
+        onText: (String) -> Unit = {},
+    ): ActivationResult {
+        if (!isAvailable(context)) {
+            return ActivationResult(text = "", samples = FloatArray(0), elapsedMs = 0L, unavailable = true)
+        }
+
+        val startedAt = SystemClock.elapsedRealtime()
+        val localRecognizer = getActivationRecognizer(context.applicationContext)
+        val stream = localRecognizer.createStream()
+        val recorder = createRecorder()
+        val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
+        val rollingSamples = (SAMPLE_RATE_HZ * ACTIVATION_ROLLING_AUDIO_MS / 1000L).toInt()
+        val chunks = ArrayDeque<FloatArray>()
+        val buffer = ShortArray(readSize)
+        var totalSamples = 0
+        var lastText = ""
+        var speechSeen = false
+        var activeSpeechMs = 0L
+        var lastSpeechAtMs = 0L
+        var endpoint = "timeout"
+        var finalTrailingSilenceMs = 0L
+        var peakRms = 0f
+        var rmsSum = 0.0
+        var rmsFrameCount = 0
+        var maxAsrGain = 1f
+
+        fun currentSamples(): FloatArray {
+            return flattenLastSamples(
+                chunks = chunks,
+                sampleCount = minOf(totalSamples, rollingSamples),
+                totalSamples = totalSamples,
+            )
+        }
+
+        fun result(
+            text: String,
+            endpoint: String,
+            elapsedMs: Long = SystemClock.elapsedRealtime() - startedAt,
+        ): ActivationResult {
+            val trailing = if (finalTrailingSilenceMs == 0L) {
+                trailingSilenceMs(lastSpeechAtMs)
+            } else {
+                finalTrailingSilenceMs
+            }
+            return ActivationResult(
+                text = text,
+                samples = currentSamples(),
+                elapsedMs = elapsedMs,
+                endpoint = endpoint,
+                activeSpeechMs = activeSpeechMs,
+                trailingSilenceMs = trailing,
+                peakRms = peakRms,
+                meanRms = meanRms(rmsSum, rmsFrameCount),
+                asrGain = maxAsrGain,
+            )
+        }
+
+        try {
+            recorder.startRecording()
+            while (shouldContinue() && SystemClock.elapsedRealtime() - startedAt < timeoutMs) {
+                val read = recorder.read(buffer, 0, buffer.size)
+                if (read <= 0) continue
+                val now = SystemClock.elapsedRealtime()
+                val rms = frameRms(buffer, read)
+                peakRms = maxOf(peakRms, rms)
+                rmsSum += rms
+                rmsFrameCount += 1
+
+                if (rms >= ACTIVATION_SPEECH_RMS_THRESHOLD) {
+                    speechSeen = true
+                    activeSpeechMs += READ_INTERVAL_MS
+                    lastSpeechAtMs = now
+                }
+
+                val samples = FloatArray(read) { index -> buffer[index] / 32768.0f }
+                chunks.addLast(samples)
+                totalSamples += read
+                while (chunks.isNotEmpty() && totalSamples - chunks.first.size >= rollingSamples) {
+                    totalSamples -= chunks.removeFirst().size
+                }
+
+                val asrGain = asrGainForRms(rms)
+                maxAsrGain = maxOf(maxAsrGain, asrGain)
+                stream.acceptWaveform(applyAsrGain(samples, asrGain), SAMPLE_RATE_HZ)
+                while (localRecognizer.isReady(stream)) {
+                    localRecognizer.decode(stream)
+                }
+
+                val text = localRecognizer.getResult(stream).text.trim()
+                if (text.isNotBlank() && text != lastText) {
+                    lastText = text
+                    Log.d(TAG, "Local activation text='$text'")
+                    onText(text)
+                }
+                if (CommandInterpreter.isActivationWakeAsrEquivalent(text)) {
+                    return result(text = text, endpoint = "partial_activation", elapsedMs = now - startedAt)
+                }
+
+                val elapsedMs = now - startedAt
+                val trailingSilenceMs = trailingSilenceMs(lastSpeechAtMs, now)
+                if (
+                    speechSeen &&
+                    activeSpeechMs >= ACTIVATION_MIN_ACTIVE_SPEECH_MS &&
+                    elapsedMs >= ACTIVATION_EARLY_ENDPOINT_MIN_LISTEN_MS &&
+                    trailingSilenceMs >= ACTIVATION_TRAILING_SILENCE_MS
+                ) {
+                    endpoint = "trailing_silence"
+                    finalTrailingSilenceMs = trailingSilenceMs
+                    Log.d(
+                        TAG,
+                        "Local activation endpoint: elapsed=${elapsedMs}ms, " +
+                            "speech=${activeSpeechMs}ms, silence=${trailingSilenceMs}ms",
+                    )
+                    break
+                }
+            }
+
+            acceptTailPadding(stream)
+            stream.inputFinished()
+            while (localRecognizer.isReady(stream)) {
+                localRecognizer.decode(stream)
+            }
+            val finalText = localRecognizer.getResult(stream).text.trim()
+            if (finalText.isNotBlank() && finalText != lastText) {
+                Log.d(TAG, "Local activation final text='$finalText'")
+                onText(finalText)
+            }
+            val finalEndpoint = when {
+                CommandInterpreter.isActivationWakeAsrEquivalent(finalText) -> "${endpoint}_activation"
+                !speechSeen && finalText.isBlank() -> "no_speech_timeout"
+                else -> endpoint
+            }
+            return result(text = finalText, endpoint = finalEndpoint)
+        } finally {
+            runCatching { recorder.stop() }
+            recorder.release()
+            stream.release()
         }
     }
 
@@ -367,6 +531,37 @@ object LocalCommandRecognizer {
         return FloatArray(samples.size) { index ->
             (samples[index] * gain).coerceIn(-1f, 1f)
         }
+    }
+
+    private fun flattenLastSamples(
+        chunks: ArrayDeque<FloatArray>,
+        sampleCount: Int,
+        totalSamples: Int,
+    ): FloatArray {
+        if (sampleCount <= 0 || chunks.isEmpty()) return FloatArray(0)
+
+        val result = FloatArray(sampleCount)
+        var remainingToSkip = totalSamples - sampleCount
+        var writeOffset = 0
+        for (chunk in chunks) {
+            if (remainingToSkip >= chunk.size) {
+                remainingToSkip -= chunk.size
+                continue
+            }
+
+            val sourceStart = remainingToSkip.coerceAtLeast(0)
+            val sourceCount = minOf(chunk.size - sourceStart, sampleCount - writeOffset)
+            chunk.copyInto(
+                destination = result,
+                destinationOffset = writeOffset,
+                startIndex = sourceStart,
+                endIndex = sourceStart + sourceCount,
+            )
+            writeOffset += sourceCount
+            remainingToSkip = 0
+            if (writeOffset >= sampleCount) break
+        }
+        return if (writeOffset == sampleCount) result else result.copyOf(writeOffset)
     }
 
     private fun trailingSilenceMs(
