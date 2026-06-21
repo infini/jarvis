@@ -120,9 +120,10 @@ scripts/jarvis-activation-captures.sh
 scripts/jarvis-idle-guard.sh 20
 scripts/jarvis-command-window-timeout.sh 30
 scripts/jarvis-command-window-timeout.sh 30 open_camera
+scripts/jarvis-command-window-timeout-matrix.sh 30
 ```
 
-`jarvis-idle-guard.sh`는 idle 상태에서 지정 시간 동안 accepted activation 또는 command STT의 `listen_start`/`ready_for_speech`가 발생하지 않는지 확인합니다. `owner_audio_activation_rejected`는 호출어가 아니어서 조용히 거절된 정상 idle 경로로 봅니다. 성공 시에는 요약과 원본 logcat 파일 경로만 출력하고, 실패 시에는 원인 이벤트를 함께 출력합니다. `jarvis-command-window-timeout.sh`는 debug no-display Activity로 command window를 열고, 지정한 시간 뒤 `command_window_timeout`이 발생하며 이후 `ready_for_speech`가 다시 나오지 않는지 확인합니다. 두 번째 인자로 command id를 넘기면 `open_camera`, `open_front_camera`, `open_rear_camera`, `take_photo`, `home` 같은 명령 실행 후 command window가 다시 열린 뒤 timeout되는 경로를 검증합니다.
+`jarvis-idle-guard.sh`는 idle 상태에서 지정 시간 동안 accepted activation 또는 command STT의 `listen_start`/`ready_for_speech`가 발생하지 않는지 확인합니다. `owner_audio_activation_rejected`는 호출어가 아니어서 조용히 거절된 정상 idle 경로로 봅니다. 성공 시에는 요약과 원본 logcat 파일 경로만 출력하고, 실패 시에는 원인 이벤트를 함께 출력합니다. `jarvis-command-window-timeout.sh`는 debug no-display Activity로 command window를 열고, 지정한 시간 뒤 `command_window_timeout`이 발생하며 이후 `ready_for_speech`가 다시 나오지 않는지 확인합니다. 두 번째 인자로 command id를 넘기면 `open_camera`, `open_front_camera`, `open_rear_camera`, `take_photo`, `home` 같은 명령 실행 후 command window가 다시 열린 뒤 timeout되는 경로를 검증합니다. `jarvis-command-window-timeout-matrix.sh`는 기본 command window와 `open_camera`, `open_front_camera`, `open_rear_camera`, `take_photo`, `home`을 같은 기준으로 순차 검증합니다.
 
 ```bash
 scripts/jarvis-command-trace.sh 45

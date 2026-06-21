@@ -6,6 +6,7 @@ COMMAND="${2:-}"
 ACTIVITY="com.personal.jarvis/.debug.JarvisDebugCommandWindowActivity"
 LOG_TAG="JarvisLatency JarvisVoiceService"
 REQUEST_ID="$(date +%s)-$$"
+QUIET="${JARVIS_TIMEOUT_QUIET:-0}"
 
 case "$WINDOW_SECONDS" in
   ''|*[!0-9]*)
@@ -46,7 +47,9 @@ LAST_READY_AFTER_TIMEOUT="$(
   ' "$LOG_FILE" | tail -1 || true
 )"
 
-cat "$LOG_FILE"
+if [[ "$QUIET" != "1" ]]; then
+  cat "$LOG_FILE"
+fi
 echo "log_file=$LOG_FILE"
 
 if [[ -z "$OPEN_LINE" ]]; then
