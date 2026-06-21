@@ -51,6 +51,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - Android STT command window는 짧은 명령 구문에 맞춰 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 300ms, possibly-complete silence 150ms, complete silence 300ms를 사용한다. 빠른 실행은 final보다 partial command path로 우선 달성한다.
 - owner audio ASR은 idle에서 Android STT를 열기 전 activation phrase만 확인한다. owner audio ASR에서 `자비스 깨어나`를 잡으면 30초 command window와 Android command STT를 시작하고, 그렇지 않으면 overlay/비프음 없이 owner gate 대기로 돌아간다.
 - activation 디버깅은 반복 수동 발화를 요구하지 않도록 변경한다. debug APK는 owner gate 통과 후 activation ASR에 사용한 1800ms 원본 WAV와 JSON 메타데이터를 cache `jarvis-activation-attempts/`에 자동 저장하며, `scripts/jarvis-activation-replay.sh`는 저장된 WAV들을 현재 APK의 local activation ASR로 재디코딩한다. `scripts/jarvis-activation-captures.sh`는 저장 샘플을 host `/tmp`로 가져온다.
+- command window timeout은 debug APK의 no-display `JarvisDebugCommandWindowActivity`로 사용자의 발화 없이 검증한다. `scripts/jarvis-command-window-timeout.sh 30`은 command window를 30초 열고 `command_window_timeout` 이후 `ready_for_speech`가 다시 발생하지 않는지 검사한다.
 - 2026-06-21 실기기 trace에서 AiAi STT partial `카메라 실행해 줘`가 `open_camera`로 파싱되고 카메라 foreground 실행이 확인되었다. 해당 trace의 `speech_parse`는 648ms였다.
 - 사용자 준비음/진동은 owner authorization 직후가 아니라 `자비스 깨어나` activation으로 열린 Android STT `ready_for_speech` callback 시점에 낸다.
 - command listening timeout이 발화 진행 중인 Android STT를 먼저 취소하지 않도록, `speech_begin` 이후에는 active speech deadline grace가 command window 종료를 담당한다. active speech grace는 3.5초다.
@@ -336,6 +337,14 @@ scripts/jarvis-activation-captures.sh
 ```
 
 debug APK는 activation attempt마다 `jarvis-activation-attempts/activation-<timestamp>-<accepted|rejected>.wav`와 같은 이름의 `.json` 메타데이터를 cache에 저장한다. replay 스크립트는 사용자의 추가 발화 없이 저장 WAV를 현재 APK의 `LocalCommandRecognizer.recognizeBufferedActivation`으로 다시 실행해 text, accepted, endpoint, RMS, gain을 리포트한다. 이 절차를 먼저 통과하지 못한 threshold/fuzzy rule 변경은 실시간 발화 테스트로 넘기지 않는다.
+
+command window timeout은 다음 스크립트로 실기기에서 검증한다.
+
+```bash
+scripts/jarvis-command-window-timeout.sh 30
+```
+
+스크립트는 debug command window를 열고 지정 시간 뒤 `command_window_timeout`이 발생하는지 확인한다. timeout 이후 같은 로그 안에 `ready_for_speech`가 다시 나타나면 command STT가 idle 전환 뒤 재시작된 것이므로 실패로 본다.
 
 ```bash
 scripts/jarvis-command-trace.sh 45

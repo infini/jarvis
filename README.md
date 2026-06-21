@@ -62,6 +62,8 @@ Idle에서는 owner gate가 소유자 목소리인지 먼저 확인하지만, �
 
 Jarvis 상태 overlay는 사용자가 바로 판단해야 하는 순간에만 표시됩니다. 화면에는 노치/상태바 아래의 작은 iPhone-style pill 형태로 `JARVIS`만 표시하고, 상태는 작은 컬러 점과 소리/진동 패턴으로 전달합니다. 초록 점은 명령 대기/인식 중, 빨간 점은 방금 명령 인식에 실패했다는 뜻입니다. idle/소유자 확인/activation 확인 상태에서는 화면을 가리지 않도록 overlay를 숨깁니다. 명령 가능 상태에 들어갈 때는 확인음 2회와 짧은 진동이 함께 발생합니다.
 
+따라서 모바일 화면에서 `JARVIS` overlay가 보이지 않는 상태가 사용자 기준 idle 상태입니다. idle에서는 owner gate/local activation 확인만 돌고, Android command STT 준비음이나 명령 실패음은 발생하지 않아야 합니다.
+
 ## 속도 측정 로그
 
 음성 인식 속도 개선은 `JarvisLatency` 로그를 기준으로 판단합니다. 다음 명령을 켜고 `자비스 깨어나`, `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 한 사이클 말하면 같은 `trace=` 값으로 구간별 시간이 출력됩니다.
@@ -111,6 +113,14 @@ scripts/jarvis-activation-captures.sh
 ```
 
 `jarvis-activation-replay.sh`는 저장된 WAV들을 앱 내부에서 재디코딩해 accepted/text/RMS를 로그로 요약합니다. `jarvis-activation-captures.sh`는 WAV/JSON 묶음을 `/tmp`로 가져와 사람이 직접 확인하거나 별도 분석에 사용할 수 있게 합니다. 이 흐름으로 ASR rule과 threshold 변경은 저장 샘플로 먼저 검증하고, 사용자의 실시간 발화는 최종 확인 단계에서만 요청합니다.
+
+30초 command window timeout은 사용자가 발화하지 않아도 debug APK에서 검증할 수 있습니다.
+
+```bash
+scripts/jarvis-command-window-timeout.sh 30
+```
+
+이 스크립트는 debug no-display Activity로 command window를 열고, 지정한 시간 뒤 `command_window_timeout`이 발생하며 이후 `ready_for_speech`가 다시 나오지 않는지 확인합니다.
 
 ```bash
 scripts/jarvis-command-trace.sh 45

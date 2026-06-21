@@ -34,6 +34,14 @@
             android:taskAffinity="com.personal.jarvis.debug"
             android:theme="@android:style/Theme.NoDisplay" />
 
+        <activity
+            android:name=".debug.JarvisDebugCommandWindowActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:taskAffinity="com.personal.jarvis.debug"
+            android:theme="@android:style/Theme.NoDisplay" />
+
         <service
             android:name=".debug.JarvisDebugOwnerEnrollService"
             android:exported="false"

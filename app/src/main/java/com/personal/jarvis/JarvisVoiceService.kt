@@ -204,6 +204,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             return START_NOT_STICKY
         }
 
+        if (handleDebugCommandWindowIntent(intent)) return START_STICKY
         if (!listening && !ownerVoiceGate.isVerifying) scheduleNextCapture(150)
         return START_STICKY
     }
@@ -258,6 +259,33 @@ class JarvisVoiceService : Service(), RecognitionListener {
             it.setRecognitionListener(this)
         }
         Log.d(TAG, "Speech recognizer created: $recognitionServiceName")
+    }
+
+    private fun handleDebugCommandWindowIntent(intent: Intent?): Boolean {
+        if (!isDebuggableApp()) return false
+        val requestedWindowMs = intent
+            ?.getLongExtra(EXTRA_DEBUG_COMMAND_WINDOW_MS, 0L)
+            ?.coerceIn(DEBUG_MIN_COMMAND_WINDOW_MS, DEBUG_MAX_COMMAND_WINDOW_MS)
+            ?: 0L
+        if (requestedWindowMs <= 0L) return false
+
+        val requestId = intent?.getStringExtra(EXTRA_DEBUG_REQUEST_ID).orEmpty()
+        Log.i(
+            TAG,
+            "debug_command_window_open request_id=$requestId windowMs=$requestedWindowMs",
+        )
+        stopOwnerAudioActivationRecognition()
+        ownerVoiceGate.stop()
+        stopActiveCommandRecognitionForWindowClose()
+        commandFeedbackEnabled = true
+        startLatencyTrace(
+            "debug_command_window_open",
+            "request_id=$requestId windowMs=$requestedWindowMs",
+        )
+        openCommandWindow(requestedWindowMs)
+        signalCommandReady()
+        scheduleListening(OWNER_READY_LISTEN_DELAY_MS)
+        return true
     }
 
     private fun resetRecognizer() {
@@ -1112,6 +1140,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val ACTIVE_SPEECH_DEADLINE_RECHECK_MS = 500L
         private const val ACTIVE_SPEECH_DEADLINE_GRACE_MS = 3500L
         private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 100L
+        const val EXTRA_DEBUG_COMMAND_WINDOW_MS = "debug_command_window_ms"
+        const val EXTRA_DEBUG_REQUEST_ID = "debug_request_id"
+        private const val DEBUG_MIN_COMMAND_WINDOW_MS = 1000L
+        private const val DEBUG_MAX_COMMAND_WINDOW_MS = 60000L
         private const val DEFAULT_NOTIFICATION_TEXT = "'자비스 깨어나' 후 음성 명령을 듣습니다."
         private val AIAI_RECOGNITION_SERVICE = ComponentName(
             "com.google.android.as",
