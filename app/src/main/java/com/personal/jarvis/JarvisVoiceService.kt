@@ -102,11 +102,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (shouldUseOwnerGate() && !isCommandWindowOpen()) {
             notificationController.reset()
             feedbackController.showOwnerVerifying()
-            if (startIdleAndroidWakeListening()) {
-                return@Runnable
-            }
             if (localActivationSession.canStart()) {
                 startIdleActivationListening()
+            } else if (startIdleAndroidWakeListening()) {
+                return@Runnable
             } else {
                 startOwnerVerification()
             }

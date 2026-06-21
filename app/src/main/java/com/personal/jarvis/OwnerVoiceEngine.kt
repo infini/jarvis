@@ -33,7 +33,7 @@ object OwnerVoiceEngine {
     private const val ENROLLMENT_SEGMENT_STEP_MS = 700L
     private const val ENROLLMENT_DUPLICATE_SIMILARITY = 0.995f
     const val MIN_OWNER_EMBEDDINGS = 2
-    const val MAX_OWNER_EMBEDDINGS = 8
+    const val MAX_OWNER_EMBEDDINGS = 16
     const val HIGH_CONFIDENCE_ACCEPT_THRESHOLD = 0.36f
     private const val HIGH_CONFIDENCE_ACCEPT_MIN_SPEECH_MS = 450L
     const val NEAR_ACCEPT_THRESHOLD = 0.27f
