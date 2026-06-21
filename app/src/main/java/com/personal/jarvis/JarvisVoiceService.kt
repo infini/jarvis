@@ -91,6 +91,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var ownerAudioActivationThread: Thread? = null
     @Volatile private var activationOwnerVerificationActive = false
     private var activationOwnerVerificationThread: Thread? = null
+    @Volatile private var androidActivationReplayActive = false
+    private var androidActivationReplayThread: Thread? = null
     private val startListeningRunnable = Runnable {
         startListening()
     }
@@ -247,6 +249,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         ownerVoiceGate.stop()
         stopOwnerAudioActivationRecognition()
         stopActivationOwnerVerification()
+        stopAndroidActivationReplay()
         idleWakeAudioBuffer.stop()
         localActivationSession.stop()
         localCommandSession.stop()
@@ -276,18 +279,17 @@ class JarvisVoiceService : Service(), RecognitionListener {
             Log.w(TAG, "Speech recognition is not available; keeping service alive for owner gate/local fallback")
             return
         }
-        val recognitionService = AIAI_RECOGNITION_SERVICE
-        var recognitionServiceName = recognitionService.flattenToShortString()
+        var recognitionServiceName = "default"
         recognizer = runCatching {
-            SpeechRecognizer.createSpeechRecognizer(this, recognitionService)
+            SpeechRecognizer.createSpeechRecognizer(this)
         }.getOrElse { error ->
             Log.w(
                 TAG,
-                "AiAi speech recognizer unavailable: " +
-                    "${recognitionService.flattenToShortString()} ${error.message}",
+                "Default speech recognizer unavailable: ${error.message}",
             )
-            recognitionServiceName = "default"
-            SpeechRecognizer.createSpeechRecognizer(this)
+            val recognitionService = AIAI_RECOGNITION_SERVICE
+            recognitionServiceName = recognitionService.flattenToShortString()
+            SpeechRecognizer.createSpeechRecognizer(this, recognitionService)
         }.also {
             it.setRecognitionListener(this)
         }
@@ -296,10 +298,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
     private fun handleDebugCommandWindowIntent(intent: Intent?): Boolean {
         if (!isDebuggableApp()) return false
+        if (intent?.hasExtra(EXTRA_DEBUG_COMMAND_WINDOW_MS) != true) return false
+
         val requestedWindowMs = intent
-            ?.getLongExtra(EXTRA_DEBUG_COMMAND_WINDOW_MS, 0L)
-            ?.coerceIn(DEBUG_MIN_COMMAND_WINDOW_MS, DEBUG_MAX_COMMAND_WINDOW_MS)
-            ?: 0L
+            .getLongExtra(EXTRA_DEBUG_COMMAND_WINDOW_MS, 0L)
+            .coerceIn(DEBUG_MIN_COMMAND_WINDOW_MS, DEBUG_MAX_COMMAND_WINDOW_MS)
         if (requestedWindowMs <= 0L) return false
 
         val requestId = intent?.getStringExtra(EXTRA_DEBUG_REQUEST_ID).orEmpty()
@@ -353,6 +356,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         idleWakeAudioBuffer.stop()
         localActivationSession.stop()
         stopActivationOwnerVerification()
+        stopAndroidActivationReplay()
     }
 
     private fun scheduleListening(delayMs: Long) {
@@ -384,11 +388,6 @@ class JarvisVoiceService : Service(), RecognitionListener {
             System.currentTimeMillis() < idleAndroidWakeDisabledUntil ||
             recognizer == null
         ) {
-            return false
-        }
-
-        if (!idleWakeAudioBuffer.start()) {
-            markLatency("android_activation_audio_unavailable")
             return false
         }
 
@@ -679,6 +678,121 @@ class JarvisVoiceService : Service(), RecognitionListener {
             meanRms = snapshot.meanRms,
             asrGain = 1f,
         )
+    }
+
+    private fun shouldFallbackAndroidWakeToLocal(error: Int, hadSpeechInCurrentListen: Boolean): Boolean {
+        if (!hadSpeechInCurrentListen) return false
+        return error == SpeechRecognizer.ERROR_NO_MATCH ||
+            error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+    }
+
+    private fun startAndroidActivationReplay(
+        snapshot: IdleWakeAudioBuffer.Snapshot,
+        endpoint: String,
+        reason: String,
+        text: String = "",
+    ): Boolean {
+        if (androidActivationReplayActive || snapshot.samples.isEmpty()) return false
+        if (!LocalCommandRecognizer.isAvailable(applicationContext)) return false
+
+        androidActivationReplayActive = true
+        idleAndroidWakeDisabledUntil = System.currentTimeMillis() + ANDROID_WAKE_FALLBACK_DISABLE_MS
+        idleAndroidWakeConsecutiveStartErrors = 0
+        markLatency(
+            "android_activation_disabled",
+            "reason=$reason durationMs=$ANDROID_WAKE_FALLBACK_DISABLE_MS",
+        )
+        markLatency(
+            "android_activation_local_replay_start",
+            "endpoint=$endpoint samplesMs=${snapshot.durationMs} text=$text",
+        )
+        androidActivationReplayThread = Thread({
+            var failed = false
+            val result = runCatching {
+                LocalCommandRecognizer.recognizeBufferedActivation(
+                    context = applicationContext,
+                    samples = snapshot.samples,
+                    endpoint = "${endpoint}_local_replay",
+                )
+            }.onFailure {
+                failed = true
+                Log.w(TAG, "Android wake local replay failed: ${it.message}")
+            }.getOrNull()
+            result?.let {
+                saveActivationAttemptDebugCapture(
+                    samples = snapshot.samples,
+                    result = it,
+                    accepted = CommandInterpreter.isActivationWakeAsrEquivalent(it.text),
+                )
+            }
+
+            handler.post {
+                if (!androidActivationReplayActive || destroyed) return@post
+
+                androidActivationReplayActive = false
+                androidActivationReplayThread = null
+                handleAndroidActivationReplayOutcome(
+                    result = result,
+                    failed = failed,
+                    reason = reason,
+                    samples = snapshot.samples,
+                )
+            }
+        }, "JarvisAndroidActivationReplay").also { it.start() }
+        return true
+    }
+
+    private fun handleAndroidActivationReplayOutcome(
+        result: LocalCommandRecognizer.Result?,
+        failed: Boolean,
+        reason: String,
+        samples: FloatArray,
+    ) {
+        if (result != null) {
+            markLatency(
+                "android_activation_local_replay_complete",
+                "endpoint=${result.endpoint} elapsedMs=${result.elapsedMs} " +
+                    "speechMs=${result.activeSpeechMs} peakRms=${result.peakRms} " +
+                    "meanRms=${result.meanRms} asrGain=${result.asrGain} text=${result.text}",
+            )
+        }
+
+        when {
+            result != null && CommandInterpreter.isActivationWakeAsrEquivalent(result.text) -> {
+                markLatency("android_activation_local_replay_detected", "text=${result.text}")
+                startActivationOwnerVerification(
+                    LocalCommandRecognizer.ActivationResult(
+                        text = result.text,
+                        samples = samples,
+                        elapsedMs = result.elapsedMs,
+                        unavailable = result.unavailable,
+                        endpoint = result.endpoint,
+                        activeSpeechMs = result.activeSpeechMs,
+                        trailingSilenceMs = result.trailingSilenceMs,
+                        peakRms = result.peakRms,
+                        meanRms = result.meanRms,
+                        asrGain = result.asrGain,
+                    ),
+                )
+            }
+            failed || result?.unavailable == true -> {
+                finishLatency("android_activation_local_replay_unavailable", "reason=$reason")
+                scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
+            }
+            else -> {
+                finishLatency(
+                    "android_activation_local_replay_rejected",
+                    "reason=$reason text=${result?.text.orEmpty()}",
+                )
+                scheduleNextCapture(OWNER_VERIFY_RETRY_MS)
+            }
+        }
+    }
+
+    private fun stopAndroidActivationReplay() {
+        androidActivationReplayActive = false
+        androidActivationReplayThread?.interrupt()
+        androidActivationReplayThread = null
     }
 
     private fun handleLocalActivationRejectedSegment(result: LocalCommandRecognizer.ActivationResult) {
@@ -1297,6 +1411,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
         markLatency("ready_for_speech")
         if (idleAndroidWakeListening) {
             idleAndroidWakeConsecutiveStartErrors = 0
+            if (!idleWakeAudioBuffer.isActive) {
+                if (idleWakeAudioBuffer.start()) {
+                    markLatency("android_activation_audio_buffer_start")
+                } else {
+                    markLatency("android_activation_audio_unavailable")
+                }
+            }
         }
         if (commandFeedbackEnabled && (currentListeningAllowsCommandWithoutWake || isCommandWindowOpen())) {
             if (commandReadyFeedbackPending) {
@@ -1390,6 +1511,17 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     snapshot = snapshot,
                     endpoint = "android_stt_wake_error_$error",
                 )
+            }
+            if (
+                shouldFallbackAndroidWakeToLocal(error, hadSpeechInCurrentListen) &&
+                idleWakeSnapshot != null &&
+                startAndroidActivationReplay(
+                    snapshot = idleWakeSnapshot,
+                    endpoint = "android_stt_wake_error_$error",
+                    reason = "speech_error_$error",
+                )
+            ) {
+                return
             }
             finishLatency(
                 if (hadSpeechInCurrentListen) "android_activation_error_retry" else "android_activation_idle_retry",
@@ -1494,6 +1626,16 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 endpoint = "android_stt_wake_no_wake",
                 text = finalResults.firstOrNull().orEmpty(),
             )
+            if (
+                startAndroidActivationReplay(
+                    snapshot = snapshot,
+                    endpoint = "android_stt_wake_no_wake",
+                    reason = "final_no_wake",
+                    text = finalResults.firstOrNull().orEmpty(),
+                )
+            ) {
+                return
+            }
             finishLatency(
                 "android_activation_no_wake",
                 "count=${finalResults.size} first=${finalResults.firstOrNull().orEmpty()}",

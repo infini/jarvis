@@ -42,6 +42,6 @@ class JarvisDebugStartActivity : Activity() {
     companion object {
         private const val TAG = "JarvisDebugStart"
         const val EXTRA_RESET_VOICE_SERVICE = "reset_voice_service"
-        private const val RESET_START_DELAY_MS = 350L
+        private const val RESET_START_DELAY_MS = 1000L
     }
 }
