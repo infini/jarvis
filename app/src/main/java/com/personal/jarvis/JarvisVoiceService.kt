@@ -69,6 +69,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private var partialCommandKeepsWindowOpen = false
     private var partialActivationHandled = false
     private var commandFeedbackEnabled = false
+    private var commandReadyFeedbackPending = false
     private var forceLocalCommandOnce = false
     private var forceAndroidCommandOnce = false
     private var androidListenAfterLocal = false
@@ -783,6 +784,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         partialCommandHandled = false
         partialCommandKeepsWindowOpen = false
         commandFeedbackEnabled = false
+        commandReadyFeedbackPending = false
         partialActivationHandled = false
         commandWindowSpeechGraceUntil = 0L
         speechStartedInCurrentListen = false
@@ -849,6 +851,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (keepCommandWindowOpen) {
             openCommandWindow(COMMAND_SESSION_AUTH_WINDOW_MS)
             commandFeedbackEnabled = true
+            commandReadyFeedbackPending = false
             notificationController.update("명령 처리됨. 다음 명령을 말하세요.")
             feedbackController.commandHandled()
             finishLatency("command_complete", "keepWindow=true nextWindowMs=$COMMAND_SESSION_AUTH_WINDOW_MS")
@@ -876,6 +879,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
     }
 
     private fun signalCommandReady() {
+        commandReadyFeedbackPending = true
         notificationController.update("JARVIS 실행 중. 명령을 말하세요.")
         feedbackController.commandListening()
     }
@@ -885,7 +889,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         markLatency("ready_for_speech")
         if (commandFeedbackEnabled && (currentListeningAllowsCommandWithoutWake || isCommandWindowOpen())) {
-            feedbackController.commandReady()
+            if (commandReadyFeedbackPending) {
+                commandReadyFeedbackPending = false
+                feedbackController.commandReady()
+            } else {
+                feedbackController.commandListening()
+            }
         }
         Log.d(TAG, "Ready for speech")
     }

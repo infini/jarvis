@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.util.Log
 
 class JarvisFeedbackController(
     private val context: Context,
@@ -34,6 +35,7 @@ class JarvisFeedbackController(
 
     fun commandReady() {
         signal(JarvisVoiceState.COMMAND_READY, force = true) {
+            Log.d(TAG, "feedback=command_ready")
             vibrate(longArrayOf(0L, 90L))
             tone(ToneGenerator.TONE_PROP_ACK, 90)
             handler.postDelayed({ tone(ToneGenerator.TONE_PROP_ACK, 90) }, 150L)
@@ -50,6 +52,7 @@ class JarvisFeedbackController(
 
     fun commandHandled() {
         signal(JarvisVoiceState.COMMAND_HANDLED, force = true) {
+            Log.d(TAG, "feedback=command_handled")
             vibrate(longArrayOf(0L, 55L))
             tone(ToneGenerator.TONE_PROP_ACK, 80)
         }
@@ -57,6 +60,7 @@ class JarvisFeedbackController(
 
     fun commandFailed() {
         signal(JarvisVoiceState.COMMAND_FAILED, force = true) {
+            Log.d(TAG, "feedback=command_failed")
             vibrate(longArrayOf(0L, 55L, 70L, 55L))
             tone(ToneGenerator.TONE_PROP_NACK, 110)
             handler.postDelayed({ tone(ToneGenerator.TONE_PROP_NACK, 110) }, 170L)
@@ -65,6 +69,7 @@ class JarvisFeedbackController(
 
     fun commandWindowClosed() {
         signal(JarvisVoiceState.IDLE, force = true) {
+            Log.d(TAG, "feedback=command_window_closed")
             vibrate(longArrayOf(0L, 45L, 70L, 45L))
             tone(ToneGenerator.TONE_PROP_BEEP, 90)
         }
@@ -104,5 +109,9 @@ class JarvisFeedbackController(
             @Suppress("DEPRECATION")
             deviceVibrator.vibrate(pattern, -1)
         }
+    }
+
+    companion object {
+        private const val TAG = "JarvisFeedback"
     }
 }
