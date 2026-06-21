@@ -20,11 +20,11 @@ object LocalCommandRecognizer {
     private const val TAG = "JarvisLocalCommand"
     private const val SAMPLE_RATE_HZ = 16000
     private const val READ_INTERVAL_MS = 40L
-    private const val LOCAL_SPEECH_RMS_THRESHOLD = 0.0020f
+    private const val LOCAL_SPEECH_RMS_THRESHOLD = 0.0012f
     private const val LOCAL_MIN_ACTIVE_SPEECH_MS = 160L
     private const val LOCAL_TRAILING_SILENCE_MS = 240L
     private const val LOCAL_EARLY_ENDPOINT_MIN_LISTEN_MS = 560L
-    private const val ACTIVATION_SPEECH_RMS_THRESHOLD = 0.0012f
+    private const val ACTIVATION_SPEECH_RMS_THRESHOLD = 0.0005f
     private const val ACTIVATION_MIN_ACTIVE_SPEECH_MS = 320L
     private const val ACTIVATION_TRAILING_SILENCE_MS = 360L
     private const val ACTIVATION_EARLY_ENDPOINT_MIN_LISTEN_MS = 760L
@@ -32,7 +32,7 @@ object LocalCommandRecognizer {
     private const val ACTIVATION_MAX_SEGMENT_MS = 8000L
     private const val ACTIVATION_ROLLING_AUDIO_MS = 3600L
     private const val LOCAL_ASR_TARGET_RMS = 0.04f
-    private const val LOCAL_ASR_GAIN_MIN_RMS = 0.0010f
+    private const val LOCAL_ASR_GAIN_MIN_RMS = 0.0002f
     private const val LOCAL_ASR_MAX_GAIN = 30f
     private const val BUFFERED_TAIL_PADDING_SAMPLES = SAMPLE_RATE_HZ / 2
     private const val MODEL_DIR = "sherpa-korean-streaming"
@@ -523,7 +523,8 @@ object LocalCommandRecognizer {
         val startedAt = SystemClock.elapsedRealtime()
         val stream = recognizer.createStream()
         val audioLevelStats = audioLevelStats(samples)
-        val asrGain = asrGainForRms(audioLevelStats.peakRms)
+        val gainReferenceRms = audioLevelStats.meanRms.coerceAtLeast(LOCAL_ASR_GAIN_MIN_RMS)
+        val asrGain = asrGainForRms(gainReferenceRms)
         val asrSamples = applyAsrGain(samples, asrGain)
         return try {
             stream.acceptWaveform(asrSamples, SAMPLE_RATE_HZ)
