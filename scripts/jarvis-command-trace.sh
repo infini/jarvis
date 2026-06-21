@@ -11,6 +11,7 @@ MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSED_MS="${JARVIS_MAX_SPEECH_PARSED_MS:-2500}"
 MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
 MAX_OWNER_GATE_MS="${JARVIS_MAX_OWNER_GATE_MS:-2500}"
+MAX_COMMAND_ACCESS_MS="${JARVIS_MAX_COMMAND_ACCESS_MS:-1200}"
 START_DEBUG_ACTIVITY="${JARVIS_START_DEBUG_ACTIVITY:-1}"
 SKIP_PROFILE_CHECK="${JARVIS_SKIP_PROFILE_CHECK:-0}"
 
@@ -42,6 +43,13 @@ case "$MAX_OWNER_GATE_MS" in
     ;;
 esac
 
+case "$MAX_COMMAND_ACCESS_MS" in
+  ''|*[!0-9]*)
+    echo "JARVIS_MAX_COMMAND_ACCESS_MS must be an integer" >&2
+    exit 2
+    ;;
+esac
+
 case "$MAX_SPEECH_PARSED_MS" in
   ''|*[!0-9]*)
     echo "JARVIS_MAX_SPEECH_PARSED_MS must be an integer" >&2
@@ -56,7 +64,9 @@ fi
 echo "Clearing Jarvis logcat and recording for ${DURATION_SECONDS}s."
 adb logcat -c
 if [[ "$START_DEBUG_ACTIVITY" == "1" ]]; then
-  adb shell am start -n com.personal.jarvis/.debug.JarvisDebugStartActivity >/dev/null 2>&1 || true
+  adb shell am start \
+    -n com.personal.jarvis/.debug.JarvisDebugStartActivity \
+    --ez reset_voice_service true >/dev/null 2>&1 || true
   sleep 1
 fi
 echo "Speak now: say '자비스'. When the green JARVIS indicator appears or the ready tone/vibration plays, say one command such as '카메라 실행', then wait for the handled tone before the next command: '후면', '전면', '찍어', '종료'."
@@ -116,7 +126,8 @@ SLOW_LINES="$(
     -v maxParsed="$MAX_PARSED_MS" \
     -v maxSpeechParsed="$MAX_SPEECH_PARSED_MS" \
     -v maxAccess="$MAX_ACCESS_MS" \
-    -v maxOwnerGate="$MAX_OWNER_GATE_MS" '
+    -v maxOwnerGate="$MAX_OWNER_GATE_MS" \
+    -v maxCommandAccess="$MAX_COMMAND_ACCESS_MS" '
       function fieldValue(key, i, pair) {
         for (i = 1; i <= NF; i++) {
           split($i, pair, "=")
@@ -128,17 +139,25 @@ SLOW_LINES="$(
         parsed = fieldValue("parsed")
         speechParsed = fieldValue("speech_parse")
         access = fieldValue("access")
+        speechAccess = fieldValue("speech_access")
+        commandAccess = fieldValue("command_access")
         ownerGate = fieldValue("owner_gate")
         parseBudget = speechParsed > 0 ? maxSpeechParsed : maxParsed
         parseLatency = speechParsed > 0 ? speechParsed : parsed
-        if (parseLatency <= 0 || parseLatency > parseBudget || (access > 0 && access > maxAccess) || (ownerGate > 0 && ownerGate > maxOwnerGate)) print
+        accessLatency = speechAccess > 0 ? speechAccess : access
+        slow = parseLatency <= 0
+        slow = slow || parseLatency > parseBudget
+        slow = slow || (accessLatency > 0 && accessLatency > maxAccess)
+        slow = slow || (commandAccess > 0 && commandAccess > maxCommandAccess)
+        slow = slow || (ownerGate > 0 && ownerGate > maxOwnerGate)
+        if (slow) print
       }
     '
 )"
 
 if [[ -n "$SLOW_LINES" ]]; then
   echo "FAIL: command_complete trace exceeded latency threshold." >&2
-  echo "Thresholds: owner_gate<=${MAX_OWNER_GATE_MS}ms; speech_parse<=${MAX_SPEECH_PARSED_MS}ms when speech_begin is present; otherwise parsed<=${MAX_PARSED_MS}ms. access<=${MAX_ACCESS_MS}ms when access is present." >&2
+  echo "Thresholds: owner_gate<=${MAX_OWNER_GATE_MS}ms; speech_parse<=${MAX_SPEECH_PARSED_MS}ms when speech_begin is present; otherwise parsed<=${MAX_PARSED_MS}ms. speech_access<=${MAX_ACCESS_MS}ms and command_access<=${MAX_COMMAND_ACCESS_MS}ms when access is present." >&2
   printf '%s\n' "$SLOW_LINES" >&2
   exit 1
 fi

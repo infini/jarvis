@@ -37,8 +37,8 @@ object OwnerVoiceEngine {
     const val NEAR_ACCEPT_THRESHOLD = 0.28f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
     private const val NEAR_ACCEPT_MIN_SPEECH_MS = 450L
-    const val SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD = 0.24f
-    private const val SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS = 450L
+    const val SOFT_WAKE_SINGLE_ACCEPT_THRESHOLD = 0.20f
+    private const val SOFT_WAKE_SINGLE_ACCEPT_MIN_SPEECH_MS = 600L
     const val SOFT_WAKE_ACCEPT_THRESHOLD = 0.14f
     private const val SOFT_WAKE_ACCEPT_REQUIRED_COUNT = 4
     private const val SOFT_WAKE_ACCEPT_MIN_SPEECH_MS = 400L

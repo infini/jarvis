@@ -11,7 +11,7 @@ import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 
-class JarvisAccessibilityService : AccessibilityService() {
+class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectReceiver {
     private val handler = Handler(Looper.getMainLooper())
     private val cameraController by lazy {
         CameraAccessibilityController(this, handler)
@@ -35,7 +35,7 @@ class JarvisAccessibilityService : AccessibilityService() {
             JarvisLatencyTrace.logExternal(
                 traceId = traceId,
                 event = "accessibility_command_received",
-                detail = "command=$command totalMs=$totalMs busDelayMs=$busDelayMs",
+                detail = "command=$command totalMs=$totalMs busDelayMs=$busDelayMs transport=broadcast",
             )
             handleCommand(command, traceId)
         }
@@ -65,6 +65,7 @@ class JarvisAccessibilityService : AccessibilityService() {
             registerReceiver(commandReceiver, commandFilter)
             registerReceiver(stateReceiver, stateFilter)
         }
+        CommandBus.registerDirectReceiver(this)
         ensureVoiceServiceRunning("accessibility_connected")
         handler.removeCallbacks(voiceServiceWatchdog)
         handler.postDelayed(voiceServiceWatchdog, VOICE_SERVICE_WATCHDOG_INTERVAL_MS)
@@ -72,6 +73,7 @@ class JarvisAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         handler.removeCallbacks(voiceServiceWatchdog)
+        CommandBus.unregisterDirectReceiver(this)
         runCatching { unregisterReceiver(commandReceiver) }
         runCatching { unregisterReceiver(stateReceiver) }
         stateIndicatorController.dispose()
@@ -81,6 +83,28 @@ class JarvisAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
 
     override fun onInterrupt() = Unit
+
+    override fun onDirectCommand(
+        command: String,
+        source: String,
+        traceId: Long?,
+        traceStartedAtMs: Long,
+        sentAtMs: Long,
+    ): Boolean {
+        val busDelayMs = JarvisLatencyTrace.elapsedSince(sentAtMs)
+        val totalMs = if (traceStartedAtMs > 0L) {
+            JarvisLatencyTrace.elapsedSince(traceStartedAtMs)
+        } else {
+            0L
+        }
+        JarvisLatencyTrace.logExternal(
+            traceId = traceId,
+            event = "accessibility_command_received",
+            detail = "command=$command totalMs=$totalMs busDelayMs=$busDelayMs transport=direct source=$source",
+        )
+        handleCommand(command, traceId)
+        return true
+    }
 
     private fun ensureVoiceServiceRunning(source: String) {
         if (JarvisVoiceService.isRunning) return

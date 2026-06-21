@@ -25,6 +25,26 @@ object CommandBus {
     const val COMMAND_SLEEP_SCREEN = "sleep_screen"
     const val COMMAND_STOP_LISTENING = "stop_listening"
 
+    @Volatile private var directReceiver: DirectReceiver? = null
+
+    interface DirectReceiver {
+        fun onDirectCommand(
+            command: String,
+            source: String,
+            traceId: Long?,
+            traceStartedAtMs: Long,
+            sentAtMs: Long,
+        ): Boolean
+    }
+
+    fun registerDirectReceiver(receiver: DirectReceiver) {
+        directReceiver = receiver
+    }
+
+    fun unregisterDirectReceiver(receiver: DirectReceiver) {
+        if (directReceiver === receiver) directReceiver = null
+    }
+
     fun send(
         context: Context,
         command: String,
@@ -32,11 +52,24 @@ object CommandBus {
         traceId: Long? = null,
         traceStartedAtMs: Long? = null,
     ) {
+        val sentAtMs = SystemClock.elapsedRealtime()
+        if (
+            directReceiver?.onDirectCommand(
+                command = command,
+                source = source,
+                traceId = traceId,
+                traceStartedAtMs = traceStartedAtMs ?: 0L,
+                sentAtMs = sentAtMs,
+            ) == true
+        ) {
+            return
+        }
+
         val intent = Intent(ACTION_COMMAND)
             .setPackage(context.packageName)
             .putExtra(EXTRA_COMMAND, command)
             .putExtra(EXTRA_SOURCE, source)
-            .putExtra(EXTRA_SENT_AT_MS, SystemClock.elapsedRealtime())
+            .putExtra(EXTRA_SENT_AT_MS, sentAtMs)
         if (traceId != null) {
             intent.putExtra(EXTRA_TRACE_ID, traceId)
         }

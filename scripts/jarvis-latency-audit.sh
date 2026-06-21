@@ -7,6 +7,7 @@ MAX_PARSED_MS="${JARVIS_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSED_MS="${JARVIS_MAX_SPEECH_PARSED_MS:-2500}"
 MAX_ACCESS_MS="${JARVIS_MAX_ACCESS_MS:-4000}"
 MAX_OWNER_GATE_MS="${JARVIS_MAX_OWNER_GATE_MS:-2500}"
+MAX_COMMAND_ACCESS_MS="${JARVIS_MAX_COMMAND_ACCESS_MS:-1200}"
 
 usage() {
   echo "usage: $0 <jarvis_latency_log> [...]" >&2
@@ -45,7 +46,8 @@ slow_command_lines() {
     -v maxParsed="$MAX_PARSED_MS" \
     -v maxSpeechParsed="$MAX_SPEECH_PARSED_MS" \
     -v maxAccess="$MAX_ACCESS_MS" \
-    -v maxOwnerGate="$MAX_OWNER_GATE_MS" '
+    -v maxOwnerGate="$MAX_OWNER_GATE_MS" \
+    -v maxCommandAccess="$MAX_COMMAND_ACCESS_MS" '
       function fieldValue(key, i, pair) {
         for (i = 1; i <= NF; i++) {
           split($i, pair, "=")
@@ -57,10 +59,18 @@ slow_command_lines() {
         parsed = fieldValue("parsed")
         speechParsed = fieldValue("speech_parse")
         access = fieldValue("access")
+        speechAccess = fieldValue("speech_access")
+        commandAccess = fieldValue("command_access")
         ownerGate = fieldValue("owner_gate")
         parseBudget = speechParsed > 0 ? maxSpeechParsed : maxParsed
         parseLatency = speechParsed > 0 ? speechParsed : parsed
-        if (parseLatency <= 0 || parseLatency > parseBudget || (access > 0 && access > maxAccess) || (ownerGate > 0 && ownerGate > maxOwnerGate)) print
+        accessLatency = speechAccess > 0 ? speechAccess : access
+        slow = parseLatency <= 0
+        slow = slow || parseLatency > parseBudget
+        slow = slow || (accessLatency > 0 && accessLatency > maxAccess)
+        slow = slow || (commandAccess > 0 && commandAccess > maxCommandAccess)
+        slow = slow || (ownerGate > 0 && ownerGate > maxOwnerGate)
+        if (slow) print
       }
     '
 }
@@ -292,6 +302,7 @@ require_integer JARVIS_MAX_PARSED_MS "$MAX_PARSED_MS"
 require_integer JARVIS_MAX_SPEECH_PARSED_MS "$MAX_SPEECH_PARSED_MS"
 require_integer JARVIS_MAX_ACCESS_MS "$MAX_ACCESS_MS"
 require_integer JARVIS_MAX_OWNER_GATE_MS "$MAX_OWNER_GATE_MS"
+require_integer JARVIS_MAX_COMMAND_ACCESS_MS "$MAX_COMMAND_ACCESS_MS"
 
 if [[ "$#" -eq 0 ]]; then
   usage
