@@ -14,6 +14,7 @@ import com.personal.jarvis.LocalCommandRecognizer
 import com.personal.jarvis.OwnerVoiceEngine
 import com.personal.jarvis.OwnerVoiceStore
 import com.personal.jarvis.PcmWavFile
+import com.personal.jarvis.WakePhraseTemplateMatcher
 import java.io.File
 
 class JarvisDebugOwnerEnrollService : Service() {
@@ -134,6 +135,7 @@ class JarvisDebugOwnerEnrollService : Service() {
     private fun writeDebugWav(samples: FloatArray): File {
         val file = File(cacheDir, "jarvis-owner-enroll-last.wav")
         PcmWavFile.writeMono16(file, samples, SAMPLE_RATE_HZ)
+        WakePhraseTemplateMatcher.invalidateCache()
         return file
     }
 

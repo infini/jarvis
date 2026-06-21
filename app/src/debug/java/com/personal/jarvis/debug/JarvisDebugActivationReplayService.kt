@@ -52,7 +52,8 @@ class JarvisDebugActivationReplayService : Service() {
             return
         }
 
-        var acceptedCount = 0
+        var phraseAcceptedCount = 0
+        var ownerAcceptedCount = 0
         wavFiles.forEach { wavFile ->
             runCatching {
                 val samples = PcmWavFile.readMono16(wavFile)
@@ -62,11 +63,26 @@ class JarvisDebugActivationReplayService : Service() {
                     endpoint = "debug_activation_replay",
                 )
                 val accepted = CommandInterpreter.isActivationWakeAsrEquivalent(result.text)
-                val ownerWindowedMatch = OwnerVoiceEngine.verifyOwnerBestWindow(this, samples)
+                val activationSamples = LocalCommandRecognizer.activationSamplesForResult(samples, result)
+                val fullOwnerWindowedMatch = OwnerVoiceEngine.verifyOwnerBestWindow(this, samples)
+                val candidateOwnerWindowedMatch = if (activationSamples !== samples) {
+                    OwnerVoiceEngine.verifyOwnerBestWindow(this, activationSamples)
+                } else {
+                    null
+                }
+                val ownerWindowedMatch = if (
+                    candidateOwnerWindowedMatch != null &&
+                    isBetterOwnerWindow(candidateOwnerWindowedMatch, fullOwnerWindowedMatch)
+                ) {
+                    candidateOwnerWindowedMatch
+                } else {
+                    fullOwnerWindowedMatch
+                }
                 val ownerMatch = OwnerVoiceEngine.acceptActivationPhraseMatch(
                     ownerWindowedMatch.match,
                 )
-                if (accepted) acceptedCount += 1
+                if (accepted) phraseAcceptedCount += 1
+                if (accepted && ownerMatch.accepted) ownerAcceptedCount += 1
                 Log.i(
                     TAG,
                     "request_id=$requestId status=replay file=${wavFile.name} " +
@@ -91,12 +107,25 @@ class JarvisDebugActivationReplayService : Service() {
 
         Log.i(
             TAG,
-            "request_id=$requestId status=completed total=${wavFiles.size} accepted=$acceptedCount",
+            "request_id=$requestId status=completed total=${wavFiles.size} " +
+                "accepted=$ownerAcceptedCount phraseAccepted=$phraseAcceptedCount",
         )
     }
 
     companion object {
         private const val TAG = "JarvisDebugReplay"
         private const val CAPTURE_DIR = "jarvis-activation-attempts"
+    }
+
+    private fun isBetterOwnerWindow(
+        candidate: OwnerVoiceEngine.WindowedMatch,
+        current: OwnerVoiceEngine.WindowedMatch,
+    ): Boolean {
+        return when {
+            candidate.match.accepted && !current.match.accepted -> true
+            !candidate.match.accepted && current.match.accepted -> false
+            candidate.match.score != current.match.score -> candidate.match.score > current.match.score
+            else -> candidate.match.activeSpeechMs > current.match.activeSpeechMs
+        }
     }
 }

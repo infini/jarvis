@@ -82,8 +82,11 @@ if [[ -z "$IDLE_READY" ]]; then
   exit 1
 fi
 
-if [[ "$PROMPT_DELAY_SECONDS" != "0" ]]; then
+if [[ "$PROMPT_DELAY_SECONDS" != "0" && "$PROMPT_VIBRATE_MS" != "0" ]]; then
   echo "Get ready: phone will vibrate in ${PROMPT_DELAY_SECONDS}s. Speak after the vibration."
+  sleep "$PROMPT_DELAY_SECONDS"
+elif [[ "$PROMPT_DELAY_SECONDS" != "0" ]]; then
+  echo "Get ready: speak when prompted in ${PROMPT_DELAY_SECONDS}s."
   sleep "$PROMPT_DELAY_SECONDS"
 fi
 if [[ "$PROMPT_VIBRATE_MS" != "0" ]]; then

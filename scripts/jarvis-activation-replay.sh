@@ -4,7 +4,7 @@ set -euo pipefail
 ACTIVITY="com.personal.jarvis/.debug.JarvisDebugActivationReplayActivity"
 LOG_TAG="JarvisDebugReplay"
 REQUEST_ID="$(date +%s)-$$"
-WAIT_DEADLINE=90
+WAIT_DEADLINE=180
 
 adb shell am start -n "$ACTIVITY" --es request_id "$REQUEST_ID" >/dev/null
 

@@ -36,7 +36,7 @@ object OwnerVoiceEngine {
     const val MAX_OWNER_EMBEDDINGS = 8
     const val HIGH_CONFIDENCE_ACCEPT_THRESHOLD = 0.36f
     private const val HIGH_CONFIDENCE_ACCEPT_MIN_SPEECH_MS = 450L
-    const val NEAR_ACCEPT_THRESHOLD = 0.28f
+    const val NEAR_ACCEPT_THRESHOLD = 0.27f
     private const val NEAR_ACCEPT_REQUIRED_COUNT = 2
     private const val NEAR_ACCEPT_MIN_SPEECH_MS = 450L
     private const val RELAXED_ACCEPT_MIN_PEAK_RMS = 0.0035f
@@ -47,7 +47,8 @@ object OwnerVoiceEngine {
     private const val SOFT_WAKE_ACCEPT_MIN_SPEECH_MS = 400L
     private const val SOFT_WAKE_BRIDGE_THRESHOLD = 0.10f
     private const val ACTIVATION_PHRASE_ACCEPT_THRESHOLD = NEAR_ACCEPT_THRESHOLD
-    private const val ACTIVATION_PHRASE_ACCEPT_MIN_SPEECH_MS = NEAR_ACCEPT_MIN_SPEECH_MS
+    private const val ACTIVATION_PHRASE_ACCEPT_MIN_SPEECH_MS = 250L
+    private const val ACTIVATION_PHRASE_ACCEPT_MIN_PEAK_RMS = MIN_PEAK_RMS
     private const val OWNER_BEST_WINDOW_STEP_MS = 300L
     private const val OWNER_BEST_WINDOW_CANDIDATES_PER_DURATION = 3
     private val OWNER_BEST_WINDOW_DURATIONS_MS = longArrayOf(1200L, 1600L, 2200L)
@@ -521,7 +522,7 @@ object OwnerVoiceEngine {
             match.ownerEmbeddingCount >= OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS &&
             match.score >= HIGH_CONFIDENCE_ACCEPT_THRESHOLD &&
             match.activeSpeechMs >= HIGH_CONFIDENCE_ACCEPT_MIN_SPEECH_MS &&
-            hasRelaxedAcceptPeak(match)
+            hasActivationPhraseAcceptPeak(match)
         ) {
             return match.copy(
                 accepted = true,
@@ -534,7 +535,7 @@ object OwnerVoiceEngine {
             match.ownerEmbeddingCount >= OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS &&
             match.score >= ACTIVATION_PHRASE_ACCEPT_THRESHOLD &&
             match.activeSpeechMs >= ACTIVATION_PHRASE_ACCEPT_MIN_SPEECH_MS &&
-            hasRelaxedAcceptPeak(match)
+            hasActivationPhraseAcceptPeak(match)
         ) {
             return match.copy(
                 accepted = true,
@@ -548,6 +549,10 @@ object OwnerVoiceEngine {
 
     private fun hasRelaxedAcceptPeak(match: Match): Boolean {
         return match.peakRms >= RELAXED_ACCEPT_MIN_PEAK_RMS
+    }
+
+    private fun hasActivationPhraseAcceptPeak(match: Match): Boolean {
+        return match.peakRms >= ACTIVATION_PHRASE_ACCEPT_MIN_PEAK_RMS
     }
 
     @SuppressLint("MissingPermission")

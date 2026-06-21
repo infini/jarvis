@@ -759,11 +759,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
 
         when {
             result != null && CommandInterpreter.isActivationWakeAsrEquivalent(result.text) -> {
+                val activationSamples = LocalCommandRecognizer.activationSamplesForResult(samples, result)
                 markLatency("android_activation_local_replay_detected", "text=${result.text}")
                 startActivationOwnerVerification(
                     LocalCommandRecognizer.ActivationResult(
                         text = result.text,
                         samples = samples,
+                        alternateSamples = activationSamples.takeUnless { it === samples },
                         elapsedMs = result.elapsedMs,
                         unavailable = result.unavailable,
                         endpoint = result.endpoint,
@@ -863,7 +865,15 @@ class JarvisVoiceService : Service(), RecognitionListener {
         markLatency("activation_owner_verify_start", "samples=${result.samples.size} text=${result.text}")
         activationOwnerVerificationThread = Thread({
             val ownerWindowedMatch = runCatching {
-                OwnerVoiceEngine.verifyOwnerBestWindow(applicationContext, result.samples)
+                val primary = OwnerVoiceEngine.verifyOwnerBestWindow(applicationContext, result.samples)
+                val alternate = result.alternateSamples
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { OwnerVoiceEngine.verifyOwnerBestWindow(applicationContext, it) }
+                if (alternate != null && isBetterActivationOwnerWindow(alternate, primary)) {
+                    alternate
+                } else {
+                    primary
+                }
             }.onFailure {
                 Log.w(TAG, "Activation owner verification failed: ${it.message}")
             }.getOrElse {
@@ -890,6 +900,18 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 handleActivationOwnerVerificationOutcome(result, ownerMatch, ownerWindowedMatch)
             }
         }, "JarvisActivationOwnerVerify").also { it.start() }
+    }
+
+    private fun isBetterActivationOwnerWindow(
+        candidate: OwnerVoiceEngine.WindowedMatch,
+        current: OwnerVoiceEngine.WindowedMatch,
+    ): Boolean {
+        return when {
+            candidate.match.accepted && !current.match.accepted -> true
+            !candidate.match.accepted && current.match.accepted -> false
+            candidate.match.score != current.match.score -> candidate.match.score > current.match.score
+            else -> candidate.match.activeSpeechMs > current.match.activeSpeechMs
+        }
     }
 
     private fun handleActivationOwnerVerificationOutcome(
@@ -1803,7 +1825,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_POST_ACCEPT_AUDIO_MS = 900L
         private const val OWNER_VERIFY_RETRY_MS = 200L
         private const val ACTIVATION_CAPTURE_DIR = "jarvis-activation-attempts"
-        private const val MAX_ACTIVATION_CAPTURE_FILES = 80
+        private const val MAX_ACTIVATION_CAPTURE_FILES = 240
         private const val DEFAULT_RETRY_DELAY_MS = 300L
         private const val RECOGNIZER_RESET_RETRY_DELAY_MS = 1000L
         private const val OWNER_READY_LISTEN_DELAY_MS = 0L

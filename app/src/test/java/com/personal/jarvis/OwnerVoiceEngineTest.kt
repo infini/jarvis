@@ -402,13 +402,57 @@ class OwnerVoiceEngineTest {
     }
 
     @Test
+    fun activationPhraseOwnerMatchAcceptsShortTemplateCandidate() {
+        val result = OwnerVoiceEngine.acceptActivationPhraseMatch(
+            ownerMatch(
+                score = 0.32f,
+                activeSpeechMs = 275L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.006f,
+            ),
+        )
+
+        assertTrue(result.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.NEAR_CONSECUTIVE, result.acceptance)
+    }
+
+    @Test
+    fun activationPhraseOwnerMatchAcceptsLowVolumeNearScore() {
+        val result = OwnerVoiceEngine.acceptActivationPhraseMatch(
+            ownerMatch(
+                score = 0.278f,
+                activeSpeechMs = 600L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.00123f,
+            ),
+        )
+
+        assertTrue(result.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.NEAR_CONSECUTIVE, result.acceptance)
+    }
+
+    @Test
+    fun activationPhraseOwnerMatchRejectsTooShortTemplateCandidate() {
+        val result = OwnerVoiceEngine.acceptActivationPhraseMatch(
+            ownerMatch(
+                score = 0.32f,
+                activeSpeechMs = 200L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.006f,
+            ),
+        )
+
+        assertFalse(result.accepted)
+    }
+
+    @Test
     fun activationPhraseOwnerMatchRejectsLowPeakNearScore() {
         val result = OwnerVoiceEngine.acceptActivationPhraseMatch(
             ownerMatch(
                 score = 0.31f,
                 activeSpeechMs = 900L,
                 ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
-                peakRms = 0.0025f,
+                peakRms = 0.0011f,
             ),
         )
 

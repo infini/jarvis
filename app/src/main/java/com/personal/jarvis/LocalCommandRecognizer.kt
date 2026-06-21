@@ -41,6 +41,8 @@ object LocalCommandRecognizer {
     private const val JOINER = "$MODEL_DIR/joiner-epoch-99-avg-1.int8.onnx"
     private const val TOKENS = "$MODEL_DIR/tokens.txt"
     private const val ACTIVATION_HOTWORDS = "jarvis-activation-hotwords.txt"
+    private const val OWNER_ENROLLMENT_ENDPOINT_PREFIX = "owner_enrollment"
+    private const val TEMPLATE_ENDPOINT_SUFFIX = "_template"
     private val REQUIRED_ASSETS = listOf(ENCODER, DECODER, JOINER, TOKENS, ACTIVATION_HOTWORDS)
 
     private val initLock = Any()
@@ -59,11 +61,14 @@ object LocalCommandRecognizer {
         val peakRms: Float = 0f,
         val meanRms: Float = 0f,
         val asrGain: Float = 1f,
+        val candidateStartMs: Long = 0L,
+        val candidateDurationMs: Long = 0L,
     )
 
     data class ActivationResult(
         val text: String,
         val samples: FloatArray,
+        val alternateSamples: FloatArray? = null,
         val elapsedMs: Long,
         val unavailable: Boolean = false,
         val endpoint: String = "",
@@ -146,10 +151,54 @@ object LocalCommandRecognizer {
             parseCommand = false,
             logLabel = "Buffered activation greedy fallback",
         )
+        if (!endpoint.startsWith(OWNER_ENROLLMENT_ENDPOINT_PREFIX)) {
+            val templateResult = WakePhraseTemplateMatcher.match(applicationContext, samples)
+            if (templateResult.accepted) {
+                val audioLevelStats = audioLevelStats(samples)
+                Log.i(
+                    TAG,
+                    "Buffered activation template accepted distance=${templateResult.distance} " +
+                        "candidateStartMs=${templateResult.candidateStartMs} " +
+                        "candidateMs=${templateResult.candidateDurationMs} " +
+                        "peakRms=${templateResult.peakRms} endpoint=$endpoint",
+                )
+                return Result(
+                    command = null,
+                    text = OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE,
+                    elapsedMs = greedyResult.elapsedMs,
+                    endpoint = "${endpoint}_template",
+                    activeSpeechMs = templateResult.candidateDurationMs,
+                    peakRms = audioLevelStats.peakRms,
+                    meanRms = audioLevelStats.meanRms,
+                    asrGain = greedyResult.asrGain,
+                    candidateStartMs = templateResult.candidateStartMs,
+                    candidateDurationMs = templateResult.candidateDurationMs,
+                )
+            }
+        }
         return when {
             CommandInterpreter.isActivationWakeAsrEquivalent(greedyResult.text) -> greedyResult
             hotwordResult.text.isNotBlank() -> hotwordResult
             else -> greedyResult
+        }
+    }
+
+    fun activationSamplesForResult(samples: FloatArray, result: Result): FloatArray {
+        if (!result.endpoint.endsWith(TEMPLATE_ENDPOINT_SUFFIX) || result.candidateDurationMs <= 0L) {
+            return samples
+        }
+
+        val startSample = (SAMPLE_RATE_HZ * result.candidateStartMs / 1000L)
+            .toInt()
+            .coerceIn(0, samples.size)
+        val durationSamples = (SAMPLE_RATE_HZ * result.candidateDurationMs / 1000L)
+            .toInt()
+            .coerceAtLeast(0)
+        val endSample = (startSample + durationSamples).coerceIn(startSample, samples.size)
+        return if (endSample > startSample) {
+            samples.copyOfRange(startSample, endSample)
+        } else {
+            samples
         }
     }
 
@@ -226,6 +275,7 @@ object LocalCommandRecognizer {
             return ActivationResult(
                 text = text,
                 samples = currentSamples(),
+                alternateSamples = null,
                 elapsedMs = elapsedMs,
                 endpoint = endpoint,
                 activeSpeechMs = activeSpeechMs,
@@ -246,9 +296,11 @@ object LocalCommandRecognizer {
             )
             if (!CommandInterpreter.isActivationWakeAsrEquivalent(buffered.text)) return null
 
+            val activationSamples = activationSamplesForResult(streamingResult.samples, buffered)
             return ActivationResult(
                 text = buffered.text,
                 samples = streamingResult.samples,
+                alternateSamples = activationSamples.takeUnless { it === streamingResult.samples },
                 elapsedMs = SystemClock.elapsedRealtime() - segmentStartedAt,
                 endpoint = buffered.endpoint,
                 activeSpeechMs = activeSpeechMs,

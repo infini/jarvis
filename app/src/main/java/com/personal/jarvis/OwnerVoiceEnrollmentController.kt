@@ -45,6 +45,7 @@ class OwnerVoiceEnrollmentController(
                     if (enrolling) onStatus("목소리 등록 중: 음성 특징을 계산하는 중입니다.")
                 }
 
+                writeEnrollmentTemplate(samples)
                 val embeddings = OwnerVoiceEngine.createEnrollmentEmbeddings(context, samples)
                 if (embeddings.isEmpty()) {
                     throw IllegalStateException("충분한 음성 특징을 만들지 못했습니다. 더 또렷하게 다시 등록하세요.")
@@ -82,5 +83,18 @@ class OwnerVoiceEnrollmentController(
         enrolling = false
         thread?.interrupt()
         thread = null
+    }
+
+    private fun writeEnrollmentTemplate(samples: FloatArray) {
+        PcmWavFile.writeMono16(
+            file = context.cacheDir.resolve(ENROLLMENT_WAV_NAME),
+            samples = samples,
+            sampleRateHz = OwnerVoiceEngine.SAMPLE_RATE_HZ,
+        )
+        WakePhraseTemplateMatcher.invalidateCache()
+    }
+
+    private companion object {
+        private const val ENROLLMENT_WAV_NAME = "jarvis-owner-enroll-last.wav"
     }
 }
