@@ -6,6 +6,7 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.util.Log
 import android.view.Gravity
 import android.view.WindowInsets
 import android.view.WindowManager
@@ -20,11 +21,13 @@ class JarvisStateIndicatorController(
     private var indicatorView: TextView? = null
 
     fun update(state: JarvisVoiceState) {
+        Log.d(TAG, "state=$state")
         if (state == JarvisVoiceState.IDLE) {
             hide()
             return
         }
 
+        val created = indicatorView == null
         val view = indicatorView ?: createIndicatorView().also {
             indicatorView = it
             windowManager.addView(it, layoutParams())
@@ -33,12 +36,18 @@ class JarvisStateIndicatorController(
         view.setTextColor(Color.WHITE)
         view.setCompoundDrawables(dotDrawable(dotColorFor(state)), null, null, null)
         view.background = islandBackground()
+        Log.d(TAG, "overlay_visible state=$state created=$created")
     }
 
     fun hide() {
-        val view = indicatorView ?: return
+        val view = indicatorView
+        if (view == null) {
+            Log.d(TAG, "overlay_hidden alreadyHidden=true")
+            return
+        }
         runCatching { windowManager.removeView(view) }
         indicatorView = null
+        Log.d(TAG, "overlay_hidden alreadyHidden=false")
     }
 
     fun dispose() {
@@ -144,6 +153,7 @@ class JarvisStateIndicatorController(
     }
 
     companion object {
+        private const val TAG = "JarvisStateIndicator"
         private const val INDICATOR_TEXT = "JARVIS"
     }
 }
