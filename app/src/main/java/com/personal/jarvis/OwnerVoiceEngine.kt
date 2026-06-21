@@ -48,6 +48,9 @@ object OwnerVoiceEngine {
     private const val SOFT_WAKE_BRIDGE_THRESHOLD = 0.10f
     private const val ACTIVATION_PHRASE_ACCEPT_THRESHOLD = NEAR_ACCEPT_THRESHOLD
     private const val ACTIVATION_PHRASE_ACCEPT_MIN_SPEECH_MS = NEAR_ACCEPT_MIN_SPEECH_MS
+    private const val OWNER_BEST_WINDOW_STEP_MS = 300L
+    private const val OWNER_BEST_WINDOW_CANDIDATES_PER_DURATION = 3
+    private val OWNER_BEST_WINDOW_DURATIONS_MS = longArrayOf(1200L, 1600L, 2200L)
 
     private val initLock = Any()
     private val computeLock = Any()
@@ -86,6 +89,14 @@ object OwnerVoiceEngine {
         val rejectReason: RejectReason? = null,
         val verificationElapsedMs: Long = 0L,
         val verificationAttempts: Int = 0,
+    )
+
+    data class WindowedMatch(
+        val match: Match,
+        val fullMatch: Match,
+        val windowStartMs: Long,
+        val windowDurationMs: Long,
+        val evaluatedWindows: Int,
     )
 
     internal data class PreparedAudio(
@@ -134,6 +145,11 @@ object OwnerVoiceEngine {
     private data class RecorderSource(
         val source: Int,
         val label: String,
+    )
+
+    private data class SampleWindow(
+        val start: Int,
+        val end: Int,
     )
 
     internal data class ConsecutiveAcceptState(
@@ -255,6 +271,54 @@ object OwnerVoiceEngine {
             noiseFloorRms = preparedAudio.noiseFloorRms,
             activeThresholdRms = preparedAudio.activeThresholdRms,
             rejectReason = if (accepted) null else RejectReason.LOW_SCORE,
+        )
+    }
+
+    fun verifyOwnerBestWindow(
+        context: Context,
+        samples: FloatArray,
+        threshold: Float = OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD,
+        ownerEmbeddings: List<FloatArray> = OwnerVoiceStore.getEmbeddings(context),
+    ): WindowedMatch {
+        val fullMatch = verifyOwner(
+            context = context,
+            samples = samples,
+            threshold = threshold,
+            ownerEmbeddings = ownerEmbeddings,
+        )
+        var bestMatch = fullMatch
+        var bestWindow = SampleWindow(start = 0, end = samples.size)
+        var evaluatedWindows = 0
+        val stepSamples = (SAMPLE_RATE_HZ * OWNER_BEST_WINDOW_STEP_MS / 1000L).toInt()
+
+        OWNER_BEST_WINDOW_DURATIONS_MS.forEach { durationMs ->
+            val windowSamples = (SAMPLE_RATE_HZ * durationMs / 1000L).toInt()
+            strongestSampleWindows(
+                samples = samples,
+                windowSamples = windowSamples,
+                stepSamples = stepSamples,
+                maxCandidates = OWNER_BEST_WINDOW_CANDIDATES_PER_DURATION,
+            ).forEach { window ->
+                val candidate = verifyOwner(
+                    context = context,
+                    samples = samples.copyOfRange(window.start, window.end),
+                    threshold = threshold,
+                    ownerEmbeddings = ownerEmbeddings,
+                )
+                evaluatedWindows += 1
+                if (isBetterOwnerMatch(candidate, bestMatch)) {
+                    bestMatch = candidate
+                    bestWindow = window
+                }
+            }
+        }
+
+        return WindowedMatch(
+            match = bestMatch,
+            fullMatch = fullMatch,
+            windowStartMs = bestWindow.start * 1000L / SAMPLE_RATE_HZ,
+            windowDurationMs = (bestWindow.end - bestWindow.start) * 1000L / SAMPLE_RATE_HZ,
+            evaluatedWindows = evaluatedWindows,
         )
     }
 
@@ -758,6 +822,55 @@ object OwnerVoiceEngine {
             .toInt()
             .coerceIn(0, sorted.lastIndex)
         return sorted[index]
+    }
+
+    private fun strongestSampleWindows(
+        samples: FloatArray,
+        windowSamples: Int,
+        stepSamples: Int,
+        maxCandidates: Int,
+    ): List<SampleWindow> {
+        if (samples.isEmpty() || windowSamples <= 0 || stepSamples <= 0 || maxCandidates <= 0) {
+            return emptyList()
+        }
+        if (samples.size <= windowSamples) {
+            return listOf(SampleWindow(start = 0, end = samples.size))
+        }
+
+        val energyPrefix = DoubleArray(samples.size + 1)
+        for (index in samples.indices) {
+            val value = samples[index].toDouble()
+            energyPrefix[index + 1] = energyPrefix[index] + value * value
+        }
+
+        val candidates = mutableListOf<Pair<SampleWindow, Double>>()
+        val lastStart = samples.size - windowSamples
+        var start = 0
+        while (true) {
+            val end = start + windowSamples
+            candidates += SampleWindow(start = start, end = end) to energyPrefix[end] - energyPrefix[start]
+            if (start == lastStart) break
+
+            val nextStart = start + stepSamples
+            start = if (nextStart >= lastStart) lastStart else nextStart
+        }
+
+        return candidates
+            .sortedWith(
+                compareByDescending<Pair<SampleWindow, Double>> { it.second }
+                    .thenBy { it.first.start },
+            )
+            .take(maxCandidates)
+            .map { it.first }
+    }
+
+    private fun isBetterOwnerMatch(candidate: Match, current: Match): Boolean {
+        return when {
+            candidate.accepted && !current.accepted -> true
+            !candidate.accepted && current.accepted -> false
+            candidate.score != current.score -> candidate.score > current.score
+            else -> candidate.activeSpeechMs > current.activeSpeechMs
+        }
     }
 
     private fun rms(samples: FloatArray, start: Int, end: Int): Float {

@@ -62,8 +62,9 @@ class JarvisDebugActivationReplayService : Service() {
                     endpoint = "debug_activation_replay",
                 )
                 val accepted = CommandInterpreter.isActivationWakeAsrEquivalent(result.text)
+                val ownerWindowedMatch = OwnerVoiceEngine.verifyOwnerBestWindow(this, samples)
                 val ownerMatch = OwnerVoiceEngine.acceptActivationPhraseMatch(
-                    OwnerVoiceEngine.verifyOwner(this, samples),
+                    ownerWindowedMatch.match,
                 )
                 if (accepted) acceptedCount += 1
                 Log.i(
@@ -72,7 +73,11 @@ class JarvisDebugActivationReplayService : Service() {
                         "accepted=$accepted endpoint=${result.endpoint} text=${result.text} " +
                         "peakRms=${result.peakRms} meanRms=${result.meanRms} asrGain=${result.asrGain} " +
                         "ownerAccepted=${ownerMatch.accepted} ownerAcceptance=${ownerMatch.acceptance} " +
-                        "ownerScore=${ownerMatch.score} ownerSpeechMs=${ownerMatch.activeSpeechMs} " +
+                        "ownerScore=${ownerMatch.score} ownerFullScore=${ownerWindowedMatch.fullMatch.score} " +
+                        "ownerSpeechMs=${ownerMatch.activeSpeechMs} " +
+                        "ownerWindowStartMs=${ownerWindowedMatch.windowStartMs} " +
+                        "ownerWindowMs=${ownerWindowedMatch.windowDurationMs} " +
+                        "ownerWindows=${ownerWindowedMatch.evaluatedWindows} " +
                         "ownerReason=${ownerMatch.rejectReason ?: "none"}",
                 )
             }.onFailure {

@@ -862,26 +862,32 @@ class JarvisVoiceService : Service(), RecognitionListener {
         activationOwnerVerificationActive = true
         markLatency("activation_owner_verify_start", "samples=${result.samples.size} text=${result.text}")
         activationOwnerVerificationThread = Thread({
-            val ownerMatch = runCatching {
-                OwnerVoiceEngine.acceptActivationPhraseMatch(
-                    OwnerVoiceEngine.verifyOwner(applicationContext, result.samples),
-                )
+            val ownerWindowedMatch = runCatching {
+                OwnerVoiceEngine.verifyOwnerBestWindow(applicationContext, result.samples)
             }.onFailure {
                 Log.w(TAG, "Activation owner verification failed: ${it.message}")
             }.getOrElse {
-                OwnerVoiceEngine.Match(
+                val fallback = OwnerVoiceEngine.Match(
                     score = 0f,
                     accepted = false,
                     rejectReason = OwnerVoiceEngine.RejectReason.EMBEDDING_NOT_READY,
                 )
+                OwnerVoiceEngine.WindowedMatch(
+                    match = fallback,
+                    fullMatch = fallback,
+                    windowStartMs = 0L,
+                    windowDurationMs = result.samples.size * 1000L / OwnerVoiceEngine.SAMPLE_RATE_HZ,
+                    evaluatedWindows = 0,
+                )
             }
+            val ownerMatch = OwnerVoiceEngine.acceptActivationPhraseMatch(ownerWindowedMatch.match)
 
             handler.post {
                 if (!activationOwnerVerificationActive || destroyed) return@post
 
                 activationOwnerVerificationActive = false
                 activationOwnerVerificationThread = null
-                handleActivationOwnerVerificationOutcome(result, ownerMatch)
+                handleActivationOwnerVerificationOutcome(result, ownerMatch, ownerWindowedMatch)
             }
         }, "JarvisActivationOwnerVerify").also { it.start() }
     }
@@ -889,11 +895,14 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private fun handleActivationOwnerVerificationOutcome(
         result: LocalCommandRecognizer.ActivationResult,
         ownerMatch: OwnerVoiceEngine.Match,
+        ownerWindowedMatch: OwnerVoiceEngine.WindowedMatch,
     ) {
         markLatency(
             "activation_owner_verified",
             "accepted=${ownerMatch.accepted} acceptance=${ownerMatch.acceptance} " +
-                "score=${ownerMatch.score} speechMs=${ownerMatch.activeSpeechMs} " +
+                "score=${ownerMatch.score} fullScore=${ownerWindowedMatch.fullMatch.score} " +
+                "speechMs=${ownerMatch.activeSpeechMs} windowStartMs=${ownerWindowedMatch.windowStartMs} " +
+                "windowMs=${ownerWindowedMatch.windowDurationMs} windows=${ownerWindowedMatch.evaluatedWindows} " +
                 "peakRms=${ownerMatch.peakRms} reason=${ownerMatch.rejectReason ?: "none"}",
         )
         if (ownerMatch.accepted) {
