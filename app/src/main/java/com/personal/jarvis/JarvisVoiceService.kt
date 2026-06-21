@@ -861,7 +861,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (activationOwnerVerificationActive) return
 
         activationOwnerVerificationActive = true
-        markLatency("activation_owner_verify_start", "samples=${result.samples.size} text=${result.text}")
+        val acousticWakeFallback = LocalCommandRecognizer.isAcousticWakeFallback(result)
+        markLatency(
+            "activation_owner_verify_start",
+            "samples=${result.samples.size} endpoint=${result.endpoint} " +
+                "acousticFallback=$acousticWakeFallback text=${result.text}",
+        )
         activationOwnerVerificationThread = Thread({
             val ownerWindowedMatch = runCatching {
                 val primary = OwnerVoiceEngine.verifyOwnerBestWindow(applicationContext, result.samples)
@@ -889,7 +894,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     evaluatedWindows = 0,
                 )
             }
-            val ownerMatch = OwnerVoiceEngine.acceptActivationPhraseMatch(ownerWindowedMatch.match)
+            val ownerMatch = if (acousticWakeFallback) {
+                OwnerVoiceEngine.acceptAcousticWakeFallbackMatch(ownerWindowedMatch.match)
+            } else {
+                OwnerVoiceEngine.acceptActivationPhraseMatch(ownerWindowedMatch.match)
+            }
 
             handler.post {
                 if (!activationOwnerVerificationActive || destroyed) return@post
@@ -921,6 +930,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         markLatency(
             "activation_owner_verified",
             "accepted=${ownerMatch.accepted} acceptance=${ownerMatch.acceptance} " +
+                "endpoint=${result.endpoint} " +
                 "score=${ownerMatch.score} fullScore=${ownerWindowedMatch.fullMatch.score} " +
                 "speechMs=${ownerMatch.activeSpeechMs} windowStartMs=${ownerWindowedMatch.windowStartMs} " +
                 "windowMs=${ownerWindowedMatch.windowDurationMs} windows=${ownerWindowedMatch.evaluatedWindows} " +
@@ -1384,7 +1394,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             }
         }
 
-        if (results.any(CommandInterpreter::isActivationWake)) {
+        if (!allowCommandWithoutWake && results.any(CommandInterpreter::isActivationWake)) {
             Log.d(TAG, "Activation phrase recognized; keeping command window open")
             markLatency("activation")
             openCommandWindow(COMMAND_SESSION_AUTH_WINDOW_MS)
@@ -1768,16 +1778,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             val activationText = results.firstOrNull(CommandInterpreter::isActivationWake) ?: return false
             return handleAndroidActivationRecognized(activationText, "partial")
         }
-        if (!currentListeningAllowsCommandWithoutWake && !isCommandWindowOpen()) return false
-        val activationText = results.firstOrNull(CommandInterpreter::isActivationWake) ?: return false
-
-        markLatency("activation_partial", "text=$activationText")
-        Log.d(TAG, "Parsed fast partial activation phrase from '$activationText'")
-        partialActivationHandled = true
-        commandFeedbackEnabled = true
-        openCommandWindow(COMMAND_SESSION_AUTH_WINDOW_MS)
-        signalCommandReady()
-        return true
+        return false
     }
 
     private fun completePartialActivation(reason: String): Boolean {

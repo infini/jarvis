@@ -8,6 +8,7 @@ import com.personal.jarvis.CommandInterpreter
 import com.personal.jarvis.LocalCommandRecognizer
 import com.personal.jarvis.OwnerVoiceEngine
 import com.personal.jarvis.PcmWavFile
+import com.personal.jarvis.WakePhraseTemplateMatcher
 import java.io.File
 
 class JarvisDebugActivationReplayService : Service() {
@@ -57,6 +58,7 @@ class JarvisDebugActivationReplayService : Service() {
         wavFiles.forEach { wavFile ->
             runCatching {
                 val samples = PcmWavFile.readMono16(wavFile)
+                val templateResult = WakePhraseTemplateMatcher.match(this, samples)
                 val result = LocalCommandRecognizer.recognizeBufferedActivation(
                     context = this,
                     samples = samples,
@@ -78,9 +80,12 @@ class JarvisDebugActivationReplayService : Service() {
                 } else {
                     fullOwnerWindowedMatch
                 }
-                val ownerMatch = OwnerVoiceEngine.acceptActivationPhraseMatch(
-                    ownerWindowedMatch.match,
-                )
+                val acousticWakeFallback = LocalCommandRecognizer.isAcousticWakeFallback(result)
+                val ownerMatch = if (acousticWakeFallback) {
+                    OwnerVoiceEngine.acceptAcousticWakeFallbackMatch(ownerWindowedMatch.match)
+                } else {
+                    OwnerVoiceEngine.acceptActivationPhraseMatch(ownerWindowedMatch.match)
+                }
                 if (accepted) phraseAcceptedCount += 1
                 if (accepted && ownerMatch.accepted) ownerAcceptedCount += 1
                 Log.i(
@@ -88,9 +93,16 @@ class JarvisDebugActivationReplayService : Service() {
                     "request_id=$requestId status=replay file=${wavFile.name} " +
                         "accepted=$accepted endpoint=${result.endpoint} text=${result.text} " +
                         "peakRms=${result.peakRms} meanRms=${result.meanRms} asrGain=${result.asrGain} " +
+                        "templateAccepted=${templateResult.accepted} " +
+                        "templateDistance=${templateResult.distance} " +
+                        "templatePeakRms=${templateResult.peakRms} " +
+                        "templateCandidateMs=${templateResult.candidateDurationMs} " +
+                        "templateReason=${templateResult.reason} " +
+                        "acousticFallback=$acousticWakeFallback " +
                         "ownerAccepted=${ownerMatch.accepted} ownerAcceptance=${ownerMatch.acceptance} " +
                         "ownerScore=${ownerMatch.score} ownerFullScore=${ownerWindowedMatch.fullMatch.score} " +
                         "ownerSpeechMs=${ownerMatch.activeSpeechMs} " +
+                        "ownerPeakRms=${ownerMatch.peakRms} " +
                         "ownerWindowStartMs=${ownerWindowedMatch.windowStartMs} " +
                         "ownerWindowMs=${ownerWindowedMatch.windowDurationMs} " +
                         "ownerWindows=${ownerWindowedMatch.evaluatedWindows} " +

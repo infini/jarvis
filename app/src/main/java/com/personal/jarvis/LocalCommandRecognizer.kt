@@ -41,8 +41,9 @@ object LocalCommandRecognizer {
     private const val JOINER = "$MODEL_DIR/joiner-epoch-99-avg-1.int8.onnx"
     private const val TOKENS = "$MODEL_DIR/tokens.txt"
     private const val ACTIVATION_HOTWORDS = "jarvis-activation-hotwords.txt"
-    private const val OWNER_ENROLLMENT_ENDPOINT_PREFIX = "owner_enrollment"
-    private const val TEMPLATE_ENDPOINT_SUFFIX = "_template"
+    private const val ACOUSTIC_WAKE_ENDPOINT_SUFFIX = "_acoustic_wake"
+    private const val ACOUSTIC_WAKE_TEMPLATE_MAX_DISTANCE = 0.22f
+    private const val ACOUSTIC_WAKE_TEMPLATE_MIN_PEAK_RMS = 0.006f
     private val REQUIRED_ASSETS = listOf(ENCODER, DECODER, JOINER, TOKENS, ACTIVATION_HOTWORDS)
 
     private val initLock = Any()
@@ -151,31 +152,23 @@ object LocalCommandRecognizer {
             parseCommand = false,
             logLabel = "Buffered activation greedy fallback",
         )
-        if (!endpoint.startsWith(OWNER_ENROLLMENT_ENDPOINT_PREFIX)) {
-            val templateResult = WakePhraseTemplateMatcher.match(applicationContext, samples)
-            if (templateResult.accepted) {
-                val audioLevelStats = audioLevelStats(samples)
-                Log.i(
-                    TAG,
-                    "Buffered activation template accepted distance=${templateResult.distance} " +
-                        "candidateStartMs=${templateResult.candidateStartMs} " +
-                        "candidateMs=${templateResult.candidateDurationMs} " +
-                        "peakRms=${templateResult.peakRms} endpoint=$endpoint",
-                )
-                return Result(
-                    command = null,
-                    text = OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE,
-                    elapsedMs = greedyResult.elapsedMs,
-                    endpoint = "${endpoint}_template",
-                    activeSpeechMs = templateResult.candidateDurationMs,
-                    peakRms = audioLevelStats.peakRms,
-                    meanRms = audioLevelStats.meanRms,
-                    asrGain = greedyResult.asrGain,
-                    candidateStartMs = templateResult.candidateStartMs,
-                    candidateDurationMs = templateResult.candidateDurationMs,
-                )
-            }
+        val templateResult = WakePhraseTemplateMatcher.match(applicationContext, samples)
+        if (isStrictAcousticWakeTemplate(templateResult)) {
+            return Result(
+                command = null,
+                text = OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE,
+                elapsedMs = maxOf(hotwordResult.elapsedMs, greedyResult.elapsedMs),
+                endpoint = "${endpoint}$ACOUSTIC_WAKE_ENDPOINT_SUFFIX",
+                activeSpeechMs = templateResult.candidateDurationMs,
+                trailingSilenceMs = 0L,
+                peakRms = templateResult.peakRms,
+                meanRms = maxOf(hotwordResult.meanRms, greedyResult.meanRms),
+                asrGain = maxOf(hotwordResult.asrGain, greedyResult.asrGain),
+                candidateStartMs = templateResult.candidateStartMs,
+                candidateDurationMs = templateResult.candidateDurationMs,
+            )
         }
+
         return when {
             CommandInterpreter.isActivationWakeAsrEquivalent(greedyResult.text) -> greedyResult
             hotwordResult.text.isNotBlank() -> hotwordResult
@@ -183,8 +176,16 @@ object LocalCommandRecognizer {
         }
     }
 
+    fun isAcousticWakeFallback(result: Result): Boolean {
+        return result.endpoint.endsWith(ACOUSTIC_WAKE_ENDPOINT_SUFFIX)
+    }
+
+    fun isAcousticWakeFallback(result: ActivationResult): Boolean {
+        return result.endpoint.endsWith(ACOUSTIC_WAKE_ENDPOINT_SUFFIX)
+    }
+
     fun activationSamplesForResult(samples: FloatArray, result: Result): FloatArray {
-        if (!result.endpoint.endsWith(TEMPLATE_ENDPOINT_SUFFIX) || result.candidateDurationMs <= 0L) {
+        if (!isAcousticWakeFallback(result) || result.candidateDurationMs <= 0L) {
             return samples
         }
 
@@ -200,6 +201,12 @@ object LocalCommandRecognizer {
         } else {
             samples
         }
+    }
+
+    private fun isStrictAcousticWakeTemplate(result: WakePhraseTemplateMatcher.Result): Boolean {
+        return result.accepted &&
+            result.distance <= ACOUSTIC_WAKE_TEMPLATE_MAX_DISTANCE &&
+            result.peakRms >= ACOUSTIC_WAKE_TEMPLATE_MIN_PEAK_RMS
     }
 
     @SuppressLint("MissingPermission")

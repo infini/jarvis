@@ -23,6 +23,7 @@ object WakePhraseTemplateMatcher {
     private const val MIN_CANDIDATE_PEAK_RMS = 0.00030f
     private const val MIN_ACCEPT_PEAK_RMS = 0.00120f
     private const val MIN_TEMPLATE_PEAK_RMS = 0.010f
+    private const val CANDIDATE_REFERENCE_PEAK_PERCENTILE = 0.95f
     private const val ACTIVE_FLOOR_RATIO = 0.18f
     private const val ACTIVE_PEAK_RATIO = 0.12f
     private const val ACCEPT_DISTANCE = 0.27f
@@ -103,6 +104,7 @@ object WakePhraseTemplateMatcher {
             minimumDurationMs = MIN_CANDIDATE_MS,
             maximumDurationMs = MAX_CANDIDATE_MS,
             minimumPeakRms = MIN_CANDIDATE_PEAK_RMS,
+            useRobustReferencePeak = true,
         )
         if (candidates.isEmpty()) {
             return Result(
@@ -190,6 +192,7 @@ object WakePhraseTemplateMatcher {
         minimumDurationMs: Long,
         maximumDurationMs: Long,
         minimumPeakRms: Float,
+        useRobustReferencePeak: Boolean = false,
     ): List<Segment> {
         if (frames.isEmpty()) return emptyList()
 
@@ -197,10 +200,18 @@ object WakePhraseTemplateMatcher {
         if (peakRms < minimumPeakRms) return emptyList()
 
         val floorRms = noiseFloor(frames.map { it.rms })
+        val referencePeakRms = if (useRobustReferencePeak) {
+            percentile(
+                values = frames.map { it.rms },
+                percentile = CANDIDATE_REFERENCE_PEAK_PERCENTILE,
+            )
+        } else {
+            peakRms
+        }
         val threshold = maxOf(
             minimumPeakRms,
-            peakRms * ACTIVE_PEAK_RATIO,
-            floorRms + (peakRms - floorRms) * ACTIVE_FLOOR_RATIO,
+            referencePeakRms * ACTIVE_PEAK_RATIO,
+            floorRms + (referencePeakRms - floorRms) * ACTIVE_FLOOR_RATIO,
         )
         val maxInactiveFrames = (SPEECH_END_GAP_MS / HOP_MS).toInt()
         val mergeGapFrames = (SPEECH_GAP_MERGE_MS / HOP_MS).toInt()
@@ -365,8 +376,12 @@ object WakePhraseTemplateMatcher {
     }
 
     private fun noiseFloor(values: List<Float>): Float {
+        return percentile(values, 0.20f)
+    }
+
+    private fun percentile(values: List<Float>, percentile: Float): Float {
         if (values.isEmpty()) return 0f
         val sorted = values.sorted()
-        return sorted[(sorted.lastIndex * 0.2f).toInt().coerceIn(0, sorted.lastIndex)]
+        return sorted[(sorted.lastIndex * percentile).toInt().coerceIn(0, sorted.lastIndex)]
     }
 }

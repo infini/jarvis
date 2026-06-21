@@ -468,6 +468,108 @@ class OwnerVoiceEngineTest {
         assertFalse(result.accepted)
     }
 
+    @Test
+    fun acousticWakeFallbackAcceptsOnlyStrongOwnerMatch() {
+        val result = OwnerVoiceEngine.acceptAcousticWakeFallbackMatch(
+            ownerMatch(
+                score = 0.70f,
+                activeSpeechMs = 900L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.008f,
+            ),
+        )
+
+        assertTrue(result.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.STRICT, result.acceptance)
+    }
+
+    @Test
+    fun acousticWakeFallbackRejectsModerateOwnerMatchBelowMinimumSpeech() {
+        val result = OwnerVoiceEngine.acceptAcousticWakeFallbackMatch(
+            ownerMatch(
+                score = 0.60f,
+                activeSpeechMs = 450L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.008f,
+            ).copy(accepted = true, acceptance = OwnerVoiceEngine.Acceptance.STRICT),
+        )
+
+        assertFalse(result.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.REJECTED, result.acceptance)
+    }
+
+    @Test
+    fun acousticWakeFallbackAcceptsShortHighScoreOwnerMatch() {
+        val result = OwnerVoiceEngine.acceptAcousticWakeFallbackMatch(
+            ownerMatch(
+                score = 0.75f,
+                activeSpeechMs = 475L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.02f,
+            ),
+        )
+
+        assertTrue(result.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.STRICT, result.acceptance)
+    }
+
+    @Test
+    fun acousticWakeFallbackAcceptsModerateTemplateOwnerMatch() {
+        val result = OwnerVoiceEngine.acceptAcousticWakeFallbackMatch(
+            ownerMatch(
+                score = 0.51f,
+                activeSpeechMs = 500L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.008f,
+            ),
+        )
+
+        assertTrue(result.accepted)
+        assertEquals(OwnerVoiceEngine.Acceptance.STRICT, result.acceptance)
+    }
+
+    @Test
+    fun acousticWakeFallbackRejectsBelowTemplateOwnerScore() {
+        val result = OwnerVoiceEngine.acceptAcousticWakeFallbackMatch(
+            ownerMatch(
+                score = 0.49f,
+                activeSpeechMs = 1200L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.03f,
+            ),
+        )
+
+        assertFalse(result.accepted)
+    }
+
+    @Test
+    fun acousticWakeFallbackRejectsShortSpeech() {
+        val result = OwnerVoiceEngine.acceptAcousticWakeFallbackMatch(
+            ownerMatch(
+                score = 0.72f,
+                activeSpeechMs = 400L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.008f,
+            ),
+        )
+
+        assertFalse(result.accepted)
+    }
+
+    @Test
+    fun acousticWakeFallbackRejectsLowPeak() {
+        val result = OwnerVoiceEngine.acceptAcousticWakeFallbackMatch(
+            ownerMatch(
+                score = 0.72f,
+                activeSpeechMs = 1200L,
+                ownerEmbeddingCount = OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS,
+                peakRms = 0.002f,
+            ),
+        )
+
+        assertFalse(result.accepted)
+    }
+
     private fun ownerMatch(
         score: Float,
         activeSpeechMs: Long,

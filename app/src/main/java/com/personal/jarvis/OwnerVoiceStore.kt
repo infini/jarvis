@@ -16,6 +16,7 @@ object OwnerVoiceStore {
     const val MODEL_ASSET_NAME = "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"
     const val DEFAULT_ACCEPT_THRESHOLD = 0.50f
     const val MIN_CONFIGURED_EMBEDDINGS = 2
+    const val MAX_STORED_EMBEDDINGS = 8
     const val OWNER_ENROLLMENT_PHRASE = "자비스 깨어나"
     const val OWNER_ENROLLMENT_PHRASE_ID = "jarvis_activation_v3"
 
@@ -24,7 +25,7 @@ object OwnerVoiceStore {
     }
 
     fun saveEmbeddings(context: Context, embeddings: List<FloatArray>) {
-        val validEmbeddings = embeddings.filter { it.isNotEmpty() }
+        val validEmbeddings = embeddings.filter { it.isNotEmpty() }.take(MAX_STORED_EMBEDDINGS)
         if (validEmbeddings.isEmpty()) return
 
         val encoded = validEmbeddings.joinToString("\n", transform = ::encodeEmbedding)
@@ -43,6 +44,7 @@ object OwnerVoiceStore {
             ?.lineSequence()
             ?.mapNotNull { decodeEmbedding(it.trim()) }
             ?.filter { it.isNotEmpty() }
+            ?.take(MAX_STORED_EMBEDDINGS)
             ?.toList()
             .orEmpty()
         if (stored.isNotEmpty()) return stored

@@ -33,7 +33,7 @@ object OwnerVoiceEngine {
     private const val ENROLLMENT_SEGMENT_STEP_MS = 700L
     private const val ENROLLMENT_DUPLICATE_SIMILARITY = 0.995f
     const val MIN_OWNER_EMBEDDINGS = 2
-    const val MAX_OWNER_EMBEDDINGS = 16
+    const val MAX_OWNER_EMBEDDINGS = OwnerVoiceStore.MAX_STORED_EMBEDDINGS
     const val HIGH_CONFIDENCE_ACCEPT_THRESHOLD = 0.36f
     private const val HIGH_CONFIDENCE_ACCEPT_MIN_SPEECH_MS = 450L
     const val NEAR_ACCEPT_THRESHOLD = 0.27f
@@ -49,6 +49,13 @@ object OwnerVoiceEngine {
     private const val ACTIVATION_PHRASE_ACCEPT_THRESHOLD = NEAR_ACCEPT_THRESHOLD
     private const val ACTIVATION_PHRASE_ACCEPT_MIN_SPEECH_MS = 250L
     private const val ACTIVATION_PHRASE_ACCEPT_MIN_PEAK_RMS = MIN_PEAK_RMS
+    private const val ACOUSTIC_WAKE_ACCEPT_THRESHOLD = 0.65f
+    private const val ACOUSTIC_WAKE_ACCEPT_MIN_SPEECH_MS = 800L
+    private const val ACOUSTIC_WAKE_HIGH_SCORE_THRESHOLD = 0.74f
+    private const val ACOUSTIC_WAKE_HIGH_SCORE_MIN_SPEECH_MS = 400L
+    private const val ACOUSTIC_WAKE_TEMPLATE_OWNER_THRESHOLD = 0.50f
+    private const val ACOUSTIC_WAKE_TEMPLATE_OWNER_MIN_SPEECH_MS = 500L
+    private const val ACOUSTIC_WAKE_ACCEPT_MIN_PEAK_RMS = 0.006f
     private const val OWNER_BEST_WINDOW_STEP_MS = 300L
     private const val OWNER_BEST_WINDOW_CANDIDATES_PER_DURATION = 3
     private val OWNER_BEST_WINDOW_DURATIONS_MS = longArrayOf(1200L, 1600L, 2200L)
@@ -545,6 +552,44 @@ object OwnerVoiceEngine {
         }
 
         return match
+    }
+
+    fun acceptAcousticWakeFallbackMatch(match: Match): Match {
+        val acceptsLongFallback = match.score >= ACOUSTIC_WAKE_ACCEPT_THRESHOLD &&
+            match.activeSpeechMs >= ACOUSTIC_WAKE_ACCEPT_MIN_SPEECH_MS
+        val acceptsShortHighScoreFallback = match.score >= ACOUSTIC_WAKE_HIGH_SCORE_THRESHOLD &&
+            match.activeSpeechMs >= ACOUSTIC_WAKE_HIGH_SCORE_MIN_SPEECH_MS
+        val acceptsTemplateOwnerFallback = match.score >= ACOUSTIC_WAKE_TEMPLATE_OWNER_THRESHOLD &&
+            match.activeSpeechMs >= ACOUSTIC_WAKE_TEMPLATE_OWNER_MIN_SPEECH_MS
+
+        return when {
+            match.ownerEmbeddingCount < OwnerVoiceStore.MIN_CONFIGURED_EMBEDDINGS -> {
+                rejectActivationMatch(match, RejectReason.MISSING_PROFILE)
+            }
+            match.peakRms < ACOUSTIC_WAKE_ACCEPT_MIN_PEAK_RMS -> {
+                rejectActivationMatch(match, RejectReason.PEAK_BELOW_MIN)
+            }
+            acceptsLongFallback || acceptsShortHighScoreFallback || acceptsTemplateOwnerFallback -> match.copy(
+                accepted = true,
+                acceptance = Acceptance.STRICT,
+                rejectReason = null,
+            )
+            match.score < ACOUSTIC_WAKE_ACCEPT_THRESHOLD -> {
+                rejectActivationMatch(match, RejectReason.LOW_SCORE)
+            }
+            match.activeSpeechMs < ACOUSTIC_WAKE_HIGH_SCORE_MIN_SPEECH_MS -> {
+                rejectActivationMatch(match, RejectReason.ACTIVE_SPEECH_TOO_SHORT)
+            }
+            else -> rejectActivationMatch(match, RejectReason.LOW_SCORE)
+        }
+    }
+
+    private fun rejectActivationMatch(match: Match, reason: RejectReason): Match {
+        return match.copy(
+            accepted = false,
+            acceptance = Acceptance.REJECTED,
+            rejectReason = match.rejectReason ?: reason,
+        )
     }
 
     private fun hasRelaxedAcceptPeak(match: Match): Boolean {

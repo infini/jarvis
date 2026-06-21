@@ -71,13 +71,11 @@ object CommandInterpreter {
     }
 
     fun isActivationWakeAsrEquivalent(text: String): Boolean {
-        val normalized = normalize(text)
         return isActivationWakeWithWords(
             text = text,
             wakeWords = ACTIVATION_ASR_EQUIVALENT_WAKE_WORDS,
             activationWords = ACTIVATION_ASR_EQUIVALENT_WORDS,
-        ) || isActivationWordOnlyEquivalent(normalized) ||
-            isFuzzyActivationWakeEquivalent(normalized)
+        )
     }
 
     private fun isActivationWakeWithWords(
@@ -112,49 +110,10 @@ object CommandInterpreter {
         return WAKE_WORDS.any(normalized::contains)
     }
 
-    private fun isFuzzyActivationWakeEquivalent(normalized: String): Boolean {
-        if (normalized.length !in 5..7 || !normalized.endsWith("나")) return false
-        return ACTIVATION_FUZZY_TARGETS.any { target ->
-            levenshteinDistance(normalized, target) <= 3
-        }
-    }
-
-    private fun isActivationWordOnlyEquivalent(normalized: String): Boolean {
-        return normalized in ACTIVATION_ASR_WORD_ONLY_EQUIVALENTS
-    }
-
-    private fun levenshteinDistance(left: String, right: String): Int {
-        if (left == right) return 0
-        if (left.isEmpty()) return right.length
-        if (right.isEmpty()) return left.length
-
-        var previous = IntArray(right.length + 1) { it }
-        var current = IntArray(right.length + 1)
-
-        for (leftIndex in left.indices) {
-            current[0] = leftIndex + 1
-            for (rightIndex in right.indices) {
-                val substitutionCost = if (left[leftIndex] == right[rightIndex]) 0 else 1
-                current[rightIndex + 1] = minOf(
-                    current[rightIndex] + 1,
-                    previous[rightIndex + 1] + 1,
-                    previous[rightIndex] + substitutionCost,
-                )
-            }
-            val nextPrevious = previous
-            previous = current
-            current = nextPrevious
-        }
-
-        return previous[right.length]
-    }
-
     private val FRONT_CAMERA_WORDS = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라")
     private val REAR_CAMERA_WORDS = listOf("후면", "후방", "뒷카메라", "뒤카메라", "백카메라", "리어카메라")
     private val ACTIVATION_WORDS = listOf("깨어나")
     private val ACTIVATION_ASR_EQUIVALENT_WORDS = ACTIVATION_WORDS + listOf("게임", "때어나")
-    private val ACTIVATION_FUZZY_TARGETS = listOf("자비스깨어나")
-    private val ACTIVATION_ASR_WORD_ONLY_EQUIVALENTS = setOf("깨어나", "깨우나", "깨워나", "때어나")
 
     private val WAKE_WORDS = listOf(
         "자비스",
