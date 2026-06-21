@@ -67,7 +67,7 @@ activation recognizer는 `modified_beam_search`, `jarvis-activation-hotwords.txt
 
 acoustic wake fallback은 template-only wake가 아닙니다. 저장된 wake 캡처를 owner profile에 병합하는 debug calibration 경로는 false activation을 강화하는 문제가 있어 제거했습니다. fallback이 command window를 열려면 `자비스 깨어나` 음향 패턴과 등록된 소유자 목소리가 같은 rolling audio에서 동시에 통과해야 합니다.
 
-Jarvis 상태 overlay는 사용자가 바로 판단해야 하는 순간에만 표시됩니다. 화면에는 디스플레이 컷아웃을 감싸는 Hyper Island-style pill을 컷아웃 중심에 맞춰 표시하고, `COMMAND_READY` 상태에서는 `JARVIS`와 `LISTENING` 사이에 카메라 홀 공간이 들어가도록 배치합니다. `JARVIS`와 상태 단어는 같은 좌우 폭을 쓰지 않고 실제 글자폭을 각각 측정해 비대칭으로 배치하므로, 짧은 `JARVIS` 쪽 검은 여백이 불필요하게 커지지 않습니다. `JARVIS`는 iOS system cyan 계열 색상으로 고정하고, `LISTENING`은 초록색, 처리/완료/실패 상태는 각각 `WORKING`/`DONE`/`FAILED` 상태 텍스트 색으로 전달합니다. idle/local activation/소유자 확인 상태에서는 화면을 가리지 않도록 overlay를 숨깁니다. 명령 가능 상태에 들어갈 때는 확인음 2회와 짧은 진동이 함께 발생합니다.
+Jarvis 상태 overlay는 사용자가 바로 판단해야 하는 순간에만 표시됩니다. 화면에는 디스플레이 컷아웃을 감싸는 Hyper Island-style pill을 컷아웃 중심에 맞춰 표시하고, `COMMAND_READY` 상태에서는 `JARVIS`와 `LISTENING` 사이에 카메라 홀 공간이 들어가도록 배치합니다. `JARVIS`와 상태 단어는 같은 좌우 폭을 쓰지 않고 실제 글자폭을 각각 측정해 비대칭으로 배치하므로, 짧은 `JARVIS` 쪽 검은 여백이 불필요하게 커지지 않습니다. 상하 폭은 카메라 홀 하단 정렬을 유지한 채 상단 여백만 줄여 카메라 홀 상단과 pill 상단이 더 가깝게 맞도록 보정합니다. `JARVIS`는 iOS system cyan 계열 색상으로 고정하고, `LISTENING`은 초록색, 처리/완료/실패 상태는 각각 `WORKING`/`DONE`/`FAILED` 상태 텍스트 색으로 전달합니다. idle/local activation/소유자 확인 상태에서는 화면을 가리지 않도록 overlay를 숨깁니다. 명령 가능 상태에 들어갈 때는 확인음 2회와 짧은 진동이 함께 발생합니다.
 
 따라서 모바일 화면에서 `JARVIS` overlay가 보이지 않는 상태가 사용자 기준 idle 상태입니다. idle에서는 local activation ASR과 owner voice 확인만 돌고, Android command STT 준비음이나 명령 실패음은 발생하지 않아야 합니다.
 
@@ -127,7 +127,7 @@ scripts/jarvis-activation-captures.sh
 
 2026-06-21 18:32 KST Xiaomi 15 Ultra 화면 켠 상태 live check에서 `rolling_buffer_live_buffered_acoustic_wake`가 `자비스 깨어나`를 검출했고, owner verification은 `STRICT score=0.7634`로 통과했습니다. 이어서 `owner_audio_activation`, `ready_for_speech`, `JarvisStateIndicator overlay_visible state=COMMAND_READY`가 확인되어 command window와 상태 overlay가 실제로 열렸습니다. 같은 APK에서 `scripts/jarvis-idle-guard.sh 120`은 `PASS: idle stayed out of command STT for 120s`로 통과했습니다.
 
-2026-06-21 19:04 KST Xiaomi 15 Ultra debug command window에서 Hyper Island overlay를 실기기 캡처로 확인했습니다. 글자 크기는 유지하고 검은 pill 여백만 줄인 뒤 `JarvisStateIndicator overlay_visible state=COMMAND_READY width=446 height=84 gap=73 x=34 y=21 left=136 right=203` 로그가 남았고, 화면에서는 시안 `JARVIS`와 초록 `LISTENING` 전체 텍스트가 잘림 없이 표시됐습니다.
+2026-06-21 19:23 KST Xiaomi 15 Ultra debug command window에서 Hyper Island overlay를 실기기 캡처로 확인했습니다. 글자 크기와 pill 하단 정렬은 유지하고 상단만 줄인 뒤 `JarvisStateIndicator overlay_visible state=COMMAND_READY width=446 height=78 gap=73 x=34 y=27 left=136 right=203` 로그가 남았고, 화면에서는 시안 `JARVIS`와 초록 `LISTENING` 전체 텍스트가 잘림 없이 표시됐습니다.
 
 30초 command window timeout은 사용자가 발화하지 않아도 debug APK에서 검증할 수 있습니다.
 

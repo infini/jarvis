@@ -92,13 +92,16 @@ class JarvisStateIndicatorController(
         val screenWidth = screenWidth()
         val topInset = topSafeInset()
         val cutout = centeredCutoutBounds()
-        val height = cutoutHeight(cutout, topInset)
+        val baseHeight = cutoutHeight(cutout, topInset)
+        val topTrim = if (cutout != null) dp(2) else 0
+        val height = (baseHeight - topTrim).coerceAtLeast(dp(22))
         val cameraGap = ((cutout?.width() ?: 0) + dp(4)).coerceIn(dp(26), dp(48))
-        val topOffset = if (topInset > height) {
-            ((topInset - height) / 2).coerceAtLeast(0)
+        val baseTopOffset = if (topInset > baseHeight) {
+            ((topInset - baseHeight) / 2).coerceAtLeast(0)
         } else {
             dp(2)
         }
+        val topOffset = baseTopOffset + topTrim
         val horizontalPadding = dp(6)
         val textMetrics = fittedTextMetrics(
             cameraGapPx = cameraGap,
