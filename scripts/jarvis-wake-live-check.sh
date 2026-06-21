@@ -94,7 +94,7 @@ if [[ "$PROMPT_VIBRATE_MS" != "0" ]]; then
   sleep 0.4
 fi
 adb logcat -c
-echo "Speak now: say '자비스 깨어나' within ${DURATION_SECONDS}s, then wait for the center JARVIS indicator."
+echo "Speak now: say '자비스 깨어나' within ${DURATION_SECONDS}s, then wait for the JARVIS LISTENING island."
 sleep "$DURATION_SECONDS"
 
 adb logcat -d -v time \
@@ -158,12 +158,12 @@ echo "recent_overlay_events:"
 grep "JarvisStateIndicator" "$LOG_FILE" | tail -10 || true
 
 if [[ "$OWNER_AUDIO_ACTIVATION_COUNT" -gt 0 && "$OVERLAY_READY_COUNT" -gt 0 ]]; then
-  echo "PASS: wake phrase opened command window and center JARVIS overlay was shown."
+  echo "PASS: wake phrase opened command window and JARVIS LISTENING island was shown."
   exit 0
 fi
 
 if [[ "$OWNER_AUDIO_ACTIVATION_COUNT" -gt 0 ]]; then
-  echo "FAIL: wake opened command window, but center JARVIS overlay was not observed." >&2
+  echo "FAIL: wake opened command window, but JARVIS LISTENING island was not observed." >&2
   echo "hint=Check accessibility service binding and JarvisStateIndicator logs." >&2
   exit 1
 fi
