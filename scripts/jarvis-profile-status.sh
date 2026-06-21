@@ -43,9 +43,39 @@ EMBEDDING_COUNT="$(
   '
 )"
 
-if [[ "$EMBEDDING_COUNT" -lt 2 ]]; then
-  echo "WARN: profile_embeddings=${EMBEDDING_COUNT}. Re-register owner voice with repeated '자비스' before latency verification." >&2
+PROFILE_CONFIGURED="$(
+  printf '%s\n' "$STATUS_LINE" | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        split($i, pair, "=")
+        if (pair[1] == "profile_configured") {
+          print pair[2]
+          exit
+        }
+      }
+      print "false"
+    }
+  '
+)"
+
+PROFILE_PHRASE_ID="$(
+  printf '%s\n' "$STATUS_LINE" | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        split($i, pair, "=")
+        if (pair[1] == "profile_phrase_id") {
+          print pair[2]
+          exit
+        }
+      }
+      print "unknown"
+    }
+  '
+)"
+
+if [[ "$PROFILE_CONFIGURED" != "true" ]]; then
+  echo "WARN: profile_configured=${PROFILE_CONFIGURED}, profile_embeddings=${EMBEDDING_COUNT}, profile_phrase_id=${PROFILE_PHRASE_ID}. Re-register owner voice with repeated '자비스 실행' before latency verification." >&2
   exit 1
 fi
 
-echo "PASS: owner profile has ${EMBEDDING_COUNT} embeddings."
+echo "PASS: owner profile has ${EMBEDDING_COUNT} embeddings for ${PROFILE_PHRASE_ID}."

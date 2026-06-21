@@ -24,7 +24,7 @@ object LocalCommandRecognizer {
     private const val LOCAL_EARLY_ENDPOINT_MIN_LISTEN_MS = 560L
     private const val LOCAL_ASR_TARGET_RMS = 0.04f
     private const val LOCAL_ASR_GAIN_MIN_RMS = 0.0010f
-    private const val LOCAL_ASR_MAX_GAIN = 10f
+    private const val LOCAL_ASR_MAX_GAIN = 30f
     private const val MODEL_DIR = "sherpa-korean-streaming"
     private const val ENCODER = "$MODEL_DIR/encoder-epoch-99-avg-1.int8.onnx"
     private const val DECODER = "$MODEL_DIR/decoder-epoch-99-avg-1.onnx"

@@ -251,7 +251,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         Log.w(
             TAG,
             "Stopping JarvisVoiceService: owner voice profile is not configured; " +
-                "reason=$reason embeddings=${OwnerVoiceStore.embeddingCount(applicationContext)}",
+                "reason=$reason embeddings=${OwnerVoiceStore.embeddingCount(applicationContext)} " +
+                "phraseId=${OwnerVoiceStore.enrollmentPhraseId(applicationContext) ?: "unknown"}",
         )
         return false
     }

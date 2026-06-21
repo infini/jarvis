@@ -53,7 +53,7 @@ object JarvisVoiceServiceStarter {
             return "owner_voice_profile_missing"
         }
         if (!OwnerVoiceStore.isConfigured(appContext)) {
-            return "owner_voice_profile_legacy"
+            return "owner_voice_profile_reenrollment_required"
         }
         return null
     }

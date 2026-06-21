@@ -4,12 +4,9 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import com.personal.jarvis.JarvisVoiceService
-import com.personal.jarvis.JarvisVoiceServiceStarter
-import com.personal.jarvis.OwnerVoiceEngine
-import com.personal.jarvis.OwnerVoiceStore
 
 class JarvisDebugOwnerEnrollActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -27,48 +24,15 @@ class JarvisDebugOwnerEnrollActivity : Activity() {
             ?: DEFAULT_DURATION_MS
         val requestId = intent?.getStringExtra(EXTRA_REQUEST_ID).orEmpty()
 
-        JarvisVoiceServiceStarter.setOwnerEnrollmentActive(true)
-        stopService(Intent(this, JarvisVoiceService::class.java))
-        Log.i(TAG, "request_id=$requestId status=recording durationMs=$durationMs")
-
-        Thread({
-            var completedEmbeddingCount = 0
-            try {
-                val samples = OwnerVoiceEngine.recordSamples(
-                    durationMs = durationMs,
-                    shouldContinue = { true },
-                )
-                val embeddings = OwnerVoiceEngine.createEnrollmentEmbeddings(this, samples)
-                if (embeddings.size < OwnerVoiceEngine.MIN_OWNER_EMBEDDINGS) {
-                    Log.e(
-                        TAG,
-                        "request_id=$requestId status=failed reason=not_enough_embeddings " +
-                            "profile_embeddings=${embeddings.size}",
-                    )
-                    return@Thread
-                }
-
-                OwnerVoiceStore.saveEmbeddings(this, embeddings)
-                completedEmbeddingCount = embeddings.size
-            } catch (error: Exception) {
-                Log.e(
-                    TAG,
-                    "request_id=$requestId status=failed " +
-                        "reason=${error.javaClass.simpleName} message=${error.message}",
-                )
-            } finally {
-                JarvisVoiceServiceStarter.setOwnerEnrollmentActive(false)
-                if (completedEmbeddingCount > 0) {
-                    val started = JarvisVoiceServiceStarter.start(this, "debug_owner_enrollment_completed")
-                    Log.i(
-                        TAG,
-                        "request_id=$requestId status=completed " +
-                            "profile_embeddings=$completedEmbeddingCount service_start_requested=$started",
-                    )
-                }
-                runOnUiThread { finish() }
-            }
-        }, "JarvisDebugOwnerEnroll").start()
+        val serviceIntent = Intent(this, JarvisDebugOwnerEnrollService::class.java)
+            .putExtra(EXTRA_DURATION_MS, durationMs)
+            .putExtra(EXTRA_REQUEST_ID, requestId)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent)
+        } else {
+            startService(serviceIntent)
+        }
+        finish()
     }
 
     companion object {

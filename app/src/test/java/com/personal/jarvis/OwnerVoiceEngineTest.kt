@@ -48,6 +48,25 @@ class OwnerVoiceEngineTest {
     }
 
     @Test
+    fun preparesQuietEnrollmentSpeechForLowDeviceGain() {
+        val sampleRate = OwnerVoiceEngine.SAMPLE_RATE_HZ
+        val samples = FloatArray(sampleRate * 6) { index ->
+            if (index % 2 == 0) 0.00035f else -0.00035f
+        }
+        val speechStart = sampleRate / 2
+        val speechSamples = sampleRate * 4800 / 1000
+
+        for (index in speechStart until speechStart + speechSamples) {
+            samples[index] = if (index % 2 == 0) 0.00175f else -0.00175f
+        }
+
+        val prepared = assertNotNull(OwnerVoiceEngine.prepareSamplesForEmbedding(samples))
+
+        assertTrue(prepared.activeSpeechMs in 4775L..4825L)
+        assertTrue(prepared.samples.size < samples.size)
+    }
+
+    @Test
     fun preparesQuietWakeSpeechForVerification() {
         val sampleRate = OwnerVoiceEngine.SAMPLE_RATE_HZ
         val samples = FloatArray(sampleRate * 2)

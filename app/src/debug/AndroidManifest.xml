@@ -22,5 +22,10 @@
             android:exported="true"
             android:noHistory="true"
             android:theme="@android:style/Theme.NoDisplay" />
+
+        <service
+            android:name=".debug.JarvisDebugOwnerEnrollService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
     </application>
 </manifest>

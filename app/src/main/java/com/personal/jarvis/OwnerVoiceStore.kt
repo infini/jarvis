@@ -9,12 +9,15 @@ object OwnerVoiceStore {
     private const val PREFS_NAME = "owner_voice"
     private const val KEY_EMBEDDINGS = "owner_embeddings_v2"
     private const val KEY_EMBEDDING = "owner_embedding_v1"
+    private const val KEY_ENROLLMENT_PHRASE_ID = "owner_enrollment_phrase_id"
     private const val KEY_ACCESS_KEY_LEGACY = "picovoice_access_key"
     private const val KEY_PROFILE_LEGACY = "owner_profile"
 
     const val MODEL_ASSET_NAME = "3dspeaker_speech_campplus_sv_zh-cn_16k-common.onnx"
     const val DEFAULT_ACCEPT_THRESHOLD = 0.50f
     const val MIN_CONFIGURED_EMBEDDINGS = 2
+    const val OWNER_ENROLLMENT_PHRASE = "자비스 실행"
+    const val OWNER_ENROLLMENT_PHRASE_ID = "jarvis_activation_v2"
 
     fun saveEmbedding(context: Context, embedding: FloatArray) {
         saveEmbeddings(context, listOf(embedding))
@@ -29,6 +32,7 @@ object OwnerVoiceStore {
             .edit()
             .putString(KEY_EMBEDDINGS, encoded)
             .putString(KEY_EMBEDDING, encodeEmbedding(validEmbeddings.first()))
+            .putString(KEY_ENROLLMENT_PHRASE_ID, OWNER_ENROLLMENT_PHRASE_ID)
             .apply()
     }
 
@@ -48,17 +52,23 @@ object OwnerVoiceStore {
 
     fun embeddingCount(context: Context): Int = getEmbeddings(context).size
 
+    fun enrollmentPhraseId(context: Context): String? = prefs(context).getString(KEY_ENROLLMENT_PHRASE_ID, null)
+
     fun hasProfile(context: Context): Boolean = getEmbeddings(context).isNotEmpty()
 
-    fun isConfigured(context: Context): Boolean = embeddingCount(context) >= MIN_CONFIGURED_EMBEDDINGS
+    fun isConfigured(context: Context): Boolean {
+        return embeddingCount(context) >= MIN_CONFIGURED_EMBEDDINGS &&
+            enrollmentPhraseId(context) == OWNER_ENROLLMENT_PHRASE_ID
+    }
 
     fun clearProfile(context: Context) {
         prefs(context)
             .edit()
-            .remove(KEY_EMBEDDINGS)
-            .remove(KEY_EMBEDDING)
-            .remove(KEY_ACCESS_KEY_LEGACY)
-            .remove(KEY_PROFILE_LEGACY)
+                .remove(KEY_EMBEDDINGS)
+                .remove(KEY_EMBEDDING)
+                .remove(KEY_ENROLLMENT_PHRASE_ID)
+                .remove(KEY_ACCESS_KEY_LEGACY)
+                .remove(KEY_PROFILE_LEGACY)
             .apply()
     }
 

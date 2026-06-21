@@ -123,7 +123,7 @@ class MainActivity : Activity() {
         root.addView(button("테스트: 화면 끄기") { CommandBus.send(this, CommandBus.COMMAND_SLEEP_SCREEN) })
 
         val notes = TextView(this).apply {
-            text = "접근성 서비스를 켠 뒤 Jarvis 시작을 누르세요.\n먼저 '자비스 실행'을 말한 뒤 카메라 실행 / 전면 / 후면 / 찍어 / 종료를 말합니다."
+            text = "접근성 서비스를 켠 뒤 Jarvis 시작을 누르세요.\n먼저 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'을 말한 뒤 카메라 실행 / 전면 / 후면 / 찍어 / 종료를 말합니다."
             textSize = 14f
             setTextColor(Color.rgb(76, 86, 96))
             setPadding(0, dp(18), 0, 0)
@@ -243,7 +243,7 @@ class MainActivity : Activity() {
 
     private fun ownerVoiceStartBlockMessage(): String {
         return if (OwnerVoiceStore.hasProfile(this)) {
-            "저장된 소유자 목소리가 구버전 단일 샘플입니다. 내 목소리 등록을 다시 완료해야 Jarvis가 대기합니다."
+            "저장된 소유자 목소리가 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}' activation용 프로필이 아닙니다. 내 목소리 등록을 다시 완료해야 Jarvis가 대기합니다."
         } else {
             "소유자 목소리를 먼저 등록하세요."
         }
@@ -268,6 +268,7 @@ class MainActivity : Activity() {
         val hasOwnerProfile = OwnerVoiceStore.hasProfile(this)
         val ownerProfileConfigured = OwnerVoiceStore.isConfigured(this)
         val ownerEmbeddingCount = OwnerVoiceStore.embeddingCount(this)
+        val ownerPhraseId = OwnerVoiceStore.enrollmentPhraseId(this)
 
         statusView.text = buildString {
             appendLine("마이크 권한: ${if (mic) "허용됨" else "필요함"}")
@@ -287,8 +288,11 @@ class MainActivity : Activity() {
                 },
             )
             if (hasOwnerProfile) appendLine("저장된 음성 특징: ${ownerEmbeddingCount}개")
+            if (hasOwnerProfile) {
+                appendLine("등록 문구: ${ownerPhraseId ?: "이전 버전/알 수 없음"}")
+            }
             if (hasOwnerProfile && !ownerProfileConfigured) {
-                appendLine("구버전 단일 샘플 프로필입니다. Jarvis 대기를 시작하지 않습니다.")
+                appendLine("'${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'으로 다시 등록해야 Jarvis 대기를 시작합니다.")
                 appendLine("내 목소리 등록 시작을 눌러 다시 등록하세요.")
             }
             appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++ / Korean streaming ASR")

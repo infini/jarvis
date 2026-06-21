@@ -18,8 +18,8 @@ object OwnerVoiceEngine {
     private const val READ_INTERVAL_MS = 80L
     private const val ENERGY_FRAME_MS = 25L
     private const val SPEECH_EDGE_MARGIN_MS = 180L
-    private const val MIN_PEAK_RMS = 0.002f
-    private const val MIN_ACTIVE_RMS = 0.0014f
+    private const val MIN_PEAK_RMS = 0.0012f
+    private const val MIN_ACTIVE_RMS = 0.00085f
     private const val VERIFY_MIN_PEAK_RMS = 0.00075f
     private const val VERIFY_MIN_ACTIVE_RMS = 0.00050f
     private const val ACTIVE_RMS_RATIO = 0.18f
@@ -94,6 +94,12 @@ object OwnerVoiceEngine {
             get() = activeSampleCount * 1000L / SAMPLE_RATE_HZ
     }
 
+    data class AudioSummary(
+        val durationMs: Long,
+        val peakFrameRms: Float,
+        val meanRms: Float,
+    )
+
     private data class SpeechBounds(
         val start: Int,
         val end: Int,
@@ -147,6 +153,27 @@ object OwnerVoiceEngine {
         }
 
         return embeddings
+    }
+
+    fun summarizeAudio(samples: FloatArray): AudioSummary {
+        if (samples.isEmpty()) {
+            return AudioSummary(durationMs = 0L, peakFrameRms = 0f, meanRms = 0f)
+        }
+
+        val frameSamples = (SAMPLE_RATE_HZ * ENERGY_FRAME_MS / 1000L).toInt()
+        var start = 0
+        var peakFrameRms = 0f
+        while (start < samples.size) {
+            val end = min(start + frameSamples, samples.size)
+            peakFrameRms = maxOf(peakFrameRms, rms(samples, start, end))
+            start += frameSamples
+        }
+
+        return AudioSummary(
+            durationMs = samples.size * 1000L / SAMPLE_RATE_HZ,
+            peakFrameRms = peakFrameRms,
+            meanRms = rms(samples, 0, samples.size),
+        )
     }
 
     private fun createEmbedding(context: Context, preparedAudio: PreparedAudio): FloatArray? {
