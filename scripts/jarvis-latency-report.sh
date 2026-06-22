@@ -93,7 +93,9 @@ function printTrace(id) {
     commandAccess = access[id] - parsed[id]
   }
   ownerGate = ownerGateElapsed[id] + 0
-  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], speechParse, access[id], speechAccess, commandAccess, bus[id]
+  displayCandidateIndex = parsedCandidateIndex[id]
+  if (displayCandidateIndex == "") displayCandidateIndex = "-"
+  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms parsed_candidate_index=%s speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], displayCandidateIndex, speechParse, access[id], speechAccess, commandAccess, bus[id]
 
   if (ownerAcceptance[id] != "") {
     printf "  owner_acceptance=%s owner_auth_speech=%sms", ownerAcceptance[id], ownerAuthSpeech[id]
@@ -222,7 +224,11 @@ function printTrace(id) {
   if (event == "speech_error") androidError[trace] = value($0, "code")
   if (event == "partial_results" || event == "final_results") androidText[trace] = $0
 
-  if (event == "command_parsed" && totalRaw != "") parsed[trace] = millis(totalRaw)
+  if (event == "command_parsed" && totalRaw != "") {
+    parsed[trace] = millis(totalRaw)
+    candidateIndex = value($0, "candidateIndex")
+    if (candidateIndex != "") parsedCandidateIndex[trace] = candidateIndex
+  }
   if (event == "accessibility_command_received") {
     accessRaw = value($0, "totalMs")
     busRaw = value($0, "busDelayMs")
