@@ -391,7 +391,7 @@ scripts/jarvis-command-trace.sh 45
 - `owner_audio_activation`: activation phrase와 owner voice가 모두 확인되어 command window를 여는 지점
 - `owner_authorized`: fallback owner gate 경로에서 소유자 목소리 인증 통과
 - `owner_audio_asr_start` / `owner_audio_asr_complete`: fallback owner gate 경로에서 owner gate 통과 직전 음성 window의 즉시 local ASR 시작/종료
-- `listen_start`: Android STT 또는 local ASR 리스닝 시작
+- `listen_start`: Android STT 또는 local ASR 리스닝 시작. command Android STT는 `biasCount`, `minMs`, `possibleSilenceMs`, `completeSilenceMs`도 함께 기록해 실제 recognition hint와 저지연 타이밍 적용 여부를 확인한다.
 - `local_partial`: local ASR partial text 수신
 - `local_complete`: local ASR 종료. endpoint, local elapsed, active speech, trailing silence, peak/mean RMS, ASR gain을 함께 기록
 - `fallback_to_android`: local fallback이 명령을 못 잡아 Android STT fallback으로 전환
@@ -407,7 +407,7 @@ scripts/jarvis-command-trace.sh 45
 - `accessibility_command_dispatch_return`: 접근성 서비스 command dispatch 반환
 - `command_complete`: Jarvis command window 정책까지 반영한 명령 처리 완료
 
-음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후의 시간이다. `activation_asr_complete`의 `elapsedMs`는 idle activation ASR이 녹음/디코딩에 사용한 시간이고, `android_activation_local_replay_complete`는 Android wake 실패 snapshot을 local activation ASR로 재판정한 시간이다. `activation_owner_verified`는 같은 rolling audio의 owner score를 보여준다. `local_complete`의 `elapsedMs`는 local command fallback이 실제 녹음/디코딩에 사용한 시간이다. `partial_results`, `final_results`, `parse_no_command`의 `candidates=`는 후보별 80자, 최대 5개로 제한해 남기고 후보 내부 공백은 `_`로 치환한다. 이 값은 `자비스 사진 찍어`가 첫 후보에서는 틀렸지만 2번째 이후 후보에는 있었는지, 또는 호출어/동사 중 어느 부분이 반복적으로 깨지는지 확인하는 기준이다. `command_parsed`의 `candidateIndex`는 실제로 채택한 후보 순번이다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 command를 보낸 뒤 접근성 서비스가 받은 지연이다. 접근성 서비스가 같은 프로세스에 등록되어 있으면 `transport=direct` 경로가 broadcast보다 먼저 사용된다. 2026-06-21 실기기 로그에서는 owner gate-first 경로가 주변 대화를 soft wake로 통과시키고 activation ASR이 빈 문자열/`응`을 반환하는 케이스가 반복되었다. 따라서 idle wake는 activation ASR-first 구조로 전환하고, command window live 1차 인식은 Android 기본 STT partial/final 결과로 수행하며, Android 발화 감지 후 실패 fallback에 local ASR을 사용한다.
+음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후의 시간이다. `activation_asr_complete`의 `elapsedMs`는 idle activation ASR이 녹음/디코딩에 사용한 시간이고, `android_activation_local_replay_complete`는 Android wake 실패 snapshot을 local activation ASR로 재판정한 시간이다. `activation_owner_verified`는 같은 rolling audio의 owner score를 보여준다. command Android STT `listen_start`의 `biasCount`는 `EXTRA_BIASING_STRINGS`에 넣은 command hint 수이고, `minMs`/`possibleSilenceMs`/`completeSilenceMs`는 해당 listen에 적용한 STT endpoint timing이다. `local_complete`의 `elapsedMs`는 local command fallback이 실제 녹음/디코딩에 사용한 시간이다. `partial_results`, `final_results`, `parse_no_command`의 `candidates=`는 후보별 80자, 최대 5개로 제한해 남기고 후보 내부 공백은 `_`로 치환한다. 이 값은 `자비스 사진 찍어`가 첫 후보에서는 틀렸지만 2번째 이후 후보에는 있었는지, 또는 호출어/동사 중 어느 부분이 반복적으로 깨지는지 확인하는 기준이다. `command_parsed`의 `candidateIndex`는 실제로 채택한 후보 순번이다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 command를 보낸 뒤 접근성 서비스가 받은 지연이다. 접근성 서비스가 같은 프로세스에 등록되어 있으면 `transport=direct` 경로가 broadcast보다 먼저 사용된다. 2026-06-21 실기기 로그에서는 owner gate-first 경로가 주변 대화를 soft wake로 통과시키고 activation ASR이 빈 문자열/`응`을 반환하는 케이스가 반복되었다. 따라서 idle wake는 activation ASR-first 구조로 전환하고, command window live 1차 인식은 Android 기본 STT partial/final 결과로 수행하며, Android 발화 감지 후 실패 fallback에 local ASR을 사용한다.
 
 ### Wake/Sleep Recognition Lessons
 

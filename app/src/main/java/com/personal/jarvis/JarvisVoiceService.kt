@@ -526,6 +526,16 @@ class JarvisVoiceService : Service(), RecognitionListener {
         forceAndroidCommandOnce = false
         forceLocalCommandOnce = false
         val intent = SpeechRecognitionIntentFactory.create(this, commandWindowOpen)
+        val commandSpeechTiming = if (commandWindowOpen) {
+            SpeechRecognitionIntentFactory.timingFor(commandWindowOpen = true)
+        } else {
+            null
+        }
+        val commandBiasingCount = if (commandWindowOpen) {
+            SpeechRecognitionIntentFactory.biasingStringsFor(commandWindowOpen = true).size
+        } else {
+            0
+        }
 
         try {
             listening = true
@@ -543,7 +553,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 ).mark(
                     "listen_start",
                     "engine=android_stt timeoutMs=${listeningTimeoutMs()} " +
-                        "fallbackAfterLocal=$isAndroidFallbackAfterLocal",
+                        "fallbackAfterLocal=$isAndroidFallbackAfterLocal " +
+                        "biasCount=$commandBiasingCount " +
+                        "minMs=${commandSpeechTiming?.minimumLengthMs ?: 0} " +
+                        "possibleSilenceMs=${commandSpeechTiming?.possiblyCompleteSilenceMs ?: 0} " +
+                        "completeSilenceMs=${commandSpeechTiming?.completeSilenceMs ?: 0}",
                 )
             }
             if (commandWindowOpen) {
