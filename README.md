@@ -49,7 +49,7 @@ Jarvis는 기본적으로 상시 음성 대기를 하지 않습니다. 전원 �
 - `자비스 잠들어`
 - `자비스 완전 종료`
 
-사진 촬영은 `자비스 사진 찍어`, `자비스 사진 찍어줘`, `자비스 사진 찍어 주세요`, `자비스 셔터 눌러`, `자비스 촬영해줘`, `자비스 찰칵`을 같은 `take_photo` 명령으로 처리합니다. `자비스 사진 찍어`는 partial STT에서 `자비스 사진 찍` 또는 `자비스 사진 찌`까지만 들어와도 빠른 실행 대상으로 인정하고, partial 경로에 한해 `자비스 사진 지`, `자비스 사진 치`처럼 더 짧은 중간 후보도 촬영으로 인정합니다. Android STT가 중간 단어 `사진`을 빼고 `자비스 찍`, `자베스 찍`, `쟈비스 찌`, `제이비스 찍`, `서비스 찌`처럼 exact short 후보를 반환한 경우는 partial뿐 아니라 final-only 결과에서도 촬영으로 처리합니다. 단, `자비스 지금 찍`처럼 호출어 뒤에 다른 단어가 끼는 후보는 실행하지 않습니다. command window 안에서는 Android STT가 호출어를 `자 비서`, `제이비스`, `자비써`, `자비쓰`, `서비스`처럼 인식한 경우와 사진 문맥의 촬영 동사 `찍어`를 `찌거`, `찌꺼`, `지거`, `지꺼`, `치거`, `치꺼`, `지켜`, `치켜`처럼 인식한 경우를 명령용 보정으로 처리하지만, 이 보정은 `자비스 깨어나` activation 판정에는 쓰지 않습니다.
+사진 촬영은 `자비스 사진 찍어`, `자비스 사진 찍어줘`, `자비스 사진 찍어 주세요`, `자비스 셔터 눌러`, `자비스 촬영해줘`, `자비스 찰칵`을 같은 `take_photo` 명령으로 처리합니다. `자비스 사진 찍어`는 partial STT에서 `자비스 사진 찍` 또는 `자비스 사진 찌`까지만 들어와도 빠른 실행 대상으로 인정하고, partial 경로에 한해 `자비스 사진 지`, `자비스 사진 치`처럼 더 짧은 중간 후보도 촬영으로 인정합니다. partial callback 없이 final 결과에만 이런 clipped 후보가 들어오는 경우도 strict final parse 실패 후 `final_fast_partial` fallback으로 한 번 더 처리합니다. Android STT가 중간 단어 `사진`을 빼고 `자비스 찍`, `자베스 찍`, `쟈비스 찌`, `제이비스 찍`, `서비스 찌`처럼 exact short 후보를 반환한 경우는 partial뿐 아니라 final-only 결과에서도 촬영으로 처리합니다. 단, `자비스 지금 찍`처럼 호출어 뒤에 다른 단어가 끼는 후보는 실행하지 않습니다. command window 안에서는 Android STT가 호출어를 `자 비서`, `제이비스`, `자비써`, `자비쓰`, `서비스`처럼 인식한 경우와 사진 문맥의 촬영 동사 `찍어`를 `찌거`, `찌꺼`, `지거`, `지꺼`, `치거`, `치꺼`, `지켜`, `치켜`처럼 인식한 경우를 명령용 보정으로 처리하지만, 이 보정은 `자비스 깨어나` activation 판정에는 쓰지 않습니다.
 
 `JARVIS LISTENING` Hyper Island overlay가 보이는 동안에만 명령을 받습니다. 카메라 세션 명령을 처리하면 30초 command window를 다시 열고, 30초 안에 다음 명령이 없으면 Jarvis는 실패음 없이 overlay를 숨긴 뒤 음성 foreground service를 종료합니다. 열린 command window 안에서도 `찍어`, `후면`, `종료`처럼 `자비스`가 빠진 단독 명령은 실행하지 않습니다.
 
@@ -93,7 +93,7 @@ scripts/jarvis-photo-command-audit.sh
 scripts/jarvis-photo-live-check.sh 12
 ```
 
-인식률과 속도를 수치로 보려면 같은 문장을 여러 번 반복 측정합니다. 아래 예시는 5회 반복하며, 각 trial의 원본 로그, 마지막 STT 후보 텍스트, `parsed_candidate_index`, `stt_bias_count`, STT endpoint timing, `parse_no_command` 발생 수, 실패 유형, 파싱/접근성 지연, 최종 성공률 요약과 TSV 결과 파일을 `/tmp`에 남깁니다. summary에는 `parsed_source`, `parsed_candidate_index`, 반복 출현한 `stt_candidate` 빈도도 함께 집계됩니다.
+인식률과 속도를 수치로 보려면 같은 문장을 여러 번 반복 측정합니다. 아래 예시는 5회 반복하며, 각 trial의 원본 로그, 마지막 STT 후보 텍스트, `parsed_candidate_index`, `stt_bias_count`, STT endpoint timing, `parse_no_command` 발생 수, 실패 유형, 파싱/접근성 지연, 최종 성공률 요약과 TSV 결과 파일을 `/tmp`에 남깁니다. summary에는 `partial`, `final`, `final_fast_partial`, `local` 같은 `parsed_source`, `parsed_candidate_index`, 반복 출현한 `stt_candidate` 빈도도 함께 집계됩니다.
 
 ```bash
 scripts/jarvis-photo-live-series.sh 5 12

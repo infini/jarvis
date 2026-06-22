@@ -170,7 +170,9 @@ if [[ -z "${STT_TEXT_SAMPLE//[[:space:]]/}" ]]; then
   STT_TEXT_SAMPLE="-"
 fi
 PARSED_SOURCE="-"
-if [[ "$PHOTO_PARSED_LINE" == *"source=partial"* ]]; then
+if [[ "$PHOTO_PARSED_LINE" == *"source=final_fast_partial"* ]]; then
+  PARSED_SOURCE="final_fast_partial"
+elif [[ "$PHOTO_PARSED_LINE" == *"source=partial"* ]]; then
   PARSED_SOURCE="partial"
 elif [[ "$PHOTO_PARSED_LINE" == *"source=final"* ]]; then
   PARSED_SOURCE="final"

@@ -1464,6 +1464,26 @@ class JarvisVoiceService : Service(), RecognitionListener {
             }
         }
 
+        for ((index, candidate) in results.withIndex()) {
+            val command = CommandInterpreter.parseFastPartial(
+                text = candidate,
+                requireWakeWord = true,
+            ) ?: continue
+            if (command !in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS) continue
+
+            markLatency(
+                "command_parsed",
+                "source=final_fast_partial candidateIndex=${index + 1} command=$command text=$candidate",
+            )
+            Log.d(TAG, "Parsed final fast partial command: $command from '$candidate'")
+            partialActivationHandled = false
+            return if (runCommand(command, "final_fast_partial").keepsCommandWindowOpen) {
+                SpeechOutcome.COMMAND_RUN_KEEP_WINDOW
+            } else {
+                SpeechOutcome.COMMAND_RUN
+            }
+        }
+
         if (!currentListeningAllowsCommandWithoutWake && results.any(CommandInterpreter::isActivationWake)) {
             Log.d(TAG, "Activation phrase recognized; keeping command window open")
             markLatency("activation")
