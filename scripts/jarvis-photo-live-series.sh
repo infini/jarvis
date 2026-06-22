@@ -68,7 +68,7 @@ mkdir -p "$(dirname "$SUMMARY_FILE")"
 mkdir -p "$(dirname "$TSV_FILE")"
 : > "$SUMMARY_FILE"
 : > "$TSV_FILE"
-printf 'trial\tstatus\tfailure_type\tparsed_source\tparsed_ms\tspeech_parse_ms\taccess_ms\tspeech_access_ms\tcommand_access_ms\tstt_text\tready_for_speech\tspeech_begin\tpartial_results\tfinal_results\tlog_file\tdiagnostic_log_file\toutput_file\n' > "$TSV_FILE"
+printf 'trial\tstatus\tfailure_type\tparsed_source\tparsed_ms\tspeech_parse_ms\taccess_ms\tspeech_access_ms\tcommand_access_ms\tstt_text\tready_for_speech\tspeech_begin\tpartial_results\tfinal_results\tparse_no_command\tlog_file\tdiagnostic_log_file\toutput_file\n' > "$TSV_FILE"
 
 echo "photo_live_series request_id=$REQUEST_ID trials=$TRIALS duration_seconds=$DURATION_SECONDS" | tee -a "$SUMMARY_FILE"
 echo "Say '자비스 사진 찍어' once per trial when prompted." | tee -a "$SUMMARY_FILE"
@@ -108,6 +108,7 @@ for trial in $(seq 1 "$TRIALS"); do
   SPEECH_BEGIN_COUNT="$(extract_field "$EVENTS_LINE" speech_begin)"
   PARTIAL_COUNT="$(extract_field "$EVENTS_LINE" partial_results)"
   FINAL_COUNT="$(extract_field "$EVENTS_LINE" final_results)"
+  PARSE_NO_COMMAND_COUNT="$(extract_field "$EVENTS_LINE" parse_no_command)"
   RESULT_STATUS="${RESULT_STATUS:-unknown}"
   FAILURE_TYPE="${FAILURE_TYPE:-unknown}"
   PARSED_SOURCE="${PARSED_SOURCE:-unknown}"
@@ -121,6 +122,7 @@ for trial in $(seq 1 "$TRIALS"); do
   SPEECH_BEGIN_COUNT="${SPEECH_BEGIN_COUNT:-0}"
   PARTIAL_COUNT="${PARTIAL_COUNT:-0}"
   FINAL_COUNT="${FINAL_COUNT:-0}"
+  PARSE_NO_COMMAND_COUNT="${PARSE_NO_COMMAND_COUNT:-0}"
 
   if [[ "$STATUS" -eq 0 ]]; then
     SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
@@ -135,7 +137,7 @@ for trial in $(seq 1 "$TRIALS"); do
       echo "  $FAIL_LINE" | tee -a "$SUMMARY_FILE"
     fi
   fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$trial" \
     "$RESULT_STATUS" \
     "$FAILURE_TYPE" \
@@ -150,6 +152,7 @@ for trial in $(seq 1 "$TRIALS"); do
     "$SPEECH_BEGIN_COUNT" \
     "$PARTIAL_COUNT" \
     "$FINAL_COUNT" \
+    "$PARSE_NO_COMMAND_COUNT" \
     "${LOG_FILE:-unknown}" \
     "${DIAGNOSTIC_LOG_FILE:-unknown}" \
     "$TRIAL_LOG" >> "$TSV_FILE"

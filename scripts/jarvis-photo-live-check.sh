@@ -110,6 +110,7 @@ READY_COUNT="$(count_event ready_for_speech)"
 SPEECH_BEGIN_COUNT="$(count_event speech_begin)"
 PARTIAL_COUNT="$(count_event partial_results)"
 FINAL_COUNT="$(count_event final_results)"
+PARSE_NO_COMMAND_COUNT="$(count_event parse_no_command)"
 if [[ -n "$INJECT_COMMAND" ]]; then
   PHOTO_PARSED_LINE="$(grep "event=command_injected" "$LOG_FILE" | grep "command=take_photo" | tail -1 || true)"
 else
@@ -122,8 +123,9 @@ COMPLETE_LINE="$(grep "event=command_complete" "$LOG_FILE" | grep "keepWindow=tr
 PHOTO_REPORT_LINE="$(printf '%s\n' "$REPORT_OUTPUT" | awk '/^trace=/ && /command=take_photo/ && /status=command_complete/ { line=$0 } END { print line }')"
 PARTIAL_TEXT="$(grep "event=partial_results" "$LOG_FILE" | tail -3 || true)"
 FINAL_TEXT="$(grep "event=final_results" "$LOG_FILE" | tail -3 || true)"
-STT_TEXT_SAMPLE="$(printf '%s\n%s\n' "$PARTIAL_TEXT" "$FINAL_TEXT" | one_line)"
-if [[ -z "$STT_TEXT_SAMPLE" ]]; then
+NO_COMMAND_TEXT="$(grep "event=parse_no_command" "$LOG_FILE" | tail -3 || true)"
+STT_TEXT_SAMPLE="$(printf '%s\n%s\n%s\n' "$PARTIAL_TEXT" "$FINAL_TEXT" "$NO_COMMAND_TEXT" | one_line)"
+if [[ -z "${STT_TEXT_SAMPLE//[[:space:]]/}" ]]; then
   STT_TEXT_SAMPLE="-"
 fi
 PARSED_SOURCE="-"
@@ -149,7 +151,7 @@ COMMAND_ACCESS_MS="${COMMAND_ACCESS_MS:-0}"
 
 echo "log_file=$LOG_FILE"
 echo "diagnostic_log_file=$DIAGNOSTIC_LOG_FILE"
-echo "events ready_for_speech=$READY_COUNT speech_begin=$SPEECH_BEGIN_COUNT partial_results=$PARTIAL_COUNT final_results=$FINAL_COUNT"
+echo "events ready_for_speech=$READY_COUNT speech_begin=$SPEECH_BEGIN_COUNT partial_results=$PARTIAL_COUNT final_results=$FINAL_COUNT parse_no_command=$PARSE_NO_COMMAND_COUNT"
 
 if [[ -z "$PHOTO_PARSED_LINE" ]]; then
   FAILURE_TYPE="no_take_photo_parse"
@@ -171,7 +173,7 @@ if [[ -z "$PHOTO_PARSED_LINE" ]]; then
     echo "Jarvis was ready, but Android STT did not detect speech. Say the phrase after the ready indicator/vibration." >&2
   else
     echo "Speech was detected, but the phrase did not map to take_photo. Recent STT text:" >&2
-    printf '%s\n%s\n' "$PARTIAL_TEXT" "$FINAL_TEXT" >&2
+    printf '%s\n%s\n%s\n' "$PARTIAL_TEXT" "$FINAL_TEXT" "$NO_COMMAND_TEXT" >&2
   fi
   exit 1
 fi

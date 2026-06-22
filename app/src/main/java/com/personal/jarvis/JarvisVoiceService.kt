@@ -1459,7 +1459,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             return SpeechOutcome.ACTIVATION
         }
 
-        markLatency("parse_no_command", "count=${results.size}")
+        markLatency("parse_no_command", "count=${results.size} candidates=${speechCandidateSummary(results)}")
         return SpeechOutcome.NO_COMMAND
     }
 
@@ -1696,7 +1696,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         val finalResults = results
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             .orEmpty()
-        markLatency("final_results", "count=${finalResults.size} first=${finalResults.firstOrNull().orEmpty()}")
+        markLatency("final_results", "count=${finalResults.size} candidates=${speechCandidateSummary(finalResults)}")
         Log.d(TAG, "Final speech results received")
         val wasIdleAndroidWake = idleAndroidWakeListening
         if (wasIdleAndroidWake) {
@@ -1785,7 +1785,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             .orEmpty()
         if (results.isNotEmpty()) speechStartedInCurrentListen = true
         if (results.isNotEmpty()) {
-            markLatency("partial_results", "count=${results.size} first=${results.first()}")
+            markLatency("partial_results", "count=${results.size} candidates=${speechCandidateSummary(results)}")
         }
         if (results.isNotEmpty()) Log.d(TAG, "Partial speech results: $results")
         if (runFastPartialCommand(results)) return
@@ -1833,6 +1833,19 @@ class JarvisVoiceService : Service(), RecognitionListener {
             return handleAndroidActivationRecognized(activationText, "partial")
         }
         return false
+    }
+
+    private fun speechCandidateSummary(results: List<String>): String {
+        if (results.isEmpty()) return "-"
+
+        return results
+            .take(MAX_LOGGED_SPEECH_CANDIDATES)
+            .joinToString(separator = "|") { candidate ->
+                SPEECH_LOG_WHITESPACE
+                    .replace(candidate.trim(), " ")
+                    .replace("|", "/")
+                    .take(MAX_LOGGED_SPEECH_CANDIDATE_CHARS)
+            }
     }
 
     private fun completePartialActivation(reason: String): Boolean {
@@ -1892,6 +1905,8 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 20L
         private const val SERVICE_STOP_DELAY_MS = 200L
         private const val COMMAND_WINDOW_LISTEN_DELAY_MS = 0L
+        private const val MAX_LOGGED_SPEECH_CANDIDATES = 5
+        private const val MAX_LOGGED_SPEECH_CANDIDATE_CHARS = 80
         const val EXTRA_DEBUG_COMMAND_WINDOW_MS = "debug_command_window_ms"
         const val EXTRA_DEBUG_REQUEST_ID = "debug_request_id"
         const val EXTRA_DEBUG_COMMAND = "debug_command"
@@ -1905,6 +1920,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             "com.google.android.as",
             "com.google.android.apps.miphone.aiai.app.AiAiSpeechRecognitionService",
         )
+        private val SPEECH_LOG_WHITESPACE = Regex("\\s+")
     }
 
     private enum class SpeechOutcome {
