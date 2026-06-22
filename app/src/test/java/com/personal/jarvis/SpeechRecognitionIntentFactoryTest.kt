@@ -36,8 +36,11 @@ class SpeechRecognitionIntentFactoryTest {
         assertTrue("자비스 사진 치" in biasingStrings)
         assertTrue("자비스 찍" in biasingStrings)
         assertTrue("자비스 찌" in biasingStrings)
+        assertTrue("자베스 사진 찍" in biasingStrings)
+        assertTrue("자베스 사진 찌" in biasingStrings)
         assertTrue("자베스 사진 지" in biasingStrings)
         assertTrue("자베스 찍" in biasingStrings)
+        assertTrue("쟈비스 사진 찍" in biasingStrings)
         assertTrue("쟈비스 사진 치" in biasingStrings)
         assertTrue("쟈비스 찌" in biasingStrings)
         assertTrue("잡스 사진 지" in biasingStrings)
@@ -48,6 +51,8 @@ class SpeechRecognitionIntentFactoryTest {
         assertTrue("자비스 사진 지켜" in biasingStrings)
         assertTrue("자비스 찌거" in biasingStrings)
         assertTrue("자비스 치거" in biasingStrings)
+        assertTrue("자 비서 사진 찌" in biasingStrings)
+        assertTrue("자 비서 찌" in biasingStrings)
         assertTrue("자비서 사진 찍" in biasingStrings)
         assertTrue("자비서 사진 지" in biasingStrings)
         assertTrue("자비서 사진 치" in biasingStrings)
@@ -68,6 +73,7 @@ class SpeechRecognitionIntentFactoryTest {
         assertTrue("서비스 찍" in biasingStrings)
         assertTrue("서비스 찌" in biasingStrings)
         assertTrue("자비수 사진 지" in biasingStrings)
+        assertTrue("잡이스 사진 찍" in biasingStrings)
         assertTrue("잡이스 사진 치" in biasingStrings)
         assertTrue("잡이스 찍" in biasingStrings)
         assertTrue("자비스 카메라 실행" in biasingStrings)
@@ -88,7 +94,7 @@ class SpeechRecognitionIntentFactoryTest {
     @Test
     fun commandWindowBiasCountMatchesLiveCheckStaleApkGuard() {
         assertEquals(
-            139,
+            159,
             SpeechRecognitionIntentFactory.biasingStringsFor(commandWindowOpen = true).size,
         )
     }
