@@ -489,6 +489,8 @@ live command는 Android 기본 `SpeechRecognizer`가 먼저 듣고 partial/final
 
 `scripts/jarvis-photo-command-audit.sh`는 debug command window에 `take_photo`를 주입해 접근성 서비스 수신, 셔터 좌표 fast path, command window 재개를 한 번에 검증한다. 이 스크립트는 음성 인식 품질 자체를 증명하지는 않지만, 파서 이후 촬영 실행 경로 지연과 접근성 dispatch 회귀를 빠르게 잡는 기준으로 사용한다.
 
+`scripts/jarvis-photo-live-check.sh`는 카메라 앱을 연 뒤 debug command window를 시작하고 사용자가 `자비스 사진 찍어`를 한 번 말하는 실발화 검증용 스크립트다. `partial_results`, `final_results`, `command_parsed command=take_photo`, `accessibility_command_received`, 셔터 좌표 fast path 로그를 함께 확인한다. 자동 smoke 검증이 필요할 때는 `JARVIS_PHOTO_LIVE_INJECT_COMMAND=take_photo`를 지정해 실제 발화 없이 같은 실행 경로를 점검한다.
+
 ## 8.1 Owner Voice Gate
 
 소유자 목소리 인증은 오픈소스 `sherpa-onnx` Android 런타임과 3D-Speaker CAM++ speaker verification 모델을 사용한다.

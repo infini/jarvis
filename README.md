@@ -86,6 +86,12 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-photo-command-audit.sh
 ```
 
+실제 음성 인식까지 확인하려면 카메라 앱이 열리는 것을 확인한 뒤 아래 스크립트가 출력하는 안내에 맞춰 `자비스 사진 찍어`를 한 번 말합니다. 스크립트는 partial/final STT 텍스트, `take_photo` 파싱 여부, 접근성 서비스 수신, 셔터 좌표 fast path를 함께 판정합니다.
+
+```bash
+scripts/jarvis-photo-live-check.sh 12
+```
+
 기존 측정 로그와 진단 로그를 함께 판독해 실패 단계를 분류하려면 다음 스크립트를 사용합니다.
 
 ```bash
