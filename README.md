@@ -4,6 +4,8 @@
 
 장기 명세와 이어받기 기준은 [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md)에 정리되어 있습니다. 기능을 추가할 때는 해당 문서를 먼저 갱신합니다.
 
+2026-06-23 `자비스 사진 찍어` 인식률/속도 개선 작업의 상세 기록은 [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md)의 `Daily Work Log`에 남겨 둡니다.
+
 ## 현재 구조
 
 - `JarvisVoiceService`: command window가 열린 동안만 마이크를 사용하는 포그라운드 서비스입니다.

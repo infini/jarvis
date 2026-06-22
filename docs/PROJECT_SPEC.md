@@ -743,7 +743,96 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - Shizuku/ADB 연동 가능성 검토
 - 단, 루팅 의존은 기본 방향으로 삼지 않는다.
 
-## 15. Change Policy
+## 15. Daily Work Log
+
+### 2026-06-23 `자비스 사진 찍어` 인식률/속도 개선
+
+오늘 작업의 목표는 command window 안에서 사용자가 `자비스 사진 찍어`라고 말했을 때 Android STT 후보가 조금 흔들려도 `take_photo`로 더 잘 매핑하고, 매핑된 뒤 셔터 제스처가 실제로 빠르게 dispatch되는지 수치로 확인하는 것이었다. 기본 진입 정책은 기존과 동일하게 호출형 command window이며, idle 상시 마이크 대기는 다시 켜지 않았다.
+
+#### 작업 흐름
+
+1. 촬영 명령 파서의 허용 범위를 실제 STT 흔들림 중심으로 확장했다.
+2. 셔터 실행 경로의 지연을 `JarvisLatency`와 live check 스크립트에서 직접 볼 수 있게 했다.
+3. 파서 내부 반복 계산을 줄여 partial/final 후보 처리 overhead를 낮췄다.
+4. Android STT bias hint를 늘려 `자비스 사진 찍어` 후보가 더 잘 올라오도록 했다.
+5. 매 단계마다 단위 테스트, debug APK 빌드, 실기기 설치, 주입 live check를 수행하고 문서와 stale APK guard를 함께 갱신했다.
+
+#### 커밋별 기록
+
+`801dfa9 Trace shutter dispatch latency`
+
+- `CameraAccessibilityController`와 `JarvisAccessibilityService`에서 `take_photo`가 접근성 서비스에 도달한 뒤 셔터 탭을 시작하고 dispatch하는 시점을 `shutter_tap_start`, `shutter_tap_dispatch`로 기록하게 했다.
+- `scripts/jarvis-latency-report.sh`가 `shutter`, `speech_shutter`, `command_shutter`, `access_shutter`, `shutter_result`를 출력하도록 확장했다.
+- `scripts/jarvis-photo-command-audit.sh`와 `scripts/jarvis-photo-live-check.sh`가 `shutter_result=coordinate` fast path를 확인하도록 보강했다.
+- 목적: `사진 찍어` 인식 자체와, 인식 후 실제 셔터 dispatch 지연을 분리해 볼 수 있게 하는 것이다.
+
+`9f15b56 Report photo shutter latency in live checks`
+
+- `scripts/jarvis-photo-live-check.sh`의 결과 line에 셔터 관련 지표를 포함했다.
+- `scripts/jarvis-photo-live-series.sh`의 TSV에도 `shutter_ms`, `speech_shutter_ms`, `command_shutter_ms`, `access_shutter_ms`, `shutter_result`를 기록하게 했다.
+- `JARVIS_PHOTO_MAX_COMMAND_SHUTTER_MS` 기준을 추가해 파싱 이후 셔터 dispatch가 늦으면 `slow_command_shutter`로 분류한다.
+- 목적: 실발화 반복 측정에서 인식 실패, 접근성 미수신, 셔터 dispatch 지연을 서로 다른 실패 유형으로 분리하는 것이다.
+
+`c1c05b5 Handle more photo speech variants`
+
+- 사진 문맥의 촬영 동사 ASR variant에 `찌겨`, `지겨`, `치겨`, `찍혀`를 추가했다.
+- `사진 지겨워`, `사진 지켜봐` 같은 비명령 문장이 촬영이나 카메라 실행으로 오인되지 않도록 suffix 기반 판정을 유지했다.
+- `scripts/jarvis-photo-live-check.sh`의 stale APK guard를 당시 bias 기준에 맞춰 갱신했다.
+- 단위 테스트에서 허용 후보와 거절 후보를 함께 고정했다.
+- 목적: Android STT가 `찍어`를 끝소리만 다르게 반환하는 경우를 회복하되, 부정/다른 동사 문장까지 넓히지 않는 것이다.
+
+`984c894 Reuse speech variant suffix patterns`
+
+- `CommandInterpreter`가 후보마다 촬영 동사 variant와 공손형 suffix 조합을 다시 만들지 않도록 `PHOTO_CONTEXT_SHOT_ASR_VARIANT_PATTERNS`, `DIRECT_SHOT_ASR_VARIANT_PATTERNS`, `CAMERA_OPEN_SUFFIX_PATTERNS`를 미리 계산하게 했다.
+- 초기 구현에서 property 초기화 순서 문제로 `ExceptionInInitializerError`가 날 수 있는 구조를 확인했고, `COMMAND_VERB_SUFFIXES`를 derived pattern보다 먼저 두는 방식으로 정리했다.
+- 목적: partial/final 후보가 여러 개 들어올 때 파서가 같은 조합 생성을 반복하지 않도록 하는 것이다.
+
+`589e865 Prioritize photo partial fast path`
+
+- `parseFastPartial()`에서 전체 명령 파서를 먼저 태우지 않고, 사진 전용 partial suffix fast path를 먼저 검사하도록 순서를 바꿨다.
+- `자비스 사진 찍어`, `자비스 사진 찍어줘`, `자비스 사진 찍어 주세요`, `자비스 사진 지`, `자비스 사진 치`, `자비스 사진 지겨`, `자비스 사진 찍혀 주세요` 같은 후보는 짧은 경로로 바로 `take_photo`가 된다.
+- `자비스 카메라 실행하고 찍어`는 기존대로 `open_camera_and_take_photo`로 남도록 회귀 테스트를 추가했다.
+- 목적: partial callback에서 이미 사진 명령으로 충분한 후보는 final parser의 넓은 스캔을 거치지 않고 실행 후보로 확정하는 것이다.
+
+`c040e43 Bias photo command ASR variants`
+
+- Android STT `EXTRA_BIASING_STRINGS`에 호출어와 촬영 동사가 동시에 흔들리는 후보를 추가했다.
+- 예: `자비서 사진 지거`, `제이비스 사진 치겨`, `서비스 사진 찍혀`, `자비서 찌거`, `제이비스 치꺼`, `서비스 지꺼`.
+- 중복 수동 목록을 줄이고 `PHOTO_ASR_VARIANT_BIAS_WAKE_WORDS`, `PHOTO_ASR_VARIANT_ENDINGS`, `DIRECT_ASR_VARIANT_ENDINGS` 조합으로 생성하게 했다.
+- bias count 기준을 `271`에서 `325`로 올렸고, `scripts/jarvis-photo-live-check.sh`의 기본 `JARVIS_PHOTO_MIN_BIAS_COUNT`도 `325`로 갱신했다.
+- 목적: 사용자가 제대로 `자비스 사진 찍어`라고 말했지만 STT가 호출어와 촬영 동사를 동시에 흔들어 반환하는 경우에도 후보 목록 안에 의도한 문장이 더 잘 올라오게 하는 것이다.
+
+#### 최종 검증 상태
+
+- `testDebugUnitTest assembleDebug` 통과.
+- `git diff --check` 통과.
+- `bash -n scripts/jarvis-photo-live-check.sh scripts/jarvis-photo-live-series.sh scripts/jarvis-latency-report.sh scripts/jarvis-photo-command-audit.sh` 통과.
+- Xiaomi 15 Ultra USB 연결 상태에서 debug APK 재설치 성공.
+- `JARVIS_PHOTO_LIVE_INJECT_COMMAND=take_photo scripts/jarvis-photo-live-check.sh 3` 통과.
+- 최종 주입 live check 기준:
+  - `stt_bias expected_min=325 actual=325`
+  - `android_ready=38ms`
+  - `access=23ms`
+  - `shutter=24ms`
+  - `access_shutter=1ms`
+  - `shutter_result=coordinate`
+  - 접근성 상태 `bound enabled=1 service_configured=1`
+
+#### 현재 판정
+
+구현, 문서, 단위 테스트, APK 설치, 주입 live check, 커밋/푸시는 완료됐다. 다만 최종 목표인 “사용자 본인 목소리로 `자비스 사진 찍어`가 잘 인식되고 빠르게 실행된다”는 실발화 반복 테스트가 아직 충분히 쌓이지 않았으므로 목표 완료로 닫지는 않는다. 완료 판정은 `scripts/jarvis-photo-live-series.sh` 또는 사용자의 실사용 기록에서 성공률, `parsed_source`, `parsed_candidate_index`, `speech_parse`, `command_shutter`, 실패 유형을 확인한 뒤 내린다.
+
+#### 다음에 실패가 보고되면 먼저 볼 것
+
+- `partial_no_command` 또는 `parse_no_command`의 `photo=` 진단.
+- `missing_wake`: 호출어가 `자비스` 계열로 잡히지 않은 케이스이므로 command wake equivalent 또는 bias wake word 후보를 검토한다.
+- `missing_shot`: `찍어` 계열 동사가 빠지거나 다른 소리로 잡힌 케이스이므로 `PHOTO_ASR_VARIANT_ENDINGS`와 parser suffix variant를 검토한다.
+- `missing_photo_or_direct_shot`: 사진 문맥이 빠진 direct 후보인지, 아니면 너무 넓게 잡으면 false positive가 생길 후보인지 구분한다.
+- `parsed_source=final`만 반복되고 `partial`이 거의 없으면 Android STT partial callback 자체가 늦거나 누락되는 상황이므로 STT timing보다 후보 복구와 final latency를 우선 본다.
+- `command_shutter` 또는 `access_shutter`가 커지면 음성 인식이 아니라 접근성/카메라 셔터 dispatch 문제로 분리한다.
+- bias count가 `325`보다 낮으면 구버전 APK 측정으로 간주한다.
+
+## 16. Change Policy
 
 이 프로젝트를 이어서 작업할 때는 다음 순서를 따른다.
 
