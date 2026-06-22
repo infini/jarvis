@@ -22,6 +22,13 @@ object SpeechRecognitionIntentFactory {
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+            val biasingStrings = biasingStringsFor(commandWindowOpen)
+            if (biasingStrings.isNotEmpty()) {
+                putStringArrayListExtra(
+                    RecognizerIntent.EXTRA_BIASING_STRINGS,
+                    ArrayList(biasingStrings),
+                )
+            }
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,
                 timing.minimumLengthMs,
@@ -35,6 +42,14 @@ object SpeechRecognitionIntentFactory {
                 timing.completeSilenceMs,
             )
         }
+    }
+
+    fun biasingStringsFor(commandWindowOpen: Boolean): List<String> {
+        if (!commandWindowOpen) return emptyList()
+
+        return CommandCatalog.entries
+            .flatMap { it.phrases }
+            .distinct()
     }
 
     fun timingFor(commandWindowOpen: Boolean): TimingOptions {
