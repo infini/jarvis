@@ -1449,35 +1449,18 @@ class JarvisVoiceService : Service(), RecognitionListener {
         val results = bundle?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
         if (results.isNotEmpty()) Log.d(TAG, "Speech results: $results")
 
-        for ((index, candidate) in results.withIndex()) {
-            val command = CommandInterpreter.parse(
-                text = candidate,
-                requireWakeWord = true,
-            ) ?: continue
-            markLatency("command_parsed", "source=final candidateIndex=${index + 1} command=$command text=$candidate")
-            Log.d(TAG, "Parsed command: $command from '$candidate'")
-            partialActivationHandled = false
-            return if (runCommand(command, "final").keepsCommandWindowOpen) {
-                SpeechOutcome.COMMAND_RUN_KEEP_WINDOW
-            } else {
-                SpeechOutcome.COMMAND_RUN
-            }
-        }
-
-        for ((index, candidate) in results.withIndex()) {
-            val command = CommandInterpreter.parseFastPartial(
-                text = candidate,
-                requireWakeWord = true,
-            ) ?: continue
-            if (command !in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS) continue
-
+        SpeechCommandSelector.selectFinal(results)?.let { selection ->
             markLatency(
                 "command_parsed",
-                "source=final_fast_partial candidateIndex=${index + 1} command=$command text=$candidate",
+                "source=${selection.source} candidateIndex=${selection.candidateIndex} " +
+                    "command=${selection.command} text=${selection.text}",
             )
-            Log.d(TAG, "Parsed final fast partial command: $command from '$candidate'")
+            Log.d(
+                TAG,
+                "Parsed command: ${selection.command} from '${selection.text}' via ${selection.source}",
+            )
             partialActivationHandled = false
-            return if (runCommand(command, "final_fast_partial").keepsCommandWindowOpen) {
+            return if (runCommand(selection.command, selection.source).keepsCommandWindowOpen) {
                 SpeechOutcome.COMMAND_RUN_KEEP_WINDOW
             } else {
                 SpeechOutcome.COMMAND_RUN
@@ -1842,17 +1825,18 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private fun runFastPartialCommand(results: List<String>): Boolean {
         if (partialCommandHandled || results.isEmpty()) return false
 
-        for ((index, candidate) in results.withIndex()) {
-            val command = CommandInterpreter.parseFastPartial(
-                text = candidate,
-                requireWakeWord = true,
-            ) ?: continue
-            if (command !in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS) continue
-
-            markLatency("command_parsed", "source=partial candidateIndex=${index + 1} command=$command text=$candidate")
-            Log.d(TAG, "Parsed fast partial command: $command from '$candidate'")
+        SpeechCommandSelector.selectPartial(results)?.let { selection ->
+            markLatency(
+                "command_parsed",
+                "source=${selection.source} candidateIndex=${selection.candidateIndex} " +
+                    "command=${selection.command} text=${selection.text}",
+            )
+            Log.d(
+                TAG,
+                "Parsed fast partial command: ${selection.command} from '${selection.text}'",
+            )
             partialCommandHandled = true
-            partialCommandKeepsWindowOpen = runCommand(command, "partial").keepsCommandWindowOpen
+            partialCommandKeepsWindowOpen = runCommand(selection.command, selection.source).keepsCommandWindowOpen
             notificationController.update("명령 처리 중입니다.")
             feedbackController.commandProcessing()
             handler.removeCallbacks(listeningTimeout)
@@ -1861,6 +1845,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             runCatching { recognizer?.cancel() }
             return true
         }
+
         if (currentListeningAllowsCommandWithoutWake) {
             markLatency(
                 "partial_no_command",
