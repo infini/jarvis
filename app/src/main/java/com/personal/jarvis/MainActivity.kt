@@ -3,7 +3,6 @@ package com.personal.jarvis
 import android.Manifest
 import android.app.Activity
 import android.app.role.RoleManager
-import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -235,6 +234,14 @@ class MainActivity : Activity() {
             requestRuntimePermissions()
             return
         }
+        if (!JarvisAccessibilityStatus.isEnabled(this)) {
+            val message = "Jarvis 접근성 서비스를 먼저 켜세요. 하이퍼아일랜드와 카메라 세부 제어에 필요합니다."
+            statusView.text = message
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+            openAccessibilitySettings()
+            updateStatus()
+            return
+        }
         if (!OwnerVoiceStore.isConfigured(this)) {
             val message = ownerVoiceStartBlockMessage()
             ownerVoiceStatusView.text = message
@@ -282,7 +289,7 @@ class MainActivity : Activity() {
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val notification = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        val accessibility = isJarvisAccessibilityEnabled()
+        val accessibility = JarvisAccessibilityStatus.isEnabled(this)
         val hasOwnerProfile = OwnerVoiceStore.hasProfile(this)
         val ownerProfileConfigured = OwnerVoiceStore.isConfigured(this)
         val ownerEmbeddingCount = OwnerVoiceStore.embeddingCount(this)
@@ -294,7 +301,7 @@ class MainActivity : Activity() {
             appendLine("접근성 서비스: ${if (accessibility) "켜짐" else "꺼짐"}")
             appendLine("Jarvis 명령 대기: ${if (JarvisVoiceService.isRunning) "실행 중" else "꺼짐"}")
             appendLine()
-            append("전원 버튼 길게 누르기는 Jarvis가 기본 어시스턴트로 선택되어 있어야 동작합니다.")
+            append("하이퍼아일랜드와 카메라 세부 제어는 Jarvis 접근성 서비스가 켜져 있어야 동작합니다.")
         }
 
         ownerVoiceStatusView.text = buildString {
@@ -318,15 +325,6 @@ class MainActivity : Activity() {
             appendLine("소유자 확인 보정: 고신뢰 1회, 근접 2회 또는 soft score")
             append("등록이 완료되면 Jarvis는 시스템 어시스턴트 호출 또는 앱 버튼으로만 명령을 듣습니다.")
         }
-    }
-
-    private fun isJarvisAccessibilityEnabled(): Boolean {
-        val expected = ComponentName(this, JarvisAccessibilityService::class.java).flattenToString()
-        val enabled = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-        ) ?: return false
-        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
     }
 
     private fun button(text: String, onClick: () -> Unit): Button {
