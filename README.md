@@ -86,7 +86,7 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-photo-command-audit.sh
 ```
 
-실제 음성 인식까지 확인하려면 카메라 앱이 열리는 것을 확인한 뒤 아래 스크립트가 출력하는 안내에 맞춰 `자비스 사진 찍어`를 한 번 말합니다. 스크립트는 partial/final STT 텍스트, 파싱된 후보 순번, STT bias/timing 값, `take_photo` 파싱 여부, 접근성 서비스 수신, 셔터 좌표 fast path를 함께 판정합니다.
+실제 음성 인식까지 확인하려면 카메라 앱이 열리는 것을 확인한 뒤 아래 스크립트가 출력하는 안내에 맞춰 `자비스 사진 찍어`를 한 번 말합니다. 스크립트는 partial/final STT 텍스트, 파싱된 후보 순번, STT bias/timing 값, `take_photo` 파싱 여부, 접근성 서비스 수신, 셔터 좌표 fast path를 함께 판정합니다. 접근성 서비스가 Android에서 crashed/not bound 상태면 `accessibility_crashed` 또는 `accessibility_not_bound`로 분류하므로, 이 경우 Jarvis 접근성 서비스를 설정에서 껐다 켠 뒤 다시 측정합니다.
 
 ```bash
 scripts/jarvis-photo-live-check.sh 12

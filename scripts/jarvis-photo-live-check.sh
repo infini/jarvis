@@ -9,6 +9,7 @@ REQUEST_ID="photo-live-$(date +%s)-$$"
 LOG_FILE="${JARVIS_PHOTO_LIVE_LOG_FILE:-/tmp/jarvis-photo-live-${REQUEST_ID}.log}"
 DIAGNOSTIC_LOG_FILE="${LOG_FILE}.diagnostic"
 LOG_TAGS="JarvisLatency JarvisVoiceService JarvisAccessibility CameraAccessibility"
+ACCESSIBILITY_SERVICE="com.personal.jarvis/com.personal.jarvis.JarvisAccessibilityService"
 OPEN_CAMERA="${JARVIS_PHOTO_LIVE_OPEN_CAMERA:-1}"
 INJECT_COMMAND="${JARVIS_PHOTO_LIVE_INJECT_COMMAND:-}"
 MAX_PARSED_MS="${JARVIS_PHOTO_MAX_PARSED_MS:-2500}"
@@ -116,6 +117,34 @@ report_field() {
   ' <<< "$line"
 }
 
+line_for_label() {
+  local label="$1"
+  printf '%s\n' "$ACCESSIBILITY_DUMPSYS" | grep -F "$label" | head -1 || true
+}
+
+accessibility_state() {
+  if [[ "$ACCESSIBILITY_ENABLED" != "1" || "$ACCESSIBILITY_SERVICES" != *"$ACCESSIBILITY_SERVICE"* ]]; then
+    printf 'disabled'
+    return
+  fi
+  if [[ "$ACCESSIBILITY_CRASHED_LINE" == *"$ACCESSIBILITY_SERVICE"* ]]; then
+    printf 'crashed'
+    return
+  fi
+  if [[ "$ACCESSIBILITY_BOUND_LINE" == *"$ACCESSIBILITY_SERVICE"* ]]; then
+    printf 'bound'
+    return
+  fi
+  printf 'not_bound'
+}
+
+ACCESSIBILITY_ENABLED="$(adb shell settings get secure accessibility_enabled 2>/dev/null | tr -d '\r' || true)"
+ACCESSIBILITY_SERVICES="$(adb shell settings get secure enabled_accessibility_services 2>/dev/null | tr -d '\r' || true)"
+ACCESSIBILITY_DUMPSYS="$(adb shell dumpsys accessibility 2>/dev/null | tr -d '\r' || true)"
+ACCESSIBILITY_BOUND_LINE="$(line_for_label "Bound services:")"
+ACCESSIBILITY_CRASHED_LINE="$(line_for_label "Crashed services:")"
+ACCESSIBILITY_STATE="$(accessibility_state)"
+
 READY_COUNT="$(count_event ready_for_speech)"
 SPEECH_BEGIN_COUNT="$(count_event speech_begin)"
 PARTIAL_COUNT="$(count_event partial_results)"
@@ -185,6 +214,7 @@ STT_COMPLETE_SILENCE_MS="${STT_COMPLETE_SILENCE_MS:--}"
 echo "log_file=$LOG_FILE"
 echo "diagnostic_log_file=$DIAGNOSTIC_LOG_FILE"
 echo "events ready_for_speech=$READY_COUNT speech_begin=$SPEECH_BEGIN_COUNT partial_results=$PARTIAL_COUNT final_results=$FINAL_COUNT parse_no_command=$PARSE_NO_COMMAND_COUNT"
+echo "accessibility state=$ACCESSIBILITY_STATE enabled=${ACCESSIBILITY_ENABLED:-unknown} service_configured=$([[ "$ACCESSIBILITY_SERVICES" == *"$ACCESSIBILITY_SERVICE"* ]] && printf 1 || printf 0)"
 
 if [[ -z "$PHOTO_PARSED_LINE" ]]; then
   FAILURE_TYPE="no_take_photo_parse"
@@ -212,8 +242,25 @@ if [[ -z "$PHOTO_PARSED_LINE" ]]; then
 fi
 
 if [[ -z "$ACCESS_LINE" ]]; then
-  result_line "FAIL" "no_accessibility" "$PARSED_SOURCE" "$PARSED_CANDIDATE_INDEX" "$PARSED_MS" "$SPEECH_PARSE_MS" "$ACCESS_MS" "$SPEECH_ACCESS_MS" "$COMMAND_ACCESS_MS" "$STT_BIAS_COUNT" "$STT_MIN_MS" "$STT_POSSIBLE_SILENCE_MS" "$STT_COMPLETE_SILENCE_MS" "$STT_TEXT_SAMPLE"
+  FAILURE_TYPE="no_accessibility"
+  case "$ACCESSIBILITY_STATE" in
+    disabled) FAILURE_TYPE="accessibility_disabled" ;;
+    crashed) FAILURE_TYPE="accessibility_crashed" ;;
+    not_bound) FAILURE_TYPE="accessibility_not_bound" ;;
+  esac
+  result_line "FAIL" "$FAILURE_TYPE" "$PARSED_SOURCE" "$PARSED_CANDIDATE_INDEX" "$PARSED_MS" "$SPEECH_PARSE_MS" "$ACCESS_MS" "$SPEECH_ACCESS_MS" "$COMMAND_ACCESS_MS" "$STT_BIAS_COUNT" "$STT_MIN_MS" "$STT_POSSIBLE_SILENCE_MS" "$STT_COMPLETE_SILENCE_MS" "$STT_TEXT_SAMPLE"
   echo "FAIL: take_photo parsed, but did not reach JarvisAccessibilityService." >&2
+  case "$ACCESSIBILITY_STATE" in
+    disabled)
+      echo "Jarvis accessibility service is disabled. Enable it in Android accessibility settings." >&2
+      ;;
+    crashed)
+      echo "Jarvis accessibility service is marked crashed by Android. Toggle Jarvis accessibility off and on in settings, then rerun this check." >&2
+      ;;
+    not_bound)
+      echo "Jarvis accessibility service is enabled in settings but not bound. Reopen accessibility settings and toggle Jarvis if it does not bind." >&2
+      ;;
+  esac
   exit 1
 fi
 
