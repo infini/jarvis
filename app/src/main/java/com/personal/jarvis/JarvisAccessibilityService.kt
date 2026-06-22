@@ -38,7 +38,7 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
                 event = "accessibility_command_received",
                 detail = "command=$command totalMs=$totalMs busDelayMs=$busDelayMs transport=broadcast",
             )
-            handleCommand(command, traceId)
+            handleCommand(command, traceId, traceStartedAtMs)
         }
     }
     private val stateReceiver = object : BroadcastReceiver() {
@@ -110,19 +110,25 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
             event = "accessibility_command_received",
             detail = "command=$command totalMs=$totalMs busDelayMs=$busDelayMs transport=direct source=$source",
         )
-        handleCommand(command, traceId)
+        handleCommand(command, traceId, traceStartedAtMs)
         return true
     }
 
-    private fun handleCommand(command: String, traceId: Long?) {
+    private fun handleCommand(command: String, traceId: Long?, traceStartedAtMs: Long) {
         Log.d(TAG, "Handling command: $command")
-        JarvisLatencyTrace.logExternal(traceId, "accessibility_command_dispatch_start", "command=$command")
+        JarvisLatencyTrace.logExternal(
+            traceId = traceId,
+            event = "accessibility_command_dispatch_start",
+            detail = "command=$command totalMs=${totalSince(traceStartedAtMs)}",
+        )
         when (command) {
             CommandBus.COMMAND_OPEN_CAMERA -> cameraController.openCamera()
             CommandBus.COMMAND_OPEN_FRONT_CAMERA -> cameraController.openCameraFacing(CameraLauncher.CameraFacing.FRONT)
             CommandBus.COMMAND_OPEN_REAR_CAMERA -> cameraController.openCameraFacing(CameraLauncher.CameraFacing.BACK)
-            CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO -> cameraController.openCameraAndTakePhoto()
-            CommandBus.COMMAND_TAKE_PHOTO -> cameraController.tapShutter()
+            CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO -> {
+                cameraController.openCameraAndTakePhoto(traceId, traceStartedAtMs)
+            }
+            CommandBus.COMMAND_TAKE_PHOTO -> cameraController.tapShutter(traceId, traceStartedAtMs)
             CommandBus.COMMAND_OPEN_FILTERS -> cameraController.openFilters()
             CommandBus.COMMAND_SWITCH_CAMERA -> cameraController.switchCamera()
             CommandBus.COMMAND_BACK -> performGlobalAction(GLOBAL_ACTION_BACK)
@@ -130,7 +136,15 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
             CommandBus.COMMAND_WAKE_SCREEN -> ScreenController.wake(this)
             CommandBus.COMMAND_SLEEP_SCREEN -> ScreenController.sleep(this)
         }
-        JarvisLatencyTrace.logExternal(traceId, "accessibility_command_dispatch_return", "command=$command")
+        JarvisLatencyTrace.logExternal(
+            traceId = traceId,
+            event = "accessibility_command_dispatch_return",
+            detail = "command=$command totalMs=${totalSince(traceStartedAtMs)}",
+        )
+    }
+
+    private fun totalSince(traceStartedAtMs: Long): Long {
+        return if (traceStartedAtMs > 0L) JarvisLatencyTrace.elapsedSince(traceStartedAtMs) else 0L
     }
 
     private fun traceIdFrom(intent: Intent): Long? {

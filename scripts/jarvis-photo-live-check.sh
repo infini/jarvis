@@ -158,7 +158,10 @@ else
 fi
 ANY_COMMAND_LINE="$(grep "event=command_parsed" "$LOG_FILE" | tail -1 || true)"
 ACCESS_LINE="$(grep "event=accessibility_command_received" "$LOG_FILE" | grep "command=take_photo" | tail -1 || true)"
-SHUTTER_LINE="$(grep "Tapping fallback target=SHUTTER" "$LOG_FILE" | tail -1 || true)"
+SHUTTER_LINE="$(grep "event=shutter_tap_dispatch" "$LOG_FILE" | grep "result=coordinate" | tail -1 || true)"
+if [[ -z "$SHUTTER_LINE" ]]; then
+  SHUTTER_LINE="$(grep "Tapping fallback target=SHUTTER" "$LOG_FILE" | tail -1 || true)"
+fi
 COMPLETE_LINE="$(grep "event=command_complete" "$LOG_FILE" | grep "keepWindow=true" | tail -1 || true)"
 LISTEN_LINE="$(grep "event=listen_start" "$LOG_FILE" | grep "engine=android_stt" | tail -1 || true)"
 PHOTO_REPORT_LINE="$(printf '%s\n' "$REPORT_OUTPUT" | awk '/^trace=/ && /command=take_photo/ && /status=command_complete/ { line=$0 } END { print line }')"

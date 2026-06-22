@@ -22,7 +22,10 @@ adb shell am start \
 
 COMMAND_LINE="$(grep "event=command_execute_start" "$LOG_FILE" | grep "command=take_photo" | tail -1 || true)"
 ACCESS_LINE="$(grep "event=accessibility_command_received" "$LOG_FILE" | grep "command=take_photo" | tail -1 || true)"
-SHUTTER_LINE="$(grep "Tapping fallback target=SHUTTER" "$LOG_FILE" | tail -1 || true)"
+SHUTTER_LINE="$(grep "event=shutter_tap_dispatch" "$LOG_FILE" | grep "result=coordinate" | tail -1 || true)"
+if [[ -z "$SHUTTER_LINE" ]]; then
+  SHUTTER_LINE="$(grep "Tapping fallback target=SHUTTER" "$LOG_FILE" | tail -1 || true)"
+fi
 COMPLETE_LINE="$(grep "event=command_complete" "$LOG_FILE" | grep "keepWindow=true" | tail -1 || true)"
 READY_LINE="$(grep "event=ready_for_speech" "$LOG_FILE" | tail -1 || true)"
 

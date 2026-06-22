@@ -31,14 +31,27 @@ class CameraAccessibilityController(
         )
     }
 
-    fun openCameraAndTakePhoto() {
+    fun openCameraAndTakePhoto(traceId: Long? = null, traceStartedAtMs: Long = 0L) {
         CameraLauncher.open(service)
-        handler.postDelayed({ tapShutter() }, CAMERA_OPEN_DELAY_MS)
+        handler.postDelayed({ tapShutter(traceId, traceStartedAtMs) }, CAMERA_OPEN_DELAY_MS)
     }
 
-    fun tapShutter() {
-        val tapped = tapFallback(CameraControlTarget.SHUTTER, FAST_SHUTTER_TAP_DURATION_MS)
-        if (!tapped) tapMatchingNode(SHUTTER_KEYWORDS)
+    fun tapShutter(traceId: Long? = null, traceStartedAtMs: Long = 0L) {
+        JarvisLatencyTrace.logExternal(
+            traceId = traceId,
+            event = "shutter_tap_start",
+            detail = "target=SHUTTER totalMs=${totalSince(traceStartedAtMs)}",
+        )
+        val result = when {
+            tapFallback(CameraControlTarget.SHUTTER, FAST_SHUTTER_TAP_DURATION_MS) -> "coordinate"
+            tapMatchingNode(SHUTTER_KEYWORDS) -> "node"
+            else -> "failed"
+        }
+        JarvisLatencyTrace.logExternal(
+            traceId = traceId,
+            event = "shutter_tap_dispatch",
+            detail = "target=SHUTTER result=$result totalMs=${totalSince(traceStartedAtMs)}",
+        )
     }
 
     fun openFilters() {
@@ -167,6 +180,10 @@ class CameraAccessibilityController(
             .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             .build()
         return service.dispatchGesture(gesture, null, null)
+    }
+
+    private fun totalSince(traceStartedAtMs: Long): Long {
+        return if (traceStartedAtMs > 0L) JarvisLatencyTrace.elapsedSince(traceStartedAtMs) else 0L
     }
 
     private enum class CameraControlTarget {

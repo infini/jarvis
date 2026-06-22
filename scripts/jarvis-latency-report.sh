@@ -92,6 +92,18 @@ function printTrace(id) {
   if (access[id] > 0 && parsed[id] > 0 && access[id] >= parsed[id]) {
     commandAccess = access[id] - parsed[id]
   }
+  speechShutter = 0
+  if (shutter[id] > 0 && androidSpeechBegin[id] > 0 && shutter[id] >= androidSpeechBegin[id]) {
+    speechShutter = shutter[id] - androidSpeechBegin[id]
+  }
+  commandShutter = 0
+  if (shutter[id] > 0 && parsed[id] > 0 && shutter[id] >= parsed[id]) {
+    commandShutter = shutter[id] - parsed[id]
+  }
+  accessShutter = 0
+  if (shutter[id] > 0 && access[id] > 0 && shutter[id] >= access[id]) {
+    accessShutter = shutter[id] - access[id]
+  }
   ownerGate = ownerGateElapsed[id] + 0
   displayCandidateIndex = parsedCandidateIndex[id]
   if (displayCandidateIndex == "") displayCandidateIndex = "-"
@@ -107,7 +119,9 @@ function printTrace(id) {
   if (displayPossibleSilenceMs == "") displayPossibleSilenceMs = "-"
   displayCompleteSilenceMs = sttCompleteSilenceMs[id]
   if (displayCompleteSilenceMs == "") displayCompleteSilenceMs = "-"
-  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms parsed_source=%s parsed_candidate_index=%s speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms stt_bias_count=%s stt_max_results=%s stt_min_ms=%s stt_possible_silence_ms=%s stt_complete_silence_ms=%s\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], displayParsedSource, displayCandidateIndex, speechParse, access[id], speechAccess, commandAccess, bus[id], displayBiasCount, displayMaxResults, displayMinMs, displayPossibleSilenceMs, displayCompleteSilenceMs
+  displayShutterResult = shutterResult[id]
+  if (displayShutterResult == "") displayShutterResult = "-"
+  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms parsed_source=%s parsed_candidate_index=%s speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms shutter=%dms speech_shutter=%dms command_shutter=%dms access_shutter=%dms shutter_result=%s stt_bias_count=%s stt_max_results=%s stt_min_ms=%s stt_possible_silence_ms=%s stt_complete_silence_ms=%s\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], displayParsedSource, displayCandidateIndex, speechParse, access[id], speechAccess, commandAccess, bus[id], shutter[id], speechShutter, commandShutter, accessShutter, displayShutterResult, displayBiasCount, displayMaxResults, displayMinMs, displayPossibleSilenceMs, displayCompleteSilenceMs
 
   if (ownerAcceptance[id] != "") {
     printf "  owner_acceptance=%s owner_auth_speech=%sms", ownerAcceptance[id], ownerAuthSpeech[id]
@@ -255,6 +269,12 @@ function printTrace(id) {
     busRaw = value($0, "busDelayMs")
     if (accessRaw != "") access[trace] = millis(accessRaw)
     if (busRaw != "") bus[trace] = millis(busRaw)
+  }
+  if (event == "shutter_tap_dispatch") {
+    shutterRaw = value($0, "totalMs")
+    if (shutterRaw != "") shutter[trace] = millis(shutterRaw)
+    result = value($0, "result")
+    if (result != "") shutterResult[trace] = result
   }
   isFinal = event == "command_complete"
   isFinal = isFinal || startsWith(event, "command_window_")
