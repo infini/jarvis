@@ -2,6 +2,7 @@ package com.personal.jarvis
 
 import android.Manifest
 import android.app.Activity
+import android.app.role.RoleManager
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -112,9 +113,10 @@ class MainActivity : Activity() {
 
         root.addView(button("마이크/알림 권한 요청") { requestRuntimePermissions() })
         root.addView(button("접근성 설정 열기") { openAccessibilitySettings() })
+        root.addView(button("기본 어시스턴트 설정") { openAssistantSettings() })
         root.addView(button("배터리 최적화 설정 열기") { openBatteryOptimizationSettings() })
         root.addView(button("앱 자동 시작/배터리 설정 열기") { openAppSettings() })
-        root.addView(button("Jarvis 시작") { startJarvis() })
+        root.addView(button("Jarvis 명령 듣기") { startJarvisCommandWindow() })
         root.addView(button("테스트: 카메라 열기") { CameraLauncher.open(this) })
         root.addView(button("테스트: 셀피 카메라 열기") { CommandBus.send(this, CommandBus.COMMAND_OPEN_FRONT_CAMERA) })
         root.addView(button("테스트: 후면 카메라 열기") { CommandBus.send(this, CommandBus.COMMAND_OPEN_REAR_CAMERA) })
@@ -123,7 +125,7 @@ class MainActivity : Activity() {
         root.addView(button("테스트: 화면 끄기") { CommandBus.send(this, CommandBus.COMMAND_SLEEP_SCREEN) })
 
         val notes = TextView(this).apply {
-            text = "접근성 서비스를 켠 뒤 Jarvis 시작을 누르세요.\n먼저 등록 문구 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'를 말한 뒤 카메라 실행 / 전면 / 후면 / 찍어 / 종료를 말합니다."
+            text = "접근성 서비스를 켠 뒤 기본 어시스턴트로 Jarvis를 선택하세요.\n전원 버튼 길게 누르기나 Jarvis 명령 듣기를 누른 뒤 '자비스 카메라 실행'처럼 말합니다."
             textSize = 14f
             setTextColor(Color.rgb(76, 86, 96))
             setPadding(0, dp(18), 0, 0)
@@ -195,6 +197,27 @@ class MainActivity : Activity() {
         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
+    private fun openAssistantSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleManager = getSystemService(RoleManager::class.java)
+            if (roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT) &&
+                !roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT)
+            ) {
+                startActivityForResult(
+                    roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT),
+                    REQUEST_ASSISTANT_ROLE,
+                )
+                return
+            }
+        }
+
+        runCatching {
+            startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
+        }.onFailure {
+            startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+        }
+    }
+
     private fun openBatteryOptimizationSettings() {
         startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
     }
@@ -207,7 +230,7 @@ class MainActivity : Activity() {
         startActivity(intent)
     }
 
-    private fun startJarvis() {
+    private fun startJarvisCommandWindow() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestRuntimePermissions()
             return
@@ -221,9 +244,9 @@ class MainActivity : Activity() {
             return
         }
 
-        val started = JarvisVoiceServiceStarter.start(this, "main_activity")
+        val started = JarvisVoiceServiceStarter.openCommandWindow(this, "main_activity")
         if (!started) {
-            Toast.makeText(this, "Jarvis 서비스를 시작하지 못했습니다. 알림/배터리 설정을 확인하세요.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Jarvis 명령 대기를 시작하지 못했습니다. 알림/배터리 설정을 확인하세요.", Toast.LENGTH_LONG).show()
         }
         updateStatus()
     }
@@ -231,12 +254,7 @@ class MainActivity : Activity() {
     private fun restartJarvisAfterOwnerEnrollment(embeddingCount: Int) {
         if (!OwnerVoiceStore.isConfigured(this)) return
 
-        val started = JarvisVoiceServiceStarter.start(this, "owner_voice_enrollment_completed")
-        val message = if (started) {
-            "내 목소리 등록 완료: ${embeddingCount}개 저장. Jarvis 대기를 다시 시작했습니다."
-        } else {
-            "내 목소리 등록 완료: ${embeddingCount}개 저장. Jarvis 시작은 권한/배터리 설정 확인이 필요합니다."
-        }
+        val message = "내 목소리 등록 완료: ${embeddingCount}개 저장. 전원 버튼 길게 누르기나 Jarvis 명령 듣기로 호출하세요."
         ownerVoiceStatusView.text = message
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
@@ -274,9 +292,9 @@ class MainActivity : Activity() {
             appendLine("마이크 권한: ${if (mic) "허용됨" else "필요함"}")
             appendLine("알림 권한: ${if (notification) "허용됨" else "필요함"}")
             appendLine("접근성 서비스: ${if (accessibility) "켜짐" else "꺼짐"}")
-            appendLine("Jarvis 서비스: ${if (JarvisVoiceService.isRunning) "실행 중" else "시작 전"}")
+            appendLine("Jarvis 명령 대기: ${if (JarvisVoiceService.isRunning) "실행 중" else "꺼짐"}")
             appendLine()
-            append("기본 카메라 제어는 접근성 서비스가 켜져 있어야 동작합니다.")
+            append("전원 버튼 길게 누르기는 Jarvis가 기본 어시스턴트로 선택되어 있어야 동작합니다.")
         }
 
         ownerVoiceStatusView.text = buildString {
@@ -298,7 +316,7 @@ class MainActivity : Activity() {
             appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++ / Korean streaming ASR")
             appendLine("기본 threshold: ${OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD}")
             appendLine("소유자 확인 보정: 고신뢰 1회, 근접 2회 또는 soft score")
-            append("등록이 완료되면 Jarvis는 소유자 목소리 확인 후 명령을 받습니다.")
+            append("등록이 완료되면 Jarvis는 시스템 어시스턴트 호출 또는 앱 버튼으로만 명령을 듣습니다.")
         }
     }
 
@@ -332,6 +350,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val REQUEST_PERMISSIONS = 1001
+        private const val REQUEST_ASSISTANT_ROLE = 1002
         private const val ENROLLMENT_DURATION_MS = 6000L
         private const val OWNER_ENROLLMENT_START_DELAY_MS = 500L
     }

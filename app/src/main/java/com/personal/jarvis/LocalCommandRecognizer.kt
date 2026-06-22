@@ -569,7 +569,7 @@ object LocalCommandRecognizer {
 
     private fun commandFromText(text: String): String? {
         if (text.isBlank()) return null
-        return CommandInterpreter.parse(text = text, requireWakeWord = false)
+        return CommandInterpreter.parse(text = text, requireWakeWord = true)
     }
 
     private fun decodeBufferedSamples(

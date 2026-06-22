@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.content.pm.ServiceInfo
 import android.os.Build
 
@@ -70,11 +71,30 @@ class JarvisNotificationController(
             .setContentText(contentText)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .addAction(
+                Notification.Action.Builder(
+                    Icon.createWithResource(service, R.drawable.ic_stat_jarvis),
+                    "Jarvis 종료",
+                    stopPendingIntent(),
+                ).build(),
+            )
             .build()
+    }
+
+    private fun stopPendingIntent(): PendingIntent {
+        val intent = Intent(service, JarvisVoiceService::class.java)
+            .setAction(JarvisVoiceService.ACTION_STOP_SERVICE)
+        return PendingIntent.getService(
+            service,
+            REQUEST_STOP_SERVICE,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
     }
 
     companion object {
         private const val CHANNEL_ID = "jarvis_voice"
         private const val NOTIFICATION_ID = 2001
+        private const val REQUEST_STOP_SERVICE = 4001
     }
 }

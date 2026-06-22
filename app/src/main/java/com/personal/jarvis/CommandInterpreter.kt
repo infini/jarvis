@@ -43,14 +43,23 @@ object CommandInterpreter {
         val wantsSleepScreen = (mentionsScreen && listOf("꺼", "끄", "오프").any(normalized::contains)) ||
             (mentionsPhone && listOf("잠가", "잠궈", "잠금", "락").any(normalized::contains))
         val wantsStop = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만").any(normalized::contains)
+        val wantsFullStop = listOf(
+            "자비스완전종료",
+            "자비스서비스종료",
+            "자비스앱종료",
+            "자비스완전히꺼",
+            "자비스완전히꺼줘",
+            "jarvis완전종료",
+        ).any(normalized::contains)
         val wantsCloseApp = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내").any(normalized::contains)
 
         return when {
+            wantsFullStop -> CommandBus.COMMAND_STOP_SERVICE
             mentionsCamera && wantsCloseApp -> CommandBus.COMMAND_HOME
             wantsSleepScreen -> CommandBus.COMMAND_SLEEP_SCREEN
             wantsCloseApp && !wantsStop -> CommandBus.COMMAND_HOME
             wantsStop -> CommandBus.COMMAND_STOP_LISTENING
-            wantsShot && mentionsCamera -> CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO
+            wantsShot && wantsCameraOpen -> CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO
             wantsShot -> CommandBus.COMMAND_TAKE_PHOTO
             wantsRearCamera && wantsSpecificCameraMode -> CommandBus.COMMAND_OPEN_REAR_CAMERA
             wantsFrontCamera && wantsSpecificCameraMode -> CommandBus.COMMAND_OPEN_FRONT_CAMERA

@@ -46,14 +46,6 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
             stateIndicatorController.update(state)
         }
     }
-    private val voiceServiceWatchdog = object : Runnable {
-        override fun run() {
-            ensureVoiceServiceRunning("accessibility_watchdog")
-            handler.postDelayed(this, VOICE_SERVICE_WATCHDOG_INTERVAL_MS)
-        }
-    }
-    private var lastVoiceAutoStartBlockReason: String? = null
-
     override fun onServiceConnected() {
         super.onServiceConnected()
         val commandFilter = IntentFilter(CommandBus.ACTION_COMMAND)
@@ -66,13 +58,9 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
             registerReceiver(stateReceiver, stateFilter)
         }
         CommandBus.registerDirectReceiver(this)
-        ensureVoiceServiceRunning("accessibility_connected")
-        handler.removeCallbacks(voiceServiceWatchdog)
-        handler.postDelayed(voiceServiceWatchdog, VOICE_SERVICE_WATCHDOG_INTERVAL_MS)
     }
 
     override fun onDestroy() {
-        handler.removeCallbacks(voiceServiceWatchdog)
         CommandBus.unregisterDirectReceiver(this)
         runCatching { unregisterReceiver(commandReceiver) }
         runCatching { unregisterReceiver(stateReceiver) }
@@ -106,22 +94,6 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
         return true
     }
 
-    private fun ensureVoiceServiceRunning(source: String) {
-        if (JarvisVoiceService.isRunning) return
-
-        val blockReason = JarvisVoiceServiceStarter.autoStartBlockReason(this)
-        if (blockReason != null) {
-            if (blockReason != lastVoiceAutoStartBlockReason) {
-                Log.d(TAG, "Voice service auto-start blocked: $blockReason")
-                lastVoiceAutoStartBlockReason = blockReason
-            }
-            return
-        }
-
-        lastVoiceAutoStartBlockReason = null
-        JarvisVoiceServiceStarter.start(this, source)
-    }
-
     private fun handleCommand(command: String, traceId: Long?) {
         Log.d(TAG, "Handling command: $command")
         JarvisLatencyTrace.logExternal(traceId, "accessibility_command_dispatch_start", "command=$command")
@@ -148,6 +120,5 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
 
     companion object {
         private const val TAG = "JarvisAccessibility"
-        private const val VOICE_SERVICE_WATCHDOG_INTERVAL_MS = 15000L
     }
 }

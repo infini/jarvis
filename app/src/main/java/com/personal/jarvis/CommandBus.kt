@@ -24,6 +24,7 @@ object CommandBus {
     const val COMMAND_WAKE_SCREEN = "wake_screen"
     const val COMMAND_SLEEP_SCREEN = "sleep_screen"
     const val COMMAND_STOP_LISTENING = "stop_listening"
+    const val COMMAND_STOP_SERVICE = "stop_service"
 
     @Volatile private var directReceiver: DirectReceiver? = null
 

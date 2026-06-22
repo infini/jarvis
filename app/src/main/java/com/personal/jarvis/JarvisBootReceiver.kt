@@ -34,8 +34,8 @@ class JarvisBootReceiver : BroadcastReceiver() {
             manager.createNotificationChannel(channel)
         }
 
-        val startIntent = Intent(context, JarvisVoiceService::class.java)
-        val startPendingIntent = PendingIntent.getForegroundService(
+        val startIntent = Intent(context, JarvisAssistantActivity::class.java)
+        val startPendingIntent = PendingIntent.getActivity(
             context,
             REQUEST_START_SERVICE,
             startIntent,
@@ -52,8 +52,8 @@ class JarvisBootReceiver : BroadcastReceiver() {
 
         val notification = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_jarvis)
-            .setContentTitle("Jarvis 대기 준비됨")
-            .setContentText("탭하면 소유자 목소리 확인을 시작합니다.")
+            .setContentTitle("Jarvis 준비됨")
+            .setContentText("탭하면 30초 동안 Jarvis 명령을 듣습니다.")
             .setContentIntent(startPendingIntent)
             .setAutoCancel(true)
             .addAction(

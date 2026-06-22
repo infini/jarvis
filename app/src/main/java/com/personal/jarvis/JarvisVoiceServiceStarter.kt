@@ -9,7 +9,9 @@ import android.util.Log
 
 object JarvisVoiceServiceStarter {
     const val EXTRA_START_SOURCE = "start_source"
+    const val EXTRA_COMMAND_WINDOW_MS = "command_window_ms"
     private const val TAG = "JarvisVoiceStarter"
+    private const val DEFAULT_COMMAND_WINDOW_MS = 30000L
     @Volatile private var ownerEnrollmentActive = false
 
     fun setOwnerEnrollmentActive(active: Boolean) {
@@ -17,15 +19,34 @@ object JarvisVoiceServiceStarter {
     }
 
     fun start(context: Context, source: String): Boolean {
+        return startInternal(context, source, commandWindowMs = null)
+    }
+
+    fun openCommandWindow(
+        context: Context,
+        source: String,
+        commandWindowMs: Long = DEFAULT_COMMAND_WINDOW_MS,
+    ): Boolean {
+        return startInternal(context, source, commandWindowMs)
+    }
+
+    private fun startInternal(
+        context: Context,
+        source: String,
+        commandWindowMs: Long?,
+    ): Boolean {
         val appContext = context.applicationContext
         autoStartBlockReason(appContext)?.let { reason ->
             Log.w(TAG, "Blocked JarvisVoiceService start from $source: $reason")
             return false
         }
-        if (JarvisVoiceService.isRunning) return true
+        if (JarvisVoiceService.isRunning && commandWindowMs == null) return true
 
         val intent = Intent(appContext, JarvisVoiceService::class.java)
             .putExtra(EXTRA_START_SOURCE, source)
+        if (commandWindowMs != null) {
+            intent.putExtra(EXTRA_COMMAND_WINDOW_MS, commandWindowMs)
+        }
 
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

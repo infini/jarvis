@@ -18,7 +18,8 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_OPEN_REAR_CAMERA, CommandInterpreter.parse("자비스, 후면으로 전환"))
         assertEquals(CommandBus.COMMAND_SWITCH_CAMERA, CommandInterpreter.parse("자비스, 카메라 전환"))
         assertEquals(CommandBus.COMMAND_SWITCH_CAMERA, CommandInterpreter.parse("자비스, 전후면 전환"))
-        assertEquals(CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍기"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍기"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍어"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 찍어"))
         assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 카메라 종료"))
         assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 종료"))
@@ -116,6 +117,9 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_STOP_LISTENING, CommandInterpreter.parse("자비스, 멈춰"))
         assertEquals(CommandBus.COMMAND_STOP_LISTENING, CommandInterpreter.parse("멈춰", requireWakeWord = false))
         assertFalse(JarvisCommandExecutor.shouldStopVoiceService(CommandBus.COMMAND_STOP_LISTENING))
+        assertEquals(CommandBus.COMMAND_STOP_SERVICE, CommandInterpreter.parse("자비스, 완전 종료"))
+        assertEquals(CommandBus.COMMAND_STOP_SERVICE, CommandInterpreter.parse("자비스, 서비스 종료"))
+        assertTrue(JarvisCommandExecutor.shouldStopVoiceService(CommandBus.COMMAND_STOP_SERVICE))
     }
 
     @Test
@@ -123,5 +127,6 @@ class CommandInterpreterTest {
         assertTrue(CommandBus.COMMAND_WAKE_SCREEN in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
         assertTrue(CommandBus.COMMAND_SLEEP_SCREEN in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
         assertTrue(CommandBus.COMMAND_STOP_LISTENING in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
+        assertTrue(CommandBus.COMMAND_STOP_SERVICE in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
     }
 }

@@ -6,74 +6,55 @@
 
 ## 현재 구조
 
-- `JarvisVoiceService`: 마이크를 사용하는 포그라운드 서비스입니다. 소유자 인증, 명령 인식, 명령 실행 객체를 조합해 음성 상태 전환을 관리합니다.
-- `JarvisVoiceServiceStarter`: 앱 UI와 접근성 watchdog에서 공통으로 쓰는 음성 서비스 시작 helper입니다.
-- `LocalActivationSession`: idle에서 activation 전용 ASR을 실행하고 최근 음성 rolling buffer를 관리합니다.
-- `OwnerVoiceGate`: local activation ASR을 사용할 수 없을 때 fallback 소유자 확인을 담당합니다.
+- `JarvisVoiceService`: command window가 열린 동안만 마이크를 사용하는 포그라운드 서비스입니다.
+- `JarvisVoiceServiceStarter`: 앱 UI와 기본 어시스턴트 Activity에서 공통으로 쓰는 command window 시작 helper입니다.
+- `LocalActivationSession`: legacy/debug wake 진단용 activation ASR 세션입니다.
+- `OwnerVoiceGate`: legacy/debug wake 진단용 fallback 소유자 확인을 담당합니다.
 - `OwnerVoiceEngine`: sherpa-onnx와 3D-Speaker CAM++ 모델로 소유자 목소리 embedding 묶음을 만들고 검증합니다.
 - `OwnerVoiceStore`: 등록된 소유자 목소리 embedding 묶음을 앱 private storage에 저장합니다.
 - `OwnerVoiceEnrollmentController`: 앱 UI에서 실행되는 소유자 목소리 등록 workflow를 담당합니다.
-- `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 idle activation과 Android STT 실패 fallback을 인식합니다.
+- `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 Android STT 실패 fallback을 인식합니다.
 - `LocalCommandSession`: 로컬 명령 ASR 스레드 상태를 관리합니다.
 - `SpeechRecognitionIntentFactory`: Android `SpeechRecognizer` 실행 옵션을 한곳에서 생성합니다.
 - `JarvisCommandExecutor`: 내부 명령 실행, 중복 실행 방지, 카메라 세션 window 유지 정책을 담당합니다.
 - `JarvisNotificationController`: 음성 서비스 foreground notification과 상태 문구를 관리합니다.
 - `JarvisFeedbackController`: 명령 가능/처리/실패 상태의 소리, 진동, 상태 broadcast를 담당합니다.
 - `JarvisStateIndicatorController`: 접근성 overlay로 현재 Jarvis 상태를 화면 위에 표시합니다.
-- `JarvisBootReceiver`: 재부팅 또는 앱 업데이트 후 Jarvis 시작 알림을 띄웁니다.
-- `JarvisAccessibilityService`: 접근성 서비스 생명주기, 명령 수신, 음성 서비스 watchdog 복구를 담당합니다.
+- `JarvisBootReceiver`: 재부팅 또는 앱 업데이트 후 Jarvis command window 시작 알림을 띄웁니다.
+- `JarvisAssistantActivity`: 기본 어시스턴트 호출을 받아 30초 Jarvis 명령 대기를 시작합니다.
+- `JarvisAccessibilityService`: 접근성 서비스 생명주기와 명령 수신을 담당합니다. 음성 서비스 자동 재시작은 하지 않습니다.
 - `CameraAccessibilityController`: Xiaomi 기본 카메라의 셔터/필터/전후면 전환 자동화를 담당합니다.
 - `AccessibilityNodeMatcher`: 접근성 노드 키워드 검색과 스코어링을 담당합니다.
 - `ScreenController`: 짧은 wake lock으로 꺼진 화면을 깨웁니다.
-- `MainActivity`: 마이크/알림 권한 요청, 접근성 설정 열기, Jarvis 시작 UI입니다.
+- `MainActivity`: 마이크/알림 권한 요청, 접근성/기본 어시스턴트 설정 열기, Jarvis 명령 듣기 UI입니다.
 
 ## 지원 명령 초안
 
-Idle 상태에서는 `자비스 깨어나` 계열 문장만 command window를 엽니다. 실제 ASR 표기 흔들림을 고려해 `자베스 깨어나`, `쟈비스 깨어나`, `제비스 깨어나`, `차비스 깨어나`, `잡비스 깨어나`, `잡스 깨어나`, `jarvis 깨어나`는 같은 호출로 봅니다. local activation ASR equivalent도 반드시 호출어와 activation 단어가 함께 잡힌 결과만 인정합니다. `깨어나`, `깨우나`, `깨워나`, `때어나` 같은 activation 단어 단독 결과나 넓은 fuzzy 결과는 false activation을 줄이기 위해 wake로 인정하지 않습니다. `자비스 실행`, `자비스` 단독, `헤이 자비스`, `헤이 자비스 깨어나`, `자비스 카메라 실행`은 idle에서 명령 모드로 전환하지 않습니다. ASR 결과 끝에 붙는 마침표 같은 문장부호는 activation 비교 전에 제거합니다.
+Jarvis는 기본적으로 상시 음성 대기를 하지 않습니다. 전원 버튼 길게 누르기 또는 앱의 `Jarvis 명령 듣기` 버튼으로 30초 command window를 연 뒤, 명령 문장 앞에 `자비스`를 붙여 말합니다.
 
-`JARVIS LISTENING` Hyper Island overlay가 보이는 command window 안에서는 호출어 없이 다음 명령을 말합니다.
-
-- `카메라 열어`
-- `카메라 실행`
-- `카메라 셀피 모드로 실행해`
-- `셀피`
-- `전면`
-- `셀피 모드`
-- `카메라 후면 모드로 실행해`
-- `후면`
-- `후면 모드`
-- `찍어`
-- `사진 찍기`
-- `카메라 찍어`
-- `필터`
-- `전면 카메라`
-- `카메라 전환`
-- `카메라 종료해`
-- `종료`
-- `화면 켜`
-- `화면 꺼`
-- `뒤로`
-- `홈`
+- `자비스 카메라 실행`
+- `자비스 카메라 전면`
+- `자비스 카메라 후면`
+- `자비스 사진 찍어`
+- `자비스 카메라 종료`
+- `자비스 화면 켜`
+- `자비스 화면 꺼`
+- `자비스 뒤로`
+- `자비스 홈`
 - `자비스 잠들어`
-- `멈춰`
+- `자비스 완전 종료`
 
-`자비스 깨어나`로 활성화되면 30초 동안 명령 대기 상태가 됩니다. `카메라 실행`, `후면`, `전면`, `찍어`, `종료` 같은 명령을 처리한 뒤에도 30초 command window를 다시 엽니다. 30초 안에 다음 명령이 없으면 Jarvis는 실패음 없이 조용히 idle activation 대기로 돌아가고, overlay도 사라집니다. 로컬 ASR이나 Android STT 재시도는 이 시간을 넘겨 명령 대기 상태를 연장하지 않습니다. command window가 닫힌 뒤 예약되어 있던 다음 STT 시작은 폐기됩니다.
+`JARVIS LISTENING` Hyper Island overlay가 보이는 동안에만 명령을 받습니다. 카메라 세션 명령을 처리하면 30초 command window를 다시 열고, 30초 안에 다음 명령이 없으면 Jarvis는 실패음 없이 overlay를 숨긴 뒤 음성 foreground service를 종료합니다. 열린 command window 안에서도 `찍어`, `후면`, `종료`처럼 `자비스`가 빠진 단독 명령은 실행하지 않습니다.
 
-Idle에서는 sherpa-onnx local activation ASR이 먼저 `자비스 깨어나`만 듣습니다. 이 경로는 60초 `AudioRecord` 세션을 길게 유지하므로 Android/HyperOS 우상단의 초록 마이크 privacy chip이 깜빡이는 대신 켜진 상태로 유지되는 것이 정상입니다. local activation을 시작할 수 없을 때만 Android 기본 `SpeechRecognizer` wake 보조 경로를 사용합니다. wake 보조 STT는 idle 명령 실행에는 사용하지 않습니다.
-
-Local activation에서는 sherpa-onnx 한국어 streaming ASR의 activation 전용 hotwords recognizer가 `자비스 깨어나`를 듣습니다. 마이크 `AudioRecord`는 `VOICE_RECOGNITION` source를 우선 사용하고 실패 시 `MIC`로 fallback하며, 60초 세션으로 길게 유지하고 ASR stream은 최대 8초 segment 단위로만 재시작합니다. 이 때문에 Android/HyperOS 우상단의 초록 마이크 privacy chip과 `JARVIS` 앱명 표시는 Jarvis가 idle 대기 중 마이크를 사용한다는 OS 표시이며, 앱이 숨길 수 없습니다. Jarvis 자체 overlay는 디스플레이 컷아웃 영역의 Hyper Island-style pill이고, activation phrase와 owner voice가 모두 통과해 command window가 열린 경우에만 표시됩니다.
-
-activation recognizer는 `modified_beam_search`, `jarvis-activation-hotwords.txt`, `modelingUnit=cjkchar`를 사용하며, 최근 3.6초 rolling audio를 0.8초마다 buffered hotword decode로 다시 확인합니다. streaming final 또는 buffered decode에서 호출어와 activation 단어가 함께 확인되면 activation으로 처리합니다. ASR이 `자비스 깨어나` 텍스트를 놓친 경우에는 등록 시 저장한 `jarvis-owner-enroll-last.wav` 기반 acoustic wake fallback을 별도 endpoint로만 사용합니다. 이 fallback은 template distance `<=0.22`, 후보 peak RMS `>=0.006`, 95퍼센타일 기반 robust speech segment, 그리고 같은 오디오의 owner verification 통과가 모두 필요합니다. 문구가 확인되면 그때 보존된 최근 오디오로 3D-Speaker owner voice verification을 실행하고, 소유자 목소리까지 통과한 경우에만 Android `SpeechRecognizer` 명령 리스닝을 시작합니다. activation owner verification은 긴 rolling audio 전체 점수와 함께 1.2초, 1.6초, 2.2초 최고 에너지 후보 구간을 비교해 가장 높은 owner score를 사용하고, replay 로그에는 `ownerFullScore`, `ownerWindowStartMs`, `ownerWindowMs`, `ownerWindows`, `ownerPeakRms`를 함께 남깁니다. activation 문구가 아니거나 소유자 목소리가 아니면 overlay, 준비음, Android command STT 없이 조용히 idle로 돌아갑니다. Android STT가 실제 발화를 감지한 뒤 실패했거나 사용할 수 없을 때만 local ASR fallback을 사용하고, 아무 발화도 감지하지 못한 `NO_MATCH`/timeout은 실패 피드백 없이 command window 안에서 조용히 다시 듣습니다. local ASR fallback은 `0.0012` RMS 이상의 말소리를 기준으로 잡고, activation ASR은 `0.00022` RMS 이상의 입력을 segment 대상으로 봅니다. activation ASR은 최소 560ms active speech와 600ms trailing silence 조건을 만족해야 segment를 끊어 짧은 파편에 너무 빨리 endpoint가 잡히지 않게 합니다. local ASR fallback은 최소 청취 560ms 이후 240ms trailing silence가 감지되면 빠르게 final decode로 넘어갑니다. 입력 음량이 낮아 ASR 텍스트가 비는 문제를 줄이기 위해 원본 RMS가 `0.00008` 이상인 구간은 ASR 입력에서 목표 RMS `0.04`, 최대 `30x`까지 증폭합니다. 명령 처리 직후에는 80ms 뒤에 다음 명령 리스닝을 시작합니다. `종료`, `홈`, `뒤로`는 현재 앱만 제어하고 Jarvis 명령 대기 상태는 유지합니다. `자비스 잠들어`와 `멈춰`는 현재 명령 대기만 닫고 idle activation 대기로 돌아갑니다. command window 안에서 `자비스 깨어나`는 window 연장 명령으로 처리하지 않습니다. Jarvis 서비스는 한 번 시작되면 재부팅 전까지 foreground service로 유지하는 것을 원칙으로 하며, 접근성 서비스가 켜져 있고 소유자 목소리와 마이크 권한이 준비되어 있으면 watchdog이 꺼진 음성 서비스를 다시 시작합니다.
-
-acoustic wake fallback은 template-only wake가 아닙니다. 저장된 wake 캡처를 owner profile에 병합하는 debug calibration 경로는 false activation을 강화하는 문제가 있어 제거했습니다. fallback이 command window를 열려면 `자비스 깨어나` 음향 패턴과 등록된 소유자 목소리가 같은 rolling audio에서 동시에 통과해야 합니다.
+Android STT가 실제 발화를 감지한 뒤 실패했거나 사용할 수 없을 때만 local ASR fallback을 사용합니다. fallback도 `자비스` 호출어가 포함된 명령만 실행합니다. 과거 `자비스 깨어나` 상시 wake, acoustic wake fallback, owner gate 튜닝 이력은 `docs/PROJECT_SPEC.md`에 보존되어 있지만 현재 기본 UX에서는 idle 마이크 대기를 시작하지 않습니다.
 
 Jarvis 상태 overlay는 사용자가 바로 판단해야 하는 순간에만 표시됩니다. 화면에는 디스플레이 컷아웃을 감싸는 Hyper Island-style pill을 컷아웃 중심에 맞춰 표시하고, `COMMAND_READY` 상태에서는 `JARVIS`와 `LISTENING` 사이에 카메라 홀 공간이 들어가도록 배치합니다. `JARVIS`와 상태 단어는 같은 좌우 폭을 쓰지 않고 실제 글자폭을 각각 측정해 비대칭으로 배치하므로, 짧은 `JARVIS` 쪽 검은 여백이 불필요하게 커지지 않습니다. 상하 폭은 카메라 홀 하단 정렬을 유지한 채 상단 여백만 줄여 카메라 홀 상단과 pill 상단이 더 가깝게 맞도록 보정합니다. `JARVIS`는 iOS system cyan 계열 색상으로 고정하고, `LISTENING`은 초록색, 처리/완료/실패 상태는 각각 `WORKING`/`DONE`/`FAILED` 상태 텍스트 색으로 전달합니다. idle/local activation/소유자 확인 상태에서는 화면을 가리지 않도록 overlay를 숨깁니다. 명령 가능 상태에 들어갈 때는 확인음 2회와 짧은 진동이 함께 발생합니다.
 
-따라서 모바일 화면에서 `JARVIS` overlay가 보이지 않는 상태가 사용자 기준 idle 상태입니다. idle에서는 local activation ASR과 owner voice 확인만 돌고, Android command STT 준비음이나 명령 실패음은 발생하지 않아야 합니다.
+따라서 모바일 화면에서 `JARVIS` overlay가 보이지 않는 상태는 사용자 기준 idle 상태입니다. 현재 기본 정책에서는 idle 상태에서 마이크를 계속 사용하지 않습니다.
 
 ## 속도 측정 로그
 
-음성 인식 속도 개선은 `JarvisLatency` 로그를 기준으로 판단합니다. 다음 명령을 켜고 `자비스 깨어나`, `카메라 실행`, `후면`, `전면`, `찍어`, `종료`를 한 사이클 말하면 같은 `trace=` 값으로 구간별 시간이 출력됩니다.
+음성 인식 속도 개선은 `JarvisLatency` 로그를 기준으로 판단합니다. 전원 버튼 long press 또는 `Jarvis 명령 듣기`로 command window를 연 뒤 `자비스 카메라 실행`, `자비스 카메라 후면`, `자비스 카메라 전면`, `자비스 사진 찍어`, `자비스 카메라 종료`를 한 사이클 말하면 같은 `trace=` 값으로 구간별 시간이 출력됩니다.
 
 ```bash
 adb logcat -v time -s JarvisLatency
@@ -108,7 +89,7 @@ debug no-display Activity는 별도 task affinity를 사용하므로 ADB 검증 
 scripts/jarvis-owner-enroll.sh 6
 ```
 
-스크립트가 `Speak now`를 출력하면 6초 동안 `자비스 깨어나`를 여러 번 또렷하게 말합니다. debug enrollment는 반복 발화 ASR 결과 안에 `자비스 깨어나` 계열 activation phrase가 포함되면 등록 검증을 통과시킵니다. 실제 idle activation은 `자비스 깨어나` 계열 단일 activation phrase 또는 local activation ASR에서만 허용되는 제한된 equivalent를 인정하며, 일반 command parsing wake word로 확장하지 않습니다. debug enrollment는 마지막 녹음을 앱 cache의 `jarvis-owner-enroll-last.wav`로 저장하고 `debug_wav` 로그에 경로를 남겨 activation ASR 실패를 재현할 수 있게 합니다. 등록이 끝나면 Jarvis 서비스를 다시 시작하고, 자동으로 `jarvis-profile-status.sh`를 실행합니다. `profile_configured=true`일 때만 속도 측정을 진행합니다.
+스크립트가 `Speak now`를 출력하면 6초 동안 `자비스 깨어나`를 여러 번 또렷하게 말합니다. debug enrollment는 반복 발화 ASR 결과 안에 `자비스 깨어나` 계열 activation phrase가 포함되면 등록 검증을 통과시킵니다. debug enrollment는 마지막 녹음을 앱 cache의 `jarvis-owner-enroll-last.wav`로 저장하고 `debug_wav` 로그에 경로를 남깁니다. 등록이 끝나면 자동으로 `jarvis-profile-status.sh`를 실행합니다. 음성 서비스는 자동으로 상시 대기하지 않으며, 기본 어시스턴트 호출이나 `Jarvis 명령 듣기`로 시작합니다.
 
 새 측정은 저장된 owner profile이 현재 activation 등록 상태인지 먼저 확인한 뒤, 로그를 비우고 정해진 시간 동안 녹화해 바로 요약합니다.
 
@@ -155,10 +136,11 @@ scripts/jarvis-command-trace.sh 45
 3. 앱에서 마이크 권한과 알림 권한을 허용합니다.
 4. `내 목소리 등록 시작`을 누른 뒤 조용한 곳에서 6초 동안 `자비스 깨어나`를 여러 번 또렷하게 말합니다.
 5. `접근성 설정 열기`를 누르고 `Jarvis` 접근성 서비스를 켭니다.
-6. HyperOS 앱 설정에서 자동 시작을 허용하고 배터리 제한을 풀어줍니다.
-7. 앱으로 돌아와 `Jarvis 시작`을 누릅니다. 이후 접근성 서비스가 살아 있으면 Jarvis 음성 서비스가 내려간 상태를 watchdog이 주기적으로 복구합니다.
+6. 앱에서 `기본 어시스턴트 설정`을 누르고 Jarvis를 기본 디지털 어시스턴트로 선택합니다.
+7. HyperOS 설정에서 전원 버튼 길게 누르기가 기본 어시스턴트를 실행하도록 설정합니다.
+8. 전원 버튼을 길게 누르거나 앱의 `Jarvis 명령 듣기`를 누른 뒤 `자비스 카메라 실행`처럼 말합니다.
 
-USB 디버깅이 연결되어 있으면 `scripts/jarvis-owner-enroll.sh 6`으로 소유자 목소리를 다시 등록하고, `scripts/jarvis-profile-status.sh`로 `profile_configured=true`인지 확인할 수 있습니다. 구버전 단일 샘플 프로필 또는 `자비스 깨어나` activation 이전 프로필은 `profile_configured=false`로 표시되며, 이 상태에서는 보안상 Jarvis가 음성 대기에 들어가지 않습니다.
+USB 디버깅이 연결되어 있으면 `scripts/jarvis-owner-enroll.sh 6`으로 소유자 목소리를 다시 등록하고, `scripts/jarvis-profile-status.sh`로 `profile_configured=true`인지 확인할 수 있습니다. 구버전 단일 샘플 프로필 또는 `자비스 깨어나` activation 이전 프로필은 `profile_configured=false`로 표시되며, 이 상태에서는 Jarvis command window를 시작하지 않습니다.
 
 ## 설치 방법
 
@@ -190,12 +172,6 @@ USB 디버깅이 연결되어 있으면 `scripts/jarvis-owner-enroll.sh 6`으로
 
 `화면 켜`는 꺼진 디스플레이를 깨워 잠금화면을 보이게 하는 동작입니다. `화면 꺼`는 접근성 서비스의 잠금화면 전역 액션으로 기기를 잠그는 동작입니다. Android 보안 정책상 비밀번호, 지문, 얼굴인식 같은 잠금 해제는 자동으로 우회하지 않습니다.
 
-소유자 목소리 인증은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 앱에 등록된 소유자 embedding이 있으면 Jarvis는 먼저 local activation ASR로 `자비스 깨어나`를 찾고, activation이 확인된 rolling audio를 speaker embedding 입력으로 사용합니다. speaker embedding 입력은 내부에서 최소 1.2초로 padding합니다. 등록 시에는 `자비스 깨어나`를 반복한 전체 6초 음성을 먼저 activation hotwords ASR로 확인하고, activation phrase가 확인된 경우에만 1.4초 단위 짧은 구간에서 최소 2개, 최대 8개의 embedding을 저장하며 `profile_phrase_id=jarvis_activation_v3` 메타데이터를 함께 저장합니다. verification은 등록 embedding 묶음 중 가장 높은 similarity를 사용하고, activation phrase 확인 뒤에는 전체 rolling audio와 1.2초/1.6초/2.2초 최고 에너지 후보 구간의 owner score 중 가장 높은 값을 사용합니다. 기본 threshold `0.50`을 넘으면 strict 통과이고, activation phrase가 이미 확인된 경우에만 다중 embedding 프로필에서 active speech 450ms 이상, similarity `0.36` 이상 고신뢰 단일 점수 또는 `0.27` 이상 근접 점수를 통과시킵니다. acoustic wake fallback에서는 ASR 텍스트가 틀린 경우에도 template distance `<=0.22`, peak RMS `>=0.006`, owner score `>=0.50`, owner speech `>=500ms`가 동시에 맞아야 command window를 엽니다. 기존 owner gate의 soft wake 단일/연속 점수와 template-only wake는 command window 오픈 조건으로 사용하지 않습니다.
+소유자 목소리 등록은 오픈소스 `sherpa-onnx` 런타임과 3D-Speaker CAM++ ONNX 모델을 사용합니다. 현재 호출형 정책에서는 등록된 프로필이 Jarvis command window 시작 가능 조건으로만 쓰이고, 전원 버튼으로 열린 command window 안의 각 명령은 별도 speaker verification 없이 `자비스` 호출어가 포함된 텍스트 명령으로 처리합니다. 물리 버튼을 누를 수 있는 사람이 command window를 열 수 있으므로, 더 강한 보안이 필요하면 “명령 음성 자체의 owner verification”을 별도 설계해야 합니다.
 
-2026-06-21 16:45 KST Xiaomi 15 Ultra 화면 켠 상태 live check에서는 Android STT wake가 발화 시작/끝과 4.36초 snapshot을 잡았지만 `NO_MATCH`를 반환했고, snapshot local replay도 text가 비어 accepted=0이었습니다. 이어진 local activation session은 `응.`, `진자` 같은 조각만 반환했으며 `자비스 깨어나` activation equivalent로 통과하지 못했습니다. 새 windowed owner replay에서는 일부 저장 캡처의 owner score가 near 기준까지 올라가는 것을 확인했지만, 이 시점에는 activation ASR accepted가 0이라 command window와 상태 overlay가 열리지 않았습니다.
-
-2026-06-21 17:09 KST 저장 캡처 replay에서 template fallback과 owner verification이 함께 통과한 캡처가 확인됐습니다(`endpoint=debug_activation_replay_template`, ownerScore `0.2835`). 이후 template-only wake와 최근 wake 캡처를 owner profile에 병합하는 실험은 false activation을 owner strict 통과로 강화하는 문제가 확인되어 debug calibration 경로에서 제거했습니다. 현재 live 경로는 strict acoustic wake fallback만 사용하며, template pattern과 owner voice가 모두 통과해야 합니다. 앱은 저장된 embedding 중 등록 기반 앞 8개까지만 사용합니다.
-
-중요한 점은 activation phrase와 owner voice가 둘 다 확인되어야 command window가 열린다는 것입니다. Android STT wake 보조 경로 또는 local activation ASR이 `자비스 깨어나` 계열을 먼저 확인하고, 같은 시점에 보존된 오디오의 owner score가 통과한 경우에만 30초 command window를 열고 `JARVIS LISTENING` overlay와 준비음/진동을 제공합니다. `자비스` 단독, `헤이 자비스 깨어나`, `자비스 카메라 실행`, 주변 대화, 소유자의 다른 말은 idle 상태에서 command window를 열지 않습니다. 이후 live command window는 Android 기본 `SpeechRecognizer`를 먼저 사용하고, Android STT가 실패하거나 사용할 수 없을 때만 local ASR fallback을 사용합니다. 로컬 ASR fallback은 짧은 명령 후 trailing silence를 감지하면 timeout 전에도 final decode를 실행합니다. command window는 서비스 레벨의 30초 deadline으로 닫히므로 fallback 재시도 때문에 무한히 유지되지 않습니다. 이 때문에 Jarvis 대기 중에는 Android의 초록색 마이크 표시가 켜져 있는 것이 정상입니다.
-
-Android 14+ 정책상 `targetSdk=35` 앱은 재부팅 broadcast에서 microphone foreground service를 직접 시작할 수 없습니다. 대신 Jarvis는 재부팅 후 시작 알림을 띄우고, 사용자가 알림을 탭하면 마이크 서비스를 시작합니다. 소유자 목소리와 마이크 권한이 준비되어 있고 접근성 서비스가 연결되어 있으면 watchdog이 앱 업데이트나 서비스 종료 이후 음성 서비스를 다시 시작하려고 시도합니다. Android/HyperOS가 백그라운드 시작을 막는 경우에는 시작 알림을 탭하는 경로가 fallback입니다.
+Android 14+ 정책상 `targetSdk=35` 앱은 재부팅 broadcast에서 microphone foreground service를 직접 시작할 수 없습니다. Jarvis는 재부팅 후 알림을 띄우고, 사용자가 알림을 탭하면 30초 command window를 시작합니다. 접근성 서비스는 음성 서비스를 자동 재시작하지 않습니다.

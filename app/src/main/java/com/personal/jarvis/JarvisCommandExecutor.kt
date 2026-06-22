@@ -27,7 +27,8 @@ class JarvisCommandExecutor(
         Log.d(TAG, "Running command: $command")
 
         when (command) {
-            CommandBus.COMMAND_STOP_LISTENING -> Log.d(TAG, "Closing command window without stopping service")
+            CommandBus.COMMAND_STOP_LISTENING -> Log.d(TAG, "Closing current Jarvis command window")
+            CommandBus.COMMAND_STOP_SERVICE -> Log.d(TAG, "Stopping Jarvis voice service by command")
             CommandBus.COMMAND_OPEN_CAMERA -> CameraLauncher.open(context)
             CommandBus.COMMAND_OPEN_FRONT_CAMERA,
             CommandBus.COMMAND_OPEN_REAR_CAMERA -> {
@@ -78,12 +79,15 @@ class JarvisCommandExecutor(
             CommandBus.COMMAND_HOME,
             CommandBus.COMMAND_BACK,
         )
-        private val VOICE_SERVICE_STOP_COMMANDS = emptySet<String>()
+        private val VOICE_SERVICE_STOP_COMMANDS = setOf(
+            CommandBus.COMMAND_STOP_SERVICE,
+        )
 
         val FAST_PARTIAL_COMMANDS = COMMAND_WINDOW_CONTINUATION_COMMANDS + setOf(
             CommandBus.COMMAND_WAKE_SCREEN,
             CommandBus.COMMAND_SLEEP_SCREEN,
             CommandBus.COMMAND_STOP_LISTENING,
+            CommandBus.COMMAND_STOP_SERVICE,
         )
 
         fun shouldKeepCommandWindowOpen(command: String): Boolean {
