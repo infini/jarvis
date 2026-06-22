@@ -477,6 +477,8 @@ command window는 기본 어시스턴트 호출, boot notification 탭, 앱의 `
 
 30초 command window 안에서도 명령 문장에는 호출어가 필요하다. 사용자는 `자비스 카메라 실행`, `자비스 카메라 전면`, `자비스 카메라 후면`, `자비스 사진 찍어`, `자비스 카메라 종료`처럼 말한다. live Android STT와 local command fallback 모두 `CommandInterpreter.parse(..., requireWakeWord = true)` 기준으로 동작한다. 따라서 열린 command window 안에서도 `찍어`, `후면`, `종료` 같은 호출어 없는 단독 명령은 실행하지 않는다.
 
+사진 촬영 명령은 `자비스 사진 찍어`, `자비스 사진 찍어줘`, `자비스 찍어`, `자비스 셔터`, `자비스 셔터 눌러`, `자비스 촬영해줘`, `자비스 찰칵`을 `take_photo`로 매핑한다. `자비스 사진 찍어`의 partial 인식 속도를 높이기 위해 문장이 `자비스사진찍` 패턴으로 끝나는 경우도 촬영 명령으로 인정한다. 단, `자비스 사진`처럼 촬영 동사가 없는 문장이나 `자비스 사진 찍지 마`처럼 뒤에 다른 동사가 이어지는 문장은 실행하지 않는다.
+
 카메라 세션 명령은 처리 후에도 command window를 다시 30초로 연다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`, `home`, `back`이다. 따라서 전원 버튼 long press로 Jarvis를 호출한 뒤 `자비스 카메라 실행`, `자비스 카메라 후면`, `자비스 카메라 전면`, `자비스 사진 찍어`, `자비스 카메라 종료`를 연속 처리할 수 있어야 한다. Jarvis는 이 30초를 `JarvisVoiceService`의 hard deadline으로 별도 관리한다. 30초 안에 다음 명령이 없으면 active recognizer를 취소하고 overlay를 제거한 뒤 foreground service를 종료한다.
 
 live command는 Android 기본 `SpeechRecognizer`가 먼저 듣고 partial/final 결과에서 명령을 파싱한다. Android STT command window는 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 220ms, possibly-complete silence 120ms, complete silence 240ms를 사용한다. command window를 열면 추가 대기 없이 STT를 시작하고, debug command window도 동일하게 즉시 시작한다. Android STT가 발화 시작이나 partial을 감지한 뒤 실패했거나 사용할 수 없을 때만 local ASR fallback을 사용하며, fallback은 `0.0012` RMS 이상의 160ms active speech, 최소 560ms 청취, 240ms trailing silence가 감지되면 6초 live listen timeout 전에도 final decode를 실행한다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패음/빨간 표시 없이 command window 안에서 조용히 다시 듣고, command window deadline은 연장하지 않는다. local ASR 입력은 원본 RMS가 `0.00008` 이상일 때 목표 RMS `0.04`, 최대 `30x`까지 gain을 적용한다. 실제 사용자 준비음/진동은 Android STT `ready_for_speech` callback에서 낸다. 빠른 partial 명령은 final 결과를 기다리지 않고 즉시 실행하며, cancel callback이 오지 않는 경우에도 20ms 뒤 recognizer를 재생성하고 다음 흐름으로 넘어간다. 명령 처리 후 연속 command STT는 확인음 없이 즉시 시작한다. deadline 이후 Android STT가 speech-active 상태로 결과를 붙잡고 있으면 3.5초 grace 뒤 취소하며, listening timeout은 발화 중인 recognizer를 먼저 취소하지 않는다. `home`, `back`은 현재 앱만 제어하고 command window를 유지한다. `stop_listening`, `stop_service`, `wake_screen`, `sleep_screen`도 partial command path에서 빠르게 실행할 수 있다. `자비스 잠들어`와 `stop_listening`은 command window를 닫고 service를 종료한다. `자비스 완전 종료`, `자비스 서비스 종료`, notification `Jarvis 종료`도 service를 종료한다.
@@ -540,9 +542,13 @@ Legacy 제약:
 
 ## 9. Accessibility Automation Strategy
 
-카메라 UI 제어는 2단계로 시도한다.
+카메라 UI 제어는 동작별로 노드 탐색과 좌표 제스처를 조합한다.
 
-### 1단계: 접근성 노드 탐색
+### 셔터 fast path
+
+`take_photo`는 실행 지연을 최소화하기 위해 Xiaomi 기본 카메라의 셔터 상대 좌표를 먼저 접근성 제스처로 탭한다. portrait 기준 `x=50%`, `y=88%`이고 gesture duration은 `45ms`다. `dispatchGesture`가 실패한 경우에만 접근성 노드에서 셔터 버튼을 찾는다.
+
+### 접근성 노드 탐색
 
 `text`, `contentDescription`, `viewIdResourceName`, `className`에서 키워드를 찾아 가장 적합한 노드의 화면 중앙을 접근성 제스처로 탭한다. Xiaomi 카메라에서는 접근성 `ACTION_CLICK`보다 실제 좌표 탭이 셔터/전환 버튼에서 더 안정적이다.
 
@@ -552,13 +558,13 @@ Legacy 제약:
 - 필터: `filter`, `effects`, `leica`, `필터`, `효과`, `색감`
 - 전환: `com.android.camera:id/v9_camera_picker`, `switch camera`, `flip camera`, `카메라 전환`, `렌즈 전환`, `전후면 전환`
 
-### 2단계: 좌표 fallback
+### 좌표 fallback
 
-노드 탐색이 실패하면 화면 크기 기준 상대 좌표를 탭한다.
+필터/전환처럼 노드 탐색을 먼저 쓰는 제어는 노드 탐색이 실패하면 화면 크기 기준 상대 좌표를 탭한다.
 
 현재 portrait 기준:
 
-- 셔터: `x=50%`, `y=88%`
+- 셔터: `x=50%`, `y=88%` (`take_photo`는 이 좌표가 1차 fast path)
 - 필터: `x=25%`, `y=88%`
 - 전환: `x=90%`, `y=87%`
 

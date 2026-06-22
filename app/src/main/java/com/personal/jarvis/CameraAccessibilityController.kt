@@ -37,8 +37,8 @@ class CameraAccessibilityController(
     }
 
     fun tapShutter() {
-        val tapped = tapMatchingNode(SHUTTER_KEYWORDS)
-        if (!tapped) tapFallback(CameraControlTarget.SHUTTER)
+        val tapped = tapFallback(CameraControlTarget.SHUTTER, FAST_SHUTTER_TAP_DURATION_MS)
+        if (!tapped) tapMatchingNode(SHUTTER_KEYWORDS)
     }
 
     fun openFilters() {
@@ -127,7 +127,10 @@ class CameraAccessibilityController(
         return tap(rect.exactCenterX(), rect.exactCenterY())
     }
 
-    private fun tapFallback(target: CameraControlTarget): Boolean {
+    private fun tapFallback(
+        target: CameraControlTarget,
+        durationMs: Long = DEFAULT_TAP_DURATION_MS,
+    ): Boolean {
         val metrics = service.resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
@@ -151,13 +154,17 @@ class CameraAccessibilityController(
         }
 
         Log.d(TAG, "Tapping fallback target=$target x=$x y=$y")
-        return tap(x, y)
+        return tap(x, y, durationMs)
     }
 
-    private fun tap(x: Float, y: Float): Boolean {
+    private fun tap(
+        x: Float,
+        y: Float,
+        durationMs: Long = DEFAULT_TAP_DURATION_MS,
+    ): Boolean {
         val path = Path().apply { moveTo(x, y) }
         val gesture = GestureDescription.Builder()
-            .addStroke(GestureDescription.StrokeDescription(path, 0, 80))
+            .addStroke(GestureDescription.StrokeDescription(path, 0, durationMs))
             .build()
         return service.dispatchGesture(gesture, null, null)
     }
@@ -173,6 +180,8 @@ class CameraAccessibilityController(
         private const val CAMERA_OPEN_DELAY_MS = 1500L
         private const val CAMERA_FACING_RETRY_DELAY_MS = 500L
         private const val CAMERA_FACING_RETRY_COUNT = 2
+        private const val DEFAULT_TAP_DURATION_MS = 80L
+        private const val FAST_SHUTTER_TAP_DURATION_MS = 45L
         private val SHUTTER_KEYWORDS = listOf(
             "com.android.camera:id/shutter_button",
             "shutter",

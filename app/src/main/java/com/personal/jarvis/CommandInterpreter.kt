@@ -24,7 +24,8 @@ object CommandInterpreter {
             normalized.contains("셀카") ||
             normalized.contains("사진")
 
-        val wantsShot = listOf("찍어", "찍기", "촬영", "찰칵", "셔터", "찍자").any(normalized::contains)
+        val wantsShot = SHOT_WORDS.any(normalized::contains) ||
+            PARTIAL_SHOT_PATTERNS.any(normalized::endsWith)
         val wantsCameraOpen = mentionsCamera &&
             listOf("열어", "켜", "시작", "실행").any(normalized::contains)
         val wantsSpecificCameraMode = !wantsSwitchCamera &&
@@ -121,6 +122,22 @@ object CommandInterpreter {
 
     private val FRONT_CAMERA_WORDS = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라")
     private val REAR_CAMERA_WORDS = listOf("후면", "후방", "뒷카메라", "뒤카메라", "백카메라", "리어카메라")
+    private val SHOT_WORDS = listOf(
+        "찍어",
+        "찍기",
+        "촬영",
+        "찰칵",
+        "셔터",
+        "찍자",
+        "찍어줘",
+        "찍어주세요",
+        "촬영해줘",
+        "촬영해주세요",
+        "찰칵해줘",
+        "셔터눌러",
+        "셔터눌러줘",
+    )
+    private val PARTIAL_SHOT_PATTERNS = listOf("사진찍")
     private val ACTIVATION_WORDS = listOf("깨어나")
     private val ACTIVATION_ASR_EQUIVALENT_WORDS = ACTIVATION_WORDS + listOf("게임", "때어나")
 
