@@ -24,9 +24,10 @@ object CommandInterpreter {
             normalized.contains("셀카") ||
             normalized.contains("사진")
 
+        val hasPhotoShotAsrVariant = mentionsCamera && PHOTO_SHOT_ASR_VARIANTS.any(normalized::contains)
         val wantsShot = SHOT_WORDS.any(normalized::contains) ||
-            SHOT_ASR_VARIANTS.any(normalized::contains) ||
-            PARTIAL_SHOT_PATTERNS.any(normalized::endsWith)
+            PARTIAL_SHOT_PATTERNS.any(normalized::endsWith) ||
+            hasPhotoShotAsrVariant
         val wantsCameraOpen = mentionsCamera &&
             listOf("열어", "켜", "시작", "실행").any(normalized::contains)
         val wantsSpecificCameraMode = !wantsSwitchCamera &&
@@ -65,7 +66,7 @@ object CommandInterpreter {
             wantsSleepScreen -> CommandBus.COMMAND_SLEEP_SCREEN
             wantsCloseApp && !wantsStop -> CommandBus.COMMAND_HOME
             wantsStop -> CommandBus.COMMAND_STOP_LISTENING
-            wantsShot && wantsCameraOpen -> CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO
+            wantsShot && wantsCameraOpen && !hasPhotoShotAsrVariant -> CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO
             wantsShot -> CommandBus.COMMAND_TAKE_PHOTO
             wantsRearCamera && wantsSpecificCameraMode -> CommandBus.COMMAND_OPEN_REAR_CAMERA
             wantsFrontCamera && wantsSpecificCameraMode -> CommandBus.COMMAND_OPEN_FRONT_CAMERA
@@ -143,11 +144,15 @@ object CommandInterpreter {
         "셔터눌러",
         "셔터눌러줘",
     )
-    private val SHOT_ASR_VARIANTS = listOf(
+    private val PHOTO_SHOT_ASR_VARIANTS = listOf(
         "찌거",
         "찌꺼",
         "지거",
         "지꺼",
+        "치거",
+        "치꺼",
+        "지켜",
+        "치켜",
     )
     private val PARTIAL_SHOT_PATTERNS = listOf("사진찍", "사진찌")
     private val STOP_WORDS = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만")
