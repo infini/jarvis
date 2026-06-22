@@ -61,7 +61,7 @@ if [[ "$START_DEBUG_ACTIVITY" == "1" ]]; then
     --ez reset_voice_service true >/dev/null 2>&1 || true
   sleep 1
 fi
-echo "Speak now: say '자비스 깨어나'. When the green JARVIS indicator appears or the ready tone/vibration plays, say one command such as '카메라 실행', then wait for the handled tone before the next command: '후면', '전면', '찍어', '종료'."
+echo "Speak now: say '자비스 깨어나'. When the green JARVIS indicator appears or the ready tone/vibration plays, say one command such as '자비스 카메라 실행', then wait for the handled feedback before the next command: '자비스 카메라 후면', '자비스 카메라 전면', '자비스 사진 찍어', '자비스 카메라 종료'."
 sleep "$DURATION_SECONDS"
 
 if [[ -z "$LOG_FILE" ]]; then
@@ -110,7 +110,7 @@ if [[ -z "$COMMAND_COMPLETE_LINES" ]]; then
   elif [[ "$SPEECH_BEGIN_COUNT" == "0" && "$PARTIAL_RESULTS_COUNT" == "0" ]]; then
     echo "Jarvis opened a command window, but Android STT did not detect a spoken command. Say the command after the green JARVIS indicator appears or the ready tone/vibration plays." >&2
   elif [[ "$COMMAND_PARSED_COUNT" == "0" ]]; then
-    echo "Speech was detected, but no supported command was parsed. Try a shorter command such as '카메라 실행', '후면', '전면', '찍어', or '종료'." >&2
+    echo "Speech was detected, but no supported command was parsed. Say the Jarvis prefix, for example '자비스 카메라 실행', '자비스 카메라 후면', '자비스 카메라 전면', '자비스 사진 찍어', or '자비스 카메라 종료'." >&2
   fi
   exit 1
 fi
