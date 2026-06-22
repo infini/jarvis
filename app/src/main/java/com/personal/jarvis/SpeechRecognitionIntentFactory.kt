@@ -43,7 +43,7 @@ object SpeechRecognitionIntentFactory {
     private const val IDLE_WAKE_INPUT_MINIMUM_LENGTH_MS = 600L
     private const val IDLE_WAKE_POSSIBLY_COMPLETE_SILENCE_MS = 250L
     private const val IDLE_WAKE_COMPLETE_SILENCE_MS = 600L
-    private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 300L
-    private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 150L
-    private const val COMMAND_COMPLETE_SILENCE_MS = 300L
+    private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 220L
+    private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 120L
+    private const val COMMAND_COMPLETE_SILENCE_MS = 240L
 }

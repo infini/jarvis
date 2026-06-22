@@ -16,6 +16,8 @@
 - `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 Android STT 실패 fallback을 인식합니다.
 - `LocalCommandSession`: 로컬 명령 ASR 스레드 상태를 관리합니다.
 - `SpeechRecognitionIntentFactory`: Android `SpeechRecognizer` 실행 옵션을 한곳에서 생성합니다.
+- `CommandCatalog`: 앱에 표시할 명령어 예시, 상세 동작, 필요 조건을 관리합니다.
+- `CommandListActivity`: `명령어 리스트` 화면에서 전체 명령어와 선택한 명령의 상세 설명을 보여줍니다.
 - `JarvisCommandExecutor`: 내부 명령 실행, 중복 실행 방지, 카메라 세션 window 유지 정책을 담당합니다.
 - `JarvisNotificationController`: 음성 서비스 foreground notification과 상태 문구를 관리합니다.
 - `JarvisFeedbackController`: 명령 가능/처리/실패 상태의 소리, 진동, 상태 broadcast를 담당합니다.
@@ -35,6 +37,8 @@ Jarvis는 기본적으로 상시 음성 대기를 하지 않습니다. 전원 �
 - `자비스 카메라 실행`
 - `자비스 카메라 전면`
 - `자비스 카메라 후면`
+- `자비스 카메라 전환`
+- `자비스 필터`
 - `자비스 사진 찍어`
 - `자비스 카메라 종료`
 - `자비스 화면 켜`
@@ -45,6 +49,8 @@ Jarvis는 기본적으로 상시 음성 대기를 하지 않습니다. 전원 �
 - `자비스 완전 종료`
 
 `JARVIS LISTENING` Hyper Island overlay가 보이는 동안에만 명령을 받습니다. 카메라 세션 명령을 처리하면 30초 command window를 다시 열고, 30초 안에 다음 명령이 없으면 Jarvis는 실패음 없이 overlay를 숨긴 뒤 음성 foreground service를 종료합니다. 열린 command window 안에서도 `찍어`, `후면`, `종료`처럼 `자비스`가 빠진 단독 명령은 실행하지 않습니다.
+
+앱 메인 화면의 `명령어 리스트`에서 지원 명령 전체, 예시 문장, 실제 동작, 필요 조건, command window 유지 여부를 확인할 수 있습니다.
 
 하이퍼아일랜드와 `전면`/`후면`/`사진 찍어`/`카메라 종료` 같은 카메라 세부 제어는 Jarvis 접근성 서비스가 켜져 있어야 동작합니다. 접근성이 꺼져 있으면 기본 어시스턴트 호출 시 명령 대기를 시작하지 않고 Jarvis 앱 화면으로 이동해 접근성 설정을 안내합니다.
 
@@ -63,6 +69,8 @@ adb logcat -v time -s JarvisLatency
 ```
 
 주요 이벤트는 `activation_listen_start`, `activation_asr_rejected_segment`, `activation_asr_complete`, `android_activation_local_replay_start`, `android_activation_local_replay_complete`, `activation_owner_verified`, `owner_audio_activation`, `listen_start`, `local_partial`, `local_complete`, `fallback_to_android`, `ready_for_speech`, `speech_begin`, `speech_end`, `speech_error`, `partial_results`, `final_results`, `command_parsed`, `command_execute_start`, `command_execute_return`, `accessibility_command_received`, `accessibility_command_dispatch_return`, `command_complete`입니다. 음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후 걸린 시간입니다. `activation_asr_rejected_segment`는 60초 idle 세션 안에서 activation이 아닌 segment를 버리고 계속 듣는 경로입니다. `activation_asr_complete`는 activation 문구가 확인됐거나 60초 세션이 종료된 결과를, `android_activation_local_replay_complete`는 Android STT wake 실패 snapshot을 local activation ASR로 다시 판정한 결과를 기록합니다. `activation_owner_verified`는 같은 rolling audio의 owner score를 기록합니다. `owner_audio_activation`은 activation phrase와 owner voice가 모두 통과해 command window를 여는 경로입니다. `local_complete`는 live local ASR 종료 이유, local ASR 자체 elapsed, active speech, trailing silence, peak/mean RMS, ASR gain을 함께 기록합니다. `ready_for_speech`, `speech_begin`, `speech_end`, `speech_error`를 보면 Android STT가 실제로 언제 준비되고 언제 발화를 감지했는지 분리할 수 있습니다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 명령을 보낸 뒤 접근성 서비스가 받은 지연입니다. 같은 프로세스에서 접근성 서비스가 살아 있으면 `CommandBus`는 broadcast 전에 direct receiver를 먼저 호출하며, 로그의 `transport=direct|broadcast`로 경로를 구분합니다.
+
+현재 command window는 열리자마자 Android STT를 시작합니다. 2026-06-22 Xiaomi 15 Ultra debug APK 검증에서는 기본 어시스턴트 호출 후 `listen_start`가 20ms, `ready_for_speech`가 65ms에 기록됐고, 최종 설치본의 debug command window에서는 각각 6ms, 51ms에 기록됐습니다.
 
 trace별 요약은 다음 스크립트로 확인합니다.
 

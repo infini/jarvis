@@ -1885,13 +1885,13 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val OWNER_READY_LISTEN_DELAY_MS = 0L
         private const val COMMAND_CHAIN_LISTEN_DELAY_MS = 80L
         private const val FALLBACK_LISTEN_DELAY_MS = 0L
-        private const val DEBUG_COMMAND_WINDOW_LISTEN_DELAY_MS = 300L
+        private const val DEBUG_COMMAND_WINDOW_LISTEN_DELAY_MS = 0L
         private const val COMMAND_RETRY_DELAY_MS = 25L
         private const val ACTIVE_SPEECH_DEADLINE_RECHECK_MS = 500L
         private const val ACTIVE_SPEECH_DEADLINE_GRACE_MS = 3500L
-        private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 100L
+        private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 20L
         private const val SERVICE_STOP_DELAY_MS = 200L
-        private const val COMMAND_WINDOW_LISTEN_DELAY_MS = 80L
+        private const val COMMAND_WINDOW_LISTEN_DELAY_MS = 0L
         const val EXTRA_DEBUG_COMMAND_WINDOW_MS = "debug_command_window_ms"
         const val EXTRA_DEBUG_REQUEST_ID = "debug_request_id"
         const val EXTRA_DEBUG_COMMAND = "debug_command"

@@ -66,7 +66,8 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 2026-06-21 18:32 KST Xiaomi 15 Ultra live check에서 `rolling_buffer_live_buffered_acoustic_wake`가 `자비스 깨어나`를 검출했고 owner verification `STRICT score=0.7634`, `owner_audio_activation`, `ready_for_speech`, `COMMAND_READY` overlay까지 확인했다. 같은 APK에서 `scripts/jarvis-idle-guard.sh 120`은 무발화 command STT 미진입을 통과했다.
 - 2026-06-21 19:23 KST Xiaomi 15 Ultra debug command window에서 Hyper Island overlay를 실기기 캡처로 확인했다. 글자 크기와 pill 하단 정렬은 유지하고 상단만 줄인 뒤 `JarvisStateIndicator overlay_visible state=COMMAND_READY width=446 height=78 gap=73 x=34 y=27 left=136 right=203` 로그가 남았고, 화면에서는 시안 `JARVIS`와 초록 `LISTENING` 전체 텍스트가 잘림 없이 표시됐다.
 - live command는 Android 기본 STT가 먼저 듣고 partial 결과에서 빠른 명령을 즉시 실행한다. Android STT가 실제 발화를 감지한 뒤 실패했을 때만 local ASR fallback이 6초 동안 첫 명령 발화를 기다리고, 아무 말이 없거나 텍스트 없는 360ms 미만의 짧은 소리만 있으면 local 대기를 이어간다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패 피드백 없이 command window 안에서 조용히 다시 듣는다.
-- Android STT command window는 짧은 명령 구문에 맞춰 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 300ms, possibly-complete silence 150ms, complete silence 300ms를 사용한다. 빠른 실행은 final보다 partial command path로 우선 달성한다.
+- Android STT command window는 짧은 명령 구문에 맞춰 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 220ms, possibly-complete silence 120ms, complete silence 240ms를 사용한다. 빠른 실행은 final보다 partial command path로 우선 달성한다.
+- 2026-06-22 command window 시작 직후 STT 시작 대기를 80ms에서 0ms로 줄이고, debug command window 시작 대기도 300ms에서 0ms로 줄였다. partial 명령 처리 후 recognizer 정리 fallback timeout은 100ms에서 20ms로 줄였다. 실기기 검증에서 기본 어시스턴트 호출은 `listen_start=20ms`, `ready_for_speech=65ms`, 최종 설치본의 debug command window는 `listen_start=6ms`, `ready_for_speech=51ms`를 기록했다.
 - local activation ASR은 idle에서 Android STT를 열기 전 activation phrase만 확인한다. local activation ASR에서 `자비스 깨어나`를 잡고 owner verification까지 통과하면 30초 command window와 Android command STT를 시작하고, 그렇지 않으면 overlay/비프음 없이 idle activation 대기로 돌아간다.
 - activation 디버깅은 반복 수동 발화를 요구하지 않도록 변경한다. debug APK는 idle activation ASR이 사용한 원본 rolling WAV와 JSON 메타데이터를 cache `jarvis-activation-attempts/`에 자동 저장하며, `scripts/jarvis-wake-diagnose.sh`는 프로필/저장 샘플 replay/logcat을 한 번에 묶어 wake 실패 원인을 분류한다. `scripts/jarvis-activation-replay.sh`는 저장된 WAV들을 현재 APK의 local activation ASR로 재디코딩하고 owner score를 함께 기록하며, `scripts/jarvis-activation-captures.sh`는 저장 샘플을 host `/tmp`로 가져온다. live wake 리포트는 `android_activation_local_replay_complete`와 `android_activation_local_replay_detected`를 함께 세어 Android STT 실패 snapshot이 local replay에서 복구됐는지 확인한다.
 - idle guard와 command window timeout은 사용자의 발화 없이 검증한다. `scripts/jarvis-idle-guard.sh 20`은 idle 상태에서 accepted activation 또는 command STT `listen_start`/`ready_for_speech`가 발생하지 않는지 검사한다. `activation_phrase_missing`과 `activation_owner_rejected`는 호출어 또는 owner voice가 아니어서 조용히 거절된 정상 idle 경로로 본다. 성공 시에는 요약과 원본 logcat 파일 경로만 출력하고, 실패 시에는 원인 이벤트를 함께 출력한다. `scripts/jarvis-command-window-timeout.sh 30`은 debug APK의 no-display `JarvisDebugCommandWindowActivity`로 command window를 30초 열고 command window close 이후 `ready_for_speech`가 다시 발생하지 않는지 검사한다. close 이벤트는 일반 timeout, active speech grace 만료, listen timeout 만료, deadline 이후 speech error/final/local no-command 종료를 포함한다. `scripts/jarvis-command-window-timeout.sh 30 open_camera`처럼 command id를 넘기면 실제 명령 처리 후 command window가 다시 열린 뒤 닫히는 경로를 검증한다.
@@ -238,9 +239,11 @@ JarvisAccessibilityService
 
 | File | Role |
 | --- | --- |
-| `MainActivity.kt` | 권한 요청, 접근성/기본 어시스턴트 설정 진입, Jarvis 명령 듣기 UI |
+| `MainActivity.kt` | 권한 요청, 접근성/기본 어시스턴트 설정 진입, Jarvis 명령 듣기와 명령어 리스트 진입 UI |
 | `JarvisAssistantActivity.kt` | Android `ACTION_ASSIST`/`ACTION_VOICE_COMMAND` 호출을 받아 30초 command window 시작 |
 | `JarvisAccessibilityStatus.kt` | Jarvis 접근성 서비스 활성화 여부 확인 |
+| `CommandCatalog.kt` | 지원 명령어 예시, 상세 동작, 필요 조건, command window 유지 정책을 UI 표시용으로 정리 |
+| `CommandListActivity.kt` | 앱의 `명령어 리스트` 화면. 명령 선택 시 예시/동작/필요 조건/명령 ID 상세 표시 |
 | `OwnerVoiceEnrollmentController.kt` | 소유자 목소리 등록 workflow, 진행률, 완료/실패 callback |
 | `JarvisBootReceiver.kt` | 부팅/앱 업데이트 후 Jarvis command window 시작 알림 표시 |
 | `JarvisVoiceService.kt` | command window 동안만 동작하는 포그라운드 음성 인식 서비스 orchestration |
@@ -476,7 +479,7 @@ command window는 기본 어시스턴트 호출, boot notification 탭, 앱의 `
 
 카메라 세션 명령은 처리 후에도 command window를 다시 30초로 연다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`, `home`, `back`이다. 따라서 전원 버튼 long press로 Jarvis를 호출한 뒤 `자비스 카메라 실행`, `자비스 카메라 후면`, `자비스 카메라 전면`, `자비스 사진 찍어`, `자비스 카메라 종료`를 연속 처리할 수 있어야 한다. Jarvis는 이 30초를 `JarvisVoiceService`의 hard deadline으로 별도 관리한다. 30초 안에 다음 명령이 없으면 active recognizer를 취소하고 overlay를 제거한 뒤 foreground service를 종료한다.
 
-live command는 Android 기본 `SpeechRecognizer`가 먼저 듣고 partial/final 결과에서 명령을 파싱한다. Android STT command window는 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 300ms, possibly-complete silence 150ms, complete silence 300ms를 사용한다. Android STT가 발화 시작이나 partial을 감지한 뒤 실패했거나 사용할 수 없을 때만 local ASR fallback을 사용하며, fallback은 `0.0012` RMS 이상의 160ms active speech, 최소 560ms 청취, 240ms trailing silence가 감지되면 6초 live listen timeout 전에도 final decode를 실행한다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패음/빨간 표시 없이 command window 안에서 조용히 다시 듣고, command window deadline은 연장하지 않는다. local ASR 입력은 원본 RMS가 `0.00008` 이상일 때 목표 RMS `0.04`, 최대 `30x`까지 gain을 적용한다. 실제 사용자 준비음/진동은 Android STT `ready_for_speech` callback에서 낸다. 명령 처리 후 연속 command STT는 80ms 뒤에 시작한다. deadline 이후 Android STT가 speech-active 상태로 결과를 붙잡고 있으면 3.5초 grace 뒤 취소하며, listening timeout은 발화 중인 recognizer를 먼저 취소하지 않는다. `home`, `back`은 현재 앱만 제어하고 command window를 유지한다. `stop_listening`, `stop_service`, `wake_screen`, `sleep_screen`도 partial command path에서 빠르게 실행할 수 있다. `자비스 잠들어`와 `stop_listening`은 command window를 닫고 service를 종료한다. `자비스 완전 종료`, `자비스 서비스 종료`, notification `Jarvis 종료`도 service를 종료한다.
+live command는 Android 기본 `SpeechRecognizer`가 먼저 듣고 partial/final 결과에서 명령을 파싱한다. Android STT command window는 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 220ms, possibly-complete silence 120ms, complete silence 240ms를 사용한다. command window를 열면 추가 대기 없이 STT를 시작하고, debug command window도 동일하게 즉시 시작한다. Android STT가 발화 시작이나 partial을 감지한 뒤 실패했거나 사용할 수 없을 때만 local ASR fallback을 사용하며, fallback은 `0.0012` RMS 이상의 160ms active speech, 최소 560ms 청취, 240ms trailing silence가 감지되면 6초 live listen timeout 전에도 final decode를 실행한다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패음/빨간 표시 없이 command window 안에서 조용히 다시 듣고, command window deadline은 연장하지 않는다. local ASR 입력은 원본 RMS가 `0.00008` 이상일 때 목표 RMS `0.04`, 최대 `30x`까지 gain을 적용한다. 실제 사용자 준비음/진동은 Android STT `ready_for_speech` callback에서 낸다. 빠른 partial 명령은 final 결과를 기다리지 않고 즉시 실행하며, cancel callback이 오지 않는 경우에도 20ms 뒤 recognizer를 재생성하고 다음 흐름으로 넘어간다. 명령 처리 후 연속 command STT는 80ms 뒤에 시작한다. deadline 이후 Android STT가 speech-active 상태로 결과를 붙잡고 있으면 3.5초 grace 뒤 취소하며, listening timeout은 발화 중인 recognizer를 먼저 취소하지 않는다. `home`, `back`은 현재 앱만 제어하고 command window를 유지한다. `stop_listening`, `stop_service`, `wake_screen`, `sleep_screen`도 partial command path에서 빠르게 실행할 수 있다. `자비스 잠들어`와 `stop_listening`은 command window를 닫고 service를 종료한다. `자비스 완전 종료`, `자비스 서비스 종료`, notification `Jarvis 종료`도 service를 종료한다.
 
 ## 8.1 Owner Voice Gate
 
@@ -612,6 +615,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - 접근성 서비스 켜짐/꺼짐 상태가 UI에 표시됨
 - 접근성 서비스가 꺼져 있으면 `Jarvis 명령 듣기`와 기본 어시스턴트 호출이 command window를 시작하지 않고 접근성 설정을 안내함
 - 배터리 최적화/앱 정보 설정 화면으로 이동할 수 있음
+- 앱 메인 화면의 `명령어 리스트`에서 모든 `CommandBus` 명령의 예시와 상세 동작을 확인할 수 있음
 
 ### Voice Test
 

@@ -116,6 +116,7 @@ class MainActivity : Activity() {
         root.addView(button("배터리 최적화 설정 열기") { openBatteryOptimizationSettings() })
         root.addView(button("앱 자동 시작/배터리 설정 열기") { openAppSettings() })
         root.addView(button("Jarvis 명령 듣기") { startJarvisCommandWindow() })
+        root.addView(button("명령어 리스트") { openCommandList() })
         root.addView(button("테스트: 카메라 열기") { CameraLauncher.open(this) })
         root.addView(button("테스트: 셀피 카메라 열기") { CommandBus.send(this, CommandBus.COMMAND_OPEN_FRONT_CAMERA) })
         root.addView(button("테스트: 후면 카메라 열기") { CommandBus.send(this, CommandBus.COMMAND_OPEN_REAR_CAMERA) })
@@ -227,6 +228,10 @@ class MainActivity : Activity() {
             Uri.parse("package:$packageName"),
         )
         startActivity(intent)
+    }
+
+    private fun openCommandList() {
+        startActivity(Intent(this, CommandListActivity::class.java))
     }
 
     private fun startJarvisCommandWindow() {

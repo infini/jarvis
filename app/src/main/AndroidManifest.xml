@@ -35,6 +35,10 @@
         </activity>
 
         <activity
+            android:name=".CommandListActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".JarvisAssistantActivity"
             android:excludeFromRecents="true"
             android:exported="true"
