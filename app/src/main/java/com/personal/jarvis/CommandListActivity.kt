@@ -20,6 +20,8 @@ class CommandListActivity : Activity() {
     }
 
     private fun buildContentView(): ScrollView {
+        val commandCount = CommandCatalog.entries.size
+        val phraseCount = CommandCatalog.entries.sumOf { it.phrases.size }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(28))
@@ -38,7 +40,7 @@ class CommandListActivity : Activity() {
         )
         root.addView(
             TextView(this).apply {
-                text = "전원 버튼 길게 누르기 또는 Jarvis 명령 듣기 후 아래처럼 말합니다."
+                text = "지원 명령 ${commandCount}개, 예시 문구 ${phraseCount}개. 항목을 선택하면 실제 동작과 필요 조건을 확인합니다."
                 textSize = 14f
                 setTextColor(Color.rgb(76, 86, 96))
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -77,13 +79,41 @@ class CommandListActivity : Activity() {
             setOnClickListener { showCommandDetail(entry) }
 
             addView(
-                TextView(context).apply {
-                    text = entry.title
-                    textSize = 17f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(Color.rgb(16, 20, 24))
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(
+                        TextView(context).apply {
+                            text = entry.title
+                            textSize = 17f
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextColor(Color.rgb(16, 20, 24))
+                        },
+                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+                    )
+                    addView(
+                        TextView(context).apply {
+                            text = "상세 보기"
+                            textSize = 12f
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextColor(Color.rgb(0, 122, 255))
+                        },
+                        LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                        ),
+                    )
                 },
                 matchWrap(bottomMargin = dp(4)),
+            )
+            addView(
+                TextView(context).apply {
+                    text = "예시 문구"
+                    textSize = 12f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(Color.rgb(90, 100, 112))
+                },
+                matchWrap(bottomMargin = dp(2)),
             )
             addView(
                 TextView(context).apply {
