@@ -34,8 +34,14 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찌"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 치거"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 치꺼"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찌겨"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 지겨"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 치겨"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍혀"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 지켜"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 치켜"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 지겨 줘"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍혀 주세요"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍어줘"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍어 주세요"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 찍"))
@@ -57,6 +63,8 @@ class CommandInterpreterTest {
         assertNull(CommandInterpreter.parse("자비스, 지금 찍"))
         assertNull(CommandInterpreter.parse("자비스, 사진"))
         assertNull(CommandInterpreter.parse("자비스, 사진 지"))
+        assertNull(CommandInterpreter.parse("자비스, 사진 지겨워"))
+        assertNull(CommandInterpreter.parse("자비스, 사진 지켜봐"))
         assertNull(CommandInterpreter.parse("자비스, 사진 찍지 마"))
         assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 카메라 종료"))
         assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 카메라 꺼"))
@@ -136,6 +144,10 @@ class CommandInterpreterTest {
         assertEquals("take_photo_final", directAsrVariantShot.reason)
         assertTrue(directAsrVariantShot.hasDirectShotAsrVariant)
 
+        val photoSuffixAsrVariantShot = CommandInterpreter.photoCandidateDiagnostic("자비스, 사진 찍혀")
+        assertEquals("take_photo_final", photoSuffixAsrVariantShot.reason)
+        assertTrue(photoSuffixAsrVariantShot.hasPhotoShotAsrVariant)
+
         assertEquals(
             "missing_wake",
             CommandInterpreter.photoCandidateDiagnostic("사진 찍어").reason,
@@ -151,6 +163,10 @@ class CommandInterpreterTest {
         assertEquals(
             "missing_photo_or_direct_shot",
             CommandInterpreter.photoCandidateDiagnostic("자비스, 지금 찍").reason,
+        )
+        assertEquals(
+            "missing_shot",
+            CommandInterpreter.photoCandidateDiagnostic("자비스, 사진 지겨워").reason,
         )
     }
 
