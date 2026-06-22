@@ -1819,7 +1819,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         if (partialCommandHandled || results.isEmpty()) return false
 
         for ((index, candidate) in results.withIndex()) {
-            val command = CommandInterpreter.parse(
+            val command = CommandInterpreter.parseFastPartial(
                 text = candidate,
                 requireWakeWord = true,
             ) ?: continue

@@ -70,6 +70,23 @@ class CommandInterpreterTest {
     }
 
     @Test
+    fun fastPartialPhotoCommandAcceptsShortPhotoPrefixesOnlyWithWakeWord() {
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 지"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 치"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("제이비스, 사진 지"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("서비스, 사진 치"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 찍"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 찌"))
+
+        assertNull(CommandInterpreter.parse("자비스, 사진 지"))
+        assertNull(CommandInterpreter.parse("자비스, 사진 치"))
+        assertNull(CommandInterpreter.parseFastPartial("사진 지"))
+        assertNull(CommandInterpreter.parseFastPartial("자비스, 지"))
+        assertNull(CommandInterpreter.parseFastPartial("자비스, 사진 지우"))
+        assertNull(CommandInterpreter.parseFastPartial("자비스, 사진 치워"))
+    }
+
+    @Test
     fun activatesOnlyOnExplicitJarvisWakePhrase() {
         assertTrue(CommandInterpreter.isActivationWake("자비스 깨어나"))
         assertTrue(CommandInterpreter.isActivationWake("자베스 깨어나"))

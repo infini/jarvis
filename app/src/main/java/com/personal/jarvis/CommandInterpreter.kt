@@ -82,6 +82,21 @@ object CommandInterpreter {
         }
     }
 
+    fun parseFastPartial(text: String, requireWakeWord: Boolean = true): String? {
+        val command = parse(text, requireWakeWord)
+        if (command != null) return command
+
+        val normalized = normalize(text)
+        if (normalized.isBlank()) return null
+        if (requireWakeWord && !hasWakeWord(normalized)) return null
+
+        return if (FAST_PARTIAL_PHOTO_SHOT_PATTERNS.any(normalized::endsWith)) {
+            CommandBus.COMMAND_TAKE_PHOTO
+        } else {
+            null
+        }
+    }
+
     fun isActivationWake(text: String): Boolean {
         return isActivationWakeWithWords(text, WAKE_WORDS, ACTIVATION_WORDS)
     }
@@ -155,6 +170,7 @@ object CommandInterpreter {
         "치켜",
     )
     private val PARTIAL_SHOT_PATTERNS = listOf("사진찍", "사진찌")
+    private val FAST_PARTIAL_PHOTO_SHOT_PATTERNS = PARTIAL_SHOT_PATTERNS + listOf("사진지", "사진치")
     private val STOP_WORDS = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만")
     private val CLOSE_APP_WORDS = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내")
     private val ACTIVATION_WORDS = listOf("깨어나")
