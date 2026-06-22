@@ -86,13 +86,13 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-photo-command-audit.sh
 ```
 
-실제 음성 인식까지 확인하려면 카메라 앱이 열리는 것을 확인한 뒤 아래 스크립트가 출력하는 안내에 맞춰 `자비스 사진 찍어`를 한 번 말합니다. 스크립트는 partial/final STT 텍스트, 파싱된 후보 순번, `take_photo` 파싱 여부, 접근성 서비스 수신, 셔터 좌표 fast path를 함께 판정합니다.
+실제 음성 인식까지 확인하려면 카메라 앱이 열리는 것을 확인한 뒤 아래 스크립트가 출력하는 안내에 맞춰 `자비스 사진 찍어`를 한 번 말합니다. 스크립트는 partial/final STT 텍스트, 파싱된 후보 순번, STT bias/timing 값, `take_photo` 파싱 여부, 접근성 서비스 수신, 셔터 좌표 fast path를 함께 판정합니다.
 
 ```bash
 scripts/jarvis-photo-live-check.sh 12
 ```
 
-인식률과 속도를 수치로 보려면 같은 문장을 여러 번 반복 측정합니다. 아래 예시는 5회 반복하며, 각 trial의 원본 로그, 마지막 STT 후보 텍스트, `parsed_candidate_index`, `parse_no_command` 발생 수, 실패 유형, 파싱/접근성 지연, 최종 성공률 요약과 TSV 결과 파일을 `/tmp`에 남깁니다. summary에는 `parsed_source`, `parsed_candidate_index`, 반복 출현한 `stt_candidate` 빈도도 함께 집계됩니다.
+인식률과 속도를 수치로 보려면 같은 문장을 여러 번 반복 측정합니다. 아래 예시는 5회 반복하며, 각 trial의 원본 로그, 마지막 STT 후보 텍스트, `parsed_candidate_index`, `stt_bias_count`, STT endpoint timing, `parse_no_command` 발생 수, 실패 유형, 파싱/접근성 지연, 최종 성공률 요약과 TSV 결과 파일을 `/tmp`에 남깁니다. summary에는 `parsed_source`, `parsed_candidate_index`, 반복 출현한 `stt_candidate` 빈도도 함께 집계됩니다.
 
 ```bash
 scripts/jarvis-photo-live-series.sh 5 12

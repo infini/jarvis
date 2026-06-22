@@ -95,7 +95,15 @@ function printTrace(id) {
   ownerGate = ownerGateElapsed[id] + 0
   displayCandidateIndex = parsedCandidateIndex[id]
   if (displayCandidateIndex == "") displayCandidateIndex = "-"
-  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms parsed_candidate_index=%s speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], displayCandidateIndex, speechParse, access[id], speechAccess, commandAccess, bus[id]
+  displayBiasCount = sttBiasCount[id]
+  if (displayBiasCount == "") displayBiasCount = "-"
+  displayMinMs = sttMinMs[id]
+  if (displayMinMs == "") displayMinMs = "-"
+  displayPossibleSilenceMs = sttPossibleSilenceMs[id]
+  if (displayPossibleSilenceMs == "") displayPossibleSilenceMs = "-"
+  displayCompleteSilenceMs = sttCompleteSilenceMs[id]
+  if (displayCompleteSilenceMs == "") displayCompleteSilenceMs = "-"
+  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms parsed_candidate_index=%s speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms stt_bias_count=%s stt_min_ms=%s stt_possible_silence_ms=%s stt_complete_silence_ms=%s\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], displayCandidateIndex, speechParse, access[id], speechAccess, commandAccess, bus[id], displayBiasCount, displayMinMs, displayPossibleSilenceMs, displayCompleteSilenceMs
 
   if (ownerAcceptance[id] != "") {
     printf "  owner_acceptance=%s owner_auth_speech=%sms", ownerAcceptance[id], ownerAuthSpeech[id]
@@ -217,7 +225,13 @@ function printTrace(id) {
     text = tailValue($0, "text")
     if (text != "") localText[trace] = text
   }
-  if (event == "listen_start" && contains($0, "engine=android_stt") && totalRaw != "" && androidListenStart[trace] == "") androidListenStart[trace] = millis(totalRaw)
+  if (event == "listen_start" && contains($0, "engine=android_stt")) {
+    if (totalRaw != "" && androidListenStart[trace] == "") androidListenStart[trace] = millis(totalRaw)
+    if (sttBiasCount[trace] == "") sttBiasCount[trace] = value($0, "biasCount")
+    if (sttMinMs[trace] == "") sttMinMs[trace] = value($0, "minMs")
+    if (sttPossibleSilenceMs[trace] == "") sttPossibleSilenceMs[trace] = value($0, "possibleSilenceMs")
+    if (sttCompleteSilenceMs[trace] == "") sttCompleteSilenceMs[trace] = value($0, "completeSilenceMs")
+  }
   if (event == "ready_for_speech" && totalRaw != "" && androidReady[trace] == "") androidReady[trace] = millis(totalRaw)
   if (event == "speech_begin" && totalRaw != "" && androidSpeechBegin[trace] == "") androidSpeechBegin[trace] = millis(totalRaw)
   if (event == "speech_end" && totalRaw != "" && androidSpeechEnd[trace] == "") androidSpeechEnd[trace] = millis(totalRaw)
