@@ -24,10 +24,12 @@ object CommandInterpreter {
             normalized.contains("셀카") ||
             normalized.contains("사진")
 
-        val hasPhotoShotAsrVariant = mentionsCamera && PHOTO_SHOT_ASR_VARIANTS.any(normalized::contains)
+        val hasPhotoShotAsrVariant = mentionsCamera && PHOTO_CONTEXT_SHOT_ASR_VARIANTS.any(normalized::contains)
+        val hasDirectShotAsrVariant = !mentionsCamera && DIRECT_SHOT_ASR_VARIANTS.any(normalized::contains)
         val wantsShot = SHOT_WORDS.any(normalized::contains) ||
             PARTIAL_SHOT_PATTERNS.any(normalized::endsWith) ||
-            hasPhotoShotAsrVariant
+            hasPhotoShotAsrVariant ||
+            hasDirectShotAsrVariant
         val wantsCameraOpen = mentionsCamera &&
             listOf("열어", "켜", "시작", "실행").any(normalized::contains)
         val wantsSpecificCameraMode = !wantsSwitchCamera &&
@@ -90,7 +92,10 @@ object CommandInterpreter {
         if (normalized.isBlank()) return null
         if (requireWakeWord && !hasWakeWord(normalized)) return null
 
-        return if (FAST_PARTIAL_PHOTO_SHOT_PATTERNS.any(normalized::endsWith)) {
+        return if (
+            FAST_PARTIAL_PHOTO_SHOT_PATTERNS.any(normalized::endsWith) ||
+            normalized in DIRECT_FAST_PARTIAL_SHOT_PATTERNS
+        ) {
             CommandBus.COMMAND_TAKE_PHOTO
         } else {
             null
@@ -159,13 +164,15 @@ object CommandInterpreter {
         "셔터눌러",
         "셔터눌러줘",
     )
-    private val PHOTO_SHOT_ASR_VARIANTS = listOf(
+    private val DIRECT_SHOT_ASR_VARIANTS = listOf(
         "찌거",
         "찌꺼",
         "지거",
         "지꺼",
         "치거",
         "치꺼",
+    )
+    private val PHOTO_CONTEXT_SHOT_ASR_VARIANTS = DIRECT_SHOT_ASR_VARIANTS + listOf(
         "지켜",
         "치켜",
     )
@@ -196,4 +203,8 @@ object CommandInterpreter {
         "서비스",
     )
     private val ACTIVATION_ASR_EQUIVALENT_WAKE_WORDS = WAKE_WORDS + listOf("다비스")
+    private val DIRECT_FAST_PARTIAL_SHOT_PATTERNS =
+        (WAKE_WORDS + COMMAND_ASR_EQUIVALENT_WAKE_WORDS).flatMap { wakeWord ->
+            listOf("${wakeWord}찍", "${wakeWord}찌")
+        }.toSet()
 }

@@ -131,7 +131,7 @@ accessibility_state() {
     printf 'crashed'
     return
   fi
-  if [[ "$ACCESSIBILITY_BOUND_LINE" == *"$ACCESSIBILITY_SERVICE"* ]]; then
+  if [[ "$ACCESSIBILITY_BOUND_LINE" == *"$ACCESSIBILITY_SERVICE"* || "$ACCESSIBILITY_BOUND_LINE" == *"Service[label=Jarvis"* ]]; then
     printf 'bound'
     return
   fi
