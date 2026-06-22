@@ -1842,7 +1842,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
             .take(MAX_LOGGED_SPEECH_CANDIDATES)
             .joinToString(separator = "|") { candidate ->
                 SPEECH_LOG_WHITESPACE
-                    .replace(candidate.trim(), " ")
+                    .replace(candidate.trim(), "_")
                     .replace("|", "/")
                     .take(MAX_LOGGED_SPEECH_CANDIDATE_CHARS)
             }

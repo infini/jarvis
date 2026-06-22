@@ -181,6 +181,43 @@ awk '
   }
 ' "$SUMMARY_FILE" | sort | tee -a "$SUMMARY_FILE"
 
+awk -F '\t' '
+  NR == 1 {
+    for (i = 1; i <= NF; i++) column[$i] = i
+    next
+  }
+  {
+    source = $(column["parsed_source"])
+    candidateIndex = $(column["parsed_candidate_index"])
+    sttText = $(column["stt_text"])
+
+    if (source != "" && source != "-") parsedSource[source]++
+    if (candidateIndex != "" && candidateIndex != "-") parsedCandidateIndex[candidateIndex]++
+
+    while (match(sttText, /candidates=[^ ]+/)) {
+      token = substr(sttText, RSTART + length("candidates="), RLENGTH - length("candidates="))
+      split(token, candidates, "[|]")
+      for (candidate in candidates) {
+        if (candidates[candidate] != "" && candidates[candidate] != "-") {
+          sttCandidate[candidates[candidate]]++
+        }
+      }
+      sttText = substr(sttText, RSTART + RLENGTH)
+    }
+  }
+  END {
+    for (source in parsedSource) {
+      printf "parsed_source=%s count=%d\n", source, parsedSource[source]
+    }
+    for (candidateIndex in parsedCandidateIndex) {
+      printf "parsed_candidate_index=%s count=%d\n", candidateIndex, parsedCandidateIndex[candidateIndex]
+    }
+    for (candidate in sttCandidate) {
+      printf "stt_candidate=%s count=%d\n", candidate, sttCandidate[candidate]
+    }
+  }
+' "$TSV_FILE" | sort | tee -a "$SUMMARY_FILE"
+
 if [[ "$FAIL_COUNT" -gt 0 ]]; then
   exit 1
 fi
