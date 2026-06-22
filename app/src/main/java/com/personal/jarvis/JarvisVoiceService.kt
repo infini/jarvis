@@ -1473,7 +1473,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
             return SpeechOutcome.ACTIVATION
         }
 
-        markLatency("parse_no_command", "count=${results.size} candidates=${speechCandidateSummary(results)}")
+        markLatency(
+            "parse_no_command",
+            "count=${results.size} candidates=${speechCandidateSummary(results)} " +
+                "photo=${photoCandidateDiagnosticsSummary(results)}",
+        )
         return SpeechOutcome.NO_COMMAND
     }
 
@@ -1837,6 +1841,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
             runCatching { recognizer?.cancel() }
             return true
         }
+        if (currentListeningAllowsCommandWithoutWake) {
+            markLatency(
+                "partial_no_command",
+                "count=${results.size} photo=${photoCandidateDiagnosticsSummary(results)}",
+            )
+        }
         return false
     }
 
@@ -1860,6 +1870,35 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     .replace("|", "/")
                     .take(MAX_LOGGED_SPEECH_CANDIDATE_CHARS)
             }
+    }
+
+    private fun photoCandidateDiagnosticsSummary(results: List<String>): String {
+        if (results.isEmpty()) return "-"
+
+        return results
+            .take(MAX_LOGGED_SPEECH_CANDIDATES)
+            .joinToString(separator = "|") { candidate ->
+                val diagnostic = CommandInterpreter.photoCandidateDiagnostic(candidate)
+                val text = SPEECH_LOG_WHITESPACE
+                    .replace(candidate.trim(), "_")
+                    .replace("|", "/")
+                    .take(MAX_LOGGED_PHOTO_DIAGNOSTIC_CANDIDATE_CHARS)
+                "$text:${diagnostic.reason}:${photoDiagnosticFlags(diagnostic)}"
+            }
+    }
+
+    private fun photoDiagnosticFlags(
+        diagnostic: CommandInterpreter.PhotoCandidateDiagnostic,
+    ): String {
+        val flags = StringBuilder()
+        if (diagnostic.hasWakeWord) flags.append('w')
+        if (diagnostic.mentionsCamera) flags.append('c')
+        if (diagnostic.hasShotWord) flags.append('s')
+        if (diagnostic.hasPhotoShotAsrVariant || diagnostic.hasDirectShotAsrVariant) flags.append('v')
+        if (diagnostic.hasPhotoPartial || diagnostic.hasDirectPartial) flags.append('p')
+        if (diagnostic.parsedCommand == CommandBus.COMMAND_TAKE_PHOTO) flags.append('f')
+        if (diagnostic.fastPartialCommand == CommandBus.COMMAND_TAKE_PHOTO) flags.append('q')
+        return if (flags.isNotEmpty()) flags.toString() else "-"
     }
 
     private fun completePartialActivation(reason: String): Boolean {
@@ -1921,6 +1960,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val COMMAND_WINDOW_LISTEN_DELAY_MS = 0L
         private const val MAX_LOGGED_SPEECH_CANDIDATES = 5
         private const val MAX_LOGGED_SPEECH_CANDIDATE_CHARS = 80
+        private const val MAX_LOGGED_PHOTO_DIAGNOSTIC_CANDIDATE_CHARS = 40
         const val EXTRA_DEBUG_COMMAND_WINDOW_MS = "debug_command_window_ms"
         const val EXTRA_DEBUG_REQUEST_ID = "debug_request_id"
         const val EXTRA_DEBUG_COMMAND = "debug_command"

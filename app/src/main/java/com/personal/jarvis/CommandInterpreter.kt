@@ -3,6 +3,41 @@ package com.personal.jarvis
 import java.util.Locale
 
 object CommandInterpreter {
+    data class PhotoCandidateDiagnostic(
+        val normalized: String,
+        val requireWakeWord: Boolean,
+        val hasWakeWord: Boolean,
+        val mentionsCamera: Boolean,
+        val hasShotWord: Boolean,
+        val hasPhotoShotAsrVariant: Boolean,
+        val hasDirectShotAsrVariant: Boolean,
+        val hasPhotoPartial: Boolean,
+        val hasDirectPartial: Boolean,
+        val parsedCommand: String?,
+        val fastPartialCommand: String?,
+    ) {
+        val reason: String
+            get() = when {
+                normalized.isBlank() -> "blank"
+                requireWakeWord && !hasWakeWord -> "missing_wake"
+                parsedCommand == CommandBus.COMMAND_TAKE_PHOTO -> "take_photo_final"
+                fastPartialCommand == CommandBus.COMMAND_TAKE_PHOTO -> "take_photo_partial"
+                mentionsCamera && !hasAnyShotSignal -> "missing_shot"
+                !mentionsCamera && !hasAnyDirectShotSignal -> "missing_photo_or_direct_shot"
+                else -> "not_take_photo"
+            }
+
+        val hasAnyShotSignal: Boolean
+            get() = hasShotWord ||
+                hasPhotoShotAsrVariant ||
+                hasDirectShotAsrVariant ||
+                hasPhotoPartial ||
+                hasDirectPartial
+
+        private val hasAnyDirectShotSignal: Boolean
+            get() = hasShotWord || hasDirectShotAsrVariant || hasDirectPartial
+    }
+
     fun parse(text: String, requireWakeWord: Boolean = true): String? {
         val normalized = normalize(text)
 
@@ -100,6 +135,35 @@ object CommandInterpreter {
         } else {
             null
         }
+    }
+
+    fun photoCandidateDiagnostic(
+        text: String,
+        requireWakeWord: Boolean = true,
+    ): PhotoCandidateDiagnostic {
+        val normalized = normalize(text)
+        val mentionsCamera = normalized.contains("카메라") ||
+            normalized.contains("셀피") ||
+            normalized.contains("셀카") ||
+            normalized.contains("사진")
+        val hasPhotoShotAsrVariant =
+            mentionsCamera && PHOTO_CONTEXT_SHOT_ASR_VARIANTS.any(normalized::contains)
+        val hasDirectShotAsrVariant =
+            !mentionsCamera && DIRECT_SHOT_ASR_VARIANTS.any(normalized::contains)
+
+        return PhotoCandidateDiagnostic(
+            normalized = normalized,
+            requireWakeWord = requireWakeWord,
+            hasWakeWord = hasWakeWord(normalized),
+            mentionsCamera = mentionsCamera,
+            hasShotWord = SHOT_WORDS.any(normalized::contains),
+            hasPhotoShotAsrVariant = hasPhotoShotAsrVariant,
+            hasDirectShotAsrVariant = hasDirectShotAsrVariant,
+            hasPhotoPartial = FAST_PARTIAL_PHOTO_SHOT_PATTERNS.any(normalized::endsWith),
+            hasDirectPartial = normalized in DIRECT_FAST_PARTIAL_SHOT_PATTERNS,
+            parsedCommand = parse(text, requireWakeWord),
+            fastPartialCommand = parseFastPartial(text, requireWakeWord),
+        )
     }
 
     fun isActivationWake(text: String): Boolean {

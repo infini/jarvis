@@ -102,6 +102,47 @@ class CommandInterpreterTest {
     }
 
     @Test
+    fun photoCandidateDiagnosticExplainsPhotoRecognitionFailures() {
+        val finalShot = CommandInterpreter.photoCandidateDiagnostic("자비스, 사진 찍어")
+        assertEquals("take_photo_final", finalShot.reason)
+        assertTrue(finalShot.hasWakeWord)
+        assertTrue(finalShot.mentionsCamera)
+        assertTrue(finalShot.hasShotWord)
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, finalShot.parsedCommand)
+
+        val partialShot = CommandInterpreter.photoCandidateDiagnostic("자비스, 사진 지")
+        assertEquals("take_photo_partial", partialShot.reason)
+        assertTrue(partialShot.hasPhotoPartial)
+        assertNull(partialShot.parsedCommand)
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, partialShot.fastPartialCommand)
+
+        val directPartialShot = CommandInterpreter.photoCandidateDiagnostic("자비스, 찍")
+        assertEquals("take_photo_partial", directPartialShot.reason)
+        assertTrue(directPartialShot.hasDirectPartial)
+
+        val directAsrVariantShot = CommandInterpreter.photoCandidateDiagnostic("자비스, 찌거")
+        assertEquals("take_photo_final", directAsrVariantShot.reason)
+        assertTrue(directAsrVariantShot.hasDirectShotAsrVariant)
+
+        assertEquals(
+            "missing_wake",
+            CommandInterpreter.photoCandidateDiagnostic("사진 찍어").reason,
+        )
+        assertEquals(
+            "missing_shot",
+            CommandInterpreter.photoCandidateDiagnostic("자비스, 사진").reason,
+        )
+        assertEquals(
+            "missing_photo_or_direct_shot",
+            CommandInterpreter.photoCandidateDiagnostic("자비스, 지").reason,
+        )
+        assertEquals(
+            "missing_photo_or_direct_shot",
+            CommandInterpreter.photoCandidateDiagnostic("자비스, 지금 찍").reason,
+        )
+    }
+
+    @Test
     fun activatesOnlyOnExplicitJarvisWakePhrase() {
         assertTrue(CommandInterpreter.isActivationWake("자비스 깨어나"))
         assertTrue(CommandInterpreter.isActivationWake("자베스 깨어나"))
