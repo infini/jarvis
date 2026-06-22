@@ -401,13 +401,13 @@ scripts/jarvis-command-trace.sh 45
 - `activation_partial`: idle Android wake 보조 경로의 partial STT에서 activation 발화가 파싱되어 owner verification으로 넘긴 경우
 - `partial_activation_complete`: partial activation 처리 완료
 - `final_results`: final STT 결과 수신. Android STT 후보를 최대 5개까지 `candidates=a|b|c` 형태로 기록한다.
-- `command_parsed`: 명령 파싱 완료
+- `command_parsed`: 명령 파싱 완료. Android STT 후보 목록에서 파싱된 경우 `candidateIndex=1`처럼 후보 순번을 함께 기록한다.
 - `command_execute_start` / `command_execute_return`: `JarvisCommandExecutor` 실행 진입/반환
 - `accessibility_command_received`: 접근성 서비스가 `CommandBus` 명령을 수신. `transport=direct|broadcast`로 direct receiver와 broadcast fallback을 구분한다.
 - `accessibility_command_dispatch_return`: 접근성 서비스 command dispatch 반환
 - `command_complete`: Jarvis command window 정책까지 반영한 명령 처리 완료
 
-음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후의 시간이다. `activation_asr_complete`의 `elapsedMs`는 idle activation ASR이 녹음/디코딩에 사용한 시간이고, `android_activation_local_replay_complete`는 Android wake 실패 snapshot을 local activation ASR로 재판정한 시간이다. `activation_owner_verified`는 같은 rolling audio의 owner score를 보여준다. `local_complete`의 `elapsedMs`는 local command fallback이 실제 녹음/디코딩에 사용한 시간이다. `partial_results`, `final_results`, `parse_no_command`의 `candidates=`는 후보별 80자, 최대 5개로 제한해 남긴다. 이 값은 `자비스 사진 찍어`가 첫 후보에서는 틀렸지만 2번째 이후 후보에는 있었는지, 또는 호출어/동사 중 어느 부분이 반복적으로 깨지는지 확인하는 기준이다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 command를 보낸 뒤 접근성 서비스가 받은 지연이다. 접근성 서비스가 같은 프로세스에 등록되어 있으면 `transport=direct` 경로가 broadcast보다 먼저 사용된다. 2026-06-21 실기기 로그에서는 owner gate-first 경로가 주변 대화를 soft wake로 통과시키고 activation ASR이 빈 문자열/`응`을 반환하는 케이스가 반복되었다. 따라서 idle wake는 activation ASR-first 구조로 전환하고, command window live 1차 인식은 Android 기본 STT partial/final 결과로 수행하며, Android 발화 감지 후 실패 fallback에 local ASR을 사용한다.
+음성 서비스 내부 이벤트의 `total=...ms`는 trace 시작부터 해당 이벤트까지의 누적 시간이고, `step=...ms`는 직전 이벤트 이후의 시간이다. `activation_asr_complete`의 `elapsedMs`는 idle activation ASR이 녹음/디코딩에 사용한 시간이고, `android_activation_local_replay_complete`는 Android wake 실패 snapshot을 local activation ASR로 재판정한 시간이다. `activation_owner_verified`는 같은 rolling audio의 owner score를 보여준다. `local_complete`의 `elapsedMs`는 local command fallback이 실제 녹음/디코딩에 사용한 시간이다. `partial_results`, `final_results`, `parse_no_command`의 `candidates=`는 후보별 80자, 최대 5개로 제한해 남긴다. 이 값은 `자비스 사진 찍어`가 첫 후보에서는 틀렸지만 2번째 이후 후보에는 있었는지, 또는 호출어/동사 중 어느 부분이 반복적으로 깨지는지 확인하는 기준이다. `command_parsed`의 `candidateIndex`는 실제로 채택한 후보 순번이다. `accessibility_command_received`의 `totalMs`는 trace 시작부터 접근성 서비스 수신까지의 누적 시간이고, `busDelayMs`는 음성 서비스가 command를 보낸 뒤 접근성 서비스가 받은 지연이다. 접근성 서비스가 같은 프로세스에 등록되어 있으면 `transport=direct` 경로가 broadcast보다 먼저 사용된다. 2026-06-21 실기기 로그에서는 owner gate-first 경로가 주변 대화를 soft wake로 통과시키고 activation ASR이 빈 문자열/`응`을 반환하는 케이스가 반복되었다. 따라서 idle wake는 activation ASR-first 구조로 전환하고, command window live 1차 인식은 Android 기본 STT partial/final 결과로 수행하며, Android 발화 감지 후 실패 fallback에 local ASR을 사용한다.
 
 ### Wake/Sleep Recognition Lessons
 
@@ -477,7 +477,7 @@ command window는 기본 어시스턴트 호출, boot notification 탭, 앱의 `
 
 30초 command window 안에서도 명령 문장에는 호출어가 필요하다. 사용자는 `자비스 카메라 실행`, `자비스 카메라 전면`, `자비스 카메라 후면`, `자비스 사진 찍어`, `자비스 카메라 종료`처럼 말한다. live Android STT와 local command fallback 모두 `CommandInterpreter.parse(..., requireWakeWord = true)` 기준으로 동작한다. 따라서 열린 command window 안에서도 `찍어`, `후면`, `종료` 같은 호출어 없는 단독 명령은 실행하지 않는다.
 
-사진 촬영 명령은 `자비스 사진 찍어`, `자비스 사진 찍어줘`, `자비스 찍어`, `자비스 셔터`, `자비스 셔터 눌러`, `자비스 촬영해줘`, `자비스 찰칵`을 `take_photo`로 매핑한다. `자비스 사진 찍어`의 partial 인식 속도를 높이기 위해 문장이 `자비스사진찍` 패턴으로 끝나는 경우도 촬영 명령으로 인정한다. 단, `자비스 사진`처럼 촬영 동사가 없는 문장이나 `자비스 사진 찍지 마`처럼 뒤에 다른 동사가 이어지는 문장은 실행하지 않는다.
+사진 촬영 명령은 `자비스 사진 찍어`, `자비스 사진 찍어줘`, `자비스 찍어`, `자비스 셔터`, `자비스 셔터 눌러`, `자비스 촬영해줘`, `자비스 찰칵`을 `take_photo`로 매핑한다. `자비스 사진 찍어`의 partial 인식 속도를 높이기 위해 문장이 `자비스사진찍` 또는 `자비스사진찌` 패턴으로 끝나는 경우도 촬영 명령으로 인정한다. Android STT가 `찍어`를 `찌거`, `찌꺼`, `지거`, `지꺼`처럼 반환하는 경우도 촬영 동사 ASR 변형으로 인정한다. 단, `자비스 사진`처럼 촬영 동사가 없는 문장이나 `자비스 사진 찍지 마`처럼 뒤에 다른 동사가 이어지는 문장은 실행하지 않는다.
 
 command window 안의 명령 파서는 activation 파서보다 호출어 equivalent를 더 넓게 허용한다. `자비서`, `자비쓰`, `자비수`, `잡이스`, `서비스`처럼 Android STT가 `자비스`를 잘못 반환한 후보가 문장 앞에 있으면 command 호출어로 인정한다. 이 보정은 `isActivationWakeAsrEquivalent()`에는 적용하지 않아 과거 wake false positive 문제를 되살리지 않는다.
 

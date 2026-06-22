@@ -25,6 +25,7 @@ object CommandInterpreter {
             normalized.contains("사진")
 
         val wantsShot = SHOT_WORDS.any(normalized::contains) ||
+            SHOT_ASR_VARIANTS.any(normalized::contains) ||
             PARTIAL_SHOT_PATTERNS.any(normalized::endsWith)
         val wantsCameraOpen = mentionsCamera &&
             listOf("열어", "켜", "시작", "실행").any(normalized::contains)
@@ -43,7 +44,9 @@ object CommandInterpreter {
             listOf("켜", "깨워", "켜줘", "켜라", "온").any(normalized::contains)
         val wantsSleepScreen = (mentionsScreen && listOf("꺼", "끄", "오프").any(normalized::contains)) ||
             (mentionsPhone && listOf("잠가", "잠궈", "잠금", "락").any(normalized::contains))
-        val wantsStop = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만").any(normalized::contains)
+        val wantsStop = STOP_WORDS.any { word ->
+            normalized.contains(word) && !(word == "꺼" && wantsShot)
+        }
         val wantsFullStop = listOf(
             "자비스완전종료",
             "자비스서비스종료",
@@ -52,7 +55,9 @@ object CommandInterpreter {
             "자비스완전히꺼줘",
             "jarvis완전종료",
         ).any(normalized::contains)
-        val wantsCloseApp = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내").any(normalized::contains)
+        val wantsCloseApp = CLOSE_APP_WORDS.any { word ->
+            normalized.contains(word) && !(word == "꺼" && wantsShot)
+        }
 
         return when {
             wantsFullStop -> CommandBus.COMMAND_STOP_SERVICE
@@ -138,7 +143,15 @@ object CommandInterpreter {
         "셔터눌러",
         "셔터눌러줘",
     )
-    private val PARTIAL_SHOT_PATTERNS = listOf("사진찍")
+    private val SHOT_ASR_VARIANTS = listOf(
+        "찌거",
+        "찌꺼",
+        "지거",
+        "지꺼",
+    )
+    private val PARTIAL_SHOT_PATTERNS = listOf("사진찍", "사진찌")
+    private val STOP_WORDS = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만")
+    private val CLOSE_APP_WORDS = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내")
     private val ACTIVATION_WORDS = listOf("깨어나")
     private val ACTIVATION_ASR_EQUIVALENT_WORDS = ACTIVATION_WORDS + listOf("게임", "때어나")
 

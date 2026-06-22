@@ -1027,7 +1027,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         }
         when {
             command != null -> {
-                markLatency("command_parsed", "source=local command=$command text=${result.text}")
+                markLatency("command_parsed", "source=local candidateIndex=1 command=$command text=${result.text}")
                 Log.d(
                     TAG,
                     "Parsed local command: $command from '${result.text}' in ${result.elapsedMs}ms",
@@ -1435,12 +1435,12 @@ class JarvisVoiceService : Service(), RecognitionListener {
         val results = bundle?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
         if (results.isNotEmpty()) Log.d(TAG, "Speech results: $results")
 
-        for (candidate in results) {
+        for ((index, candidate) in results.withIndex()) {
             val command = CommandInterpreter.parse(
                 text = candidate,
                 requireWakeWord = true,
             ) ?: continue
-            markLatency("command_parsed", "source=final command=$command text=$candidate")
+            markLatency("command_parsed", "source=final candidateIndex=${index + 1} command=$command text=$candidate")
             Log.d(TAG, "Parsed command: $command from '$candidate'")
             partialActivationHandled = false
             return if (runCommand(command, "final").keepsCommandWindowOpen) {
@@ -1804,14 +1804,14 @@ class JarvisVoiceService : Service(), RecognitionListener {
     private fun runFastPartialCommand(results: List<String>): Boolean {
         if (partialCommandHandled || results.isEmpty()) return false
 
-        for (candidate in results) {
+        for ((index, candidate) in results.withIndex()) {
             val command = CommandInterpreter.parse(
                 text = candidate,
                 requireWakeWord = true,
             ) ?: continue
             if (command !in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS) continue
 
-            markLatency("command_parsed", "source=partial command=$command text=$candidate")
+            markLatency("command_parsed", "source=partial candidateIndex=${index + 1} command=$command text=$candidate")
             Log.d(TAG, "Parsed fast partial command: $command from '$candidate'")
             partialCommandHandled = true
             partialCommandKeepsWindowOpen = runCommand(command, "partial").keepsCommandWindowOpen
