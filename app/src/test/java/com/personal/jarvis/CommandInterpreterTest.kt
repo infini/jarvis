@@ -84,7 +84,11 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 찌"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 찍"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 찌"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자베스, 찍"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("쟈비스, 찌"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("잡스, 찍"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("제이비스, 찍"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비서, 찌"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("서비스, 찌"))
 
         assertNull(CommandInterpreter.parse("자비스, 사진 지"))
