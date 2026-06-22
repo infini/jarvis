@@ -30,6 +30,10 @@ class SpeechRecognitionIntentFactoryTest {
 
         assertTrue("자비스 사진 찍어" in biasingStrings)
         assertTrue("자비스 사진 찍어 주세요" in biasingStrings)
+        assertTrue("자비스 사진 찍" in biasingStrings)
+        assertTrue("자비스 사진 찌" in biasingStrings)
+        assertTrue("제이비스 사진 찍어" in biasingStrings)
+        assertTrue("서비스 사진 찍어" in biasingStrings)
         assertTrue("자비스 카메라 실행" in biasingStrings)
         assertEquals(biasingStrings.distinct(), biasingStrings)
     }

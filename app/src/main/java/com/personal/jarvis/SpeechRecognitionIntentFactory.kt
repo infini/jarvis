@@ -49,6 +49,7 @@ object SpeechRecognitionIntentFactory {
 
         return CommandCatalog.entries
             .flatMap { it.phrases }
+            .plus(ADDITIONAL_COMMAND_BIASING_STRINGS)
             .distinct()
     }
 
@@ -80,4 +81,13 @@ object SpeechRecognitionIntentFactory {
     private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 180L
     private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 90L
     private const val COMMAND_COMPLETE_SILENCE_MS = 180L
+    private val ADDITIONAL_COMMAND_BIASING_STRINGS = listOf(
+        "자비스 사진 찍",
+        "자비스 사진 찌",
+        "자 비서 사진 찍어",
+        "제이비스 사진 찍어",
+        "자비써 사진 찍어",
+        "자비쓰 사진 찍어",
+        "서비스 사진 찍어",
+    )
 }
