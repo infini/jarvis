@@ -56,9 +56,9 @@ object CommandInterpreter {
             normalized.contains("사진")
 
         val hasPhotoShotAsrVariant =
-            mentionsCamera && hasShotAsrVariant(normalized, PHOTO_CONTEXT_SHOT_ASR_VARIANTS)
+            mentionsCamera && hasShotAsrVariant(normalized, PHOTO_CONTEXT_SHOT_ASR_VARIANT_PATTERNS)
         val hasDirectShotAsrVariant =
-            !mentionsCamera && hasShotAsrVariant(normalized, DIRECT_SHOT_ASR_VARIANTS)
+            !mentionsCamera && hasShotAsrVariant(normalized, DIRECT_SHOT_ASR_VARIANT_PATTERNS)
         val hasDirectShortShot = !mentionsCamera && normalized in DIRECT_SHORT_SHOT_PATTERNS
         val wantsShot = SHOT_WORDS.any(normalized::contains) ||
             PARTIAL_SHOT_PATTERNS.any(normalized::endsWith) ||
@@ -67,7 +67,7 @@ object CommandInterpreter {
             hasDirectShortShot
         val wantsCameraOpen = mentionsCamera &&
             (CAMERA_OPEN_WORDS.any(normalized::contains) ||
-                hasCommandVerbSuffix(normalized, CAMERA_OPEN_SUFFIX_WORDS))
+                hasCommandVerbPattern(normalized, CAMERA_OPEN_SUFFIX_PATTERNS))
         val wantsSpecificCameraMode = !wantsSwitchCamera &&
             wantsFrontCamera.xor(wantsRearCamera) &&
             (mentionsCamera ||
@@ -148,9 +148,9 @@ object CommandInterpreter {
             normalized.contains("셀카") ||
             normalized.contains("사진")
         val hasPhotoShotAsrVariant =
-            mentionsCamera && hasShotAsrVariant(normalized, PHOTO_CONTEXT_SHOT_ASR_VARIANTS)
+            mentionsCamera && hasShotAsrVariant(normalized, PHOTO_CONTEXT_SHOT_ASR_VARIANT_PATTERNS)
         val hasDirectShotAsrVariant =
-            !mentionsCamera && hasShotAsrVariant(normalized, DIRECT_SHOT_ASR_VARIANTS)
+            !mentionsCamera && hasShotAsrVariant(normalized, DIRECT_SHOT_ASR_VARIANT_PATTERNS)
         val parsedCommand = parseNormalized(normalized, requireWakeWord)
         val fastPartialCommand = parsedCommand ?: parseFastPartialNormalized(normalized, requireWakeWord)
 
@@ -214,20 +214,16 @@ object CommandInterpreter {
             COMMAND_ASR_EQUIVALENT_WAKE_WORDS.any(normalized::startsWith)
     }
 
-    private fun hasShotAsrVariant(normalized: String, variants: List<String>): Boolean {
-        return variants.any { variant ->
-            COMMAND_VERB_SUFFIXES.any { suffix ->
-                normalized.endsWith(variant + suffix)
-            }
-        }
+    private fun hasShotAsrVariant(normalized: String, variantPatterns: List<String>): Boolean {
+        return variantPatterns.any(normalized::endsWith)
     }
 
-    private fun hasCommandVerbSuffix(normalized: String, verbs: List<String>): Boolean {
-        return verbs.any { verb ->
-            COMMAND_VERB_SUFFIXES.any { suffix ->
-                normalized.endsWith(verb + suffix)
-            }
-        }
+    private fun hasCommandVerbPattern(normalized: String, verbPatterns: List<String>): Boolean {
+        return verbPatterns.any(normalized::endsWith)
+    }
+
+    private fun commandVerbForms(words: List<String>): List<String> {
+        return words.flatMap { word -> COMMAND_VERB_SUFFIXES.map { suffix -> word + suffix } }
     }
 
     private val FRONT_CAMERA_WORDS = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라")
@@ -240,8 +236,6 @@ object CommandInterpreter {
         "후면전면전환",
         "반전",
     )
-    private val CAMERA_OPEN_WORDS = listOf("열어", "켜고", "시작", "실행")
-    private val CAMERA_OPEN_SUFFIX_WORDS = listOf("켜")
     private val CAMERA_MODE_WORDS = listOf("모드", "전환", "바꿔", "변경", "열어", "켜", "시작", "실행")
     private val FILTER_WORDS = listOf("필터", "효과", "색감")
     private val BACK_WORDS = listOf("뒤로", "백")
@@ -251,6 +245,10 @@ object CommandInterpreter {
     private val WAKE_SCREEN_WORDS = listOf("켜", "깨워", "켜줘", "켜라", "온")
     private val SLEEP_SCREEN_WORDS = listOf("꺼", "끄", "오프")
     private val PHONE_LOCK_WORDS = listOf("잠가", "잠궈", "잠금", "락")
+    private val COMMAND_VERB_SUFFIXES = listOf("", "줘", "주세요", "라")
+    private val CAMERA_OPEN_WORDS = listOf("열어", "켜고", "시작", "실행")
+    private val CAMERA_OPEN_SUFFIX_WORDS = listOf("켜")
+    private val CAMERA_OPEN_SUFFIX_PATTERNS = commandVerbForms(CAMERA_OPEN_SUFFIX_WORDS)
     private val SHOT_WORDS = listOf(
         "찍어",
         "찍기",
@@ -274,6 +272,7 @@ object CommandInterpreter {
         "치거",
         "치꺼",
     )
+    private val DIRECT_SHOT_ASR_VARIANT_PATTERNS = commandVerbForms(DIRECT_SHOT_ASR_VARIANTS)
     private val PHOTO_CONTEXT_SHOT_ASR_VARIANTS = DIRECT_SHOT_ASR_VARIANTS + listOf(
         "찌겨",
         "지겨",
@@ -282,7 +281,8 @@ object CommandInterpreter {
         "지켜",
         "치켜",
     )
-    private val COMMAND_VERB_SUFFIXES = listOf("", "줘", "주세요", "라")
+    private val PHOTO_CONTEXT_SHOT_ASR_VARIANT_PATTERNS =
+        commandVerbForms(PHOTO_CONTEXT_SHOT_ASR_VARIANTS)
     private val PARTIAL_SHOT_PATTERNS = listOf("사진찍", "사진찌")
     private val FAST_PARTIAL_PHOTO_SHOT_PATTERNS = PARTIAL_SHOT_PATTERNS + listOf("사진지", "사진치")
     private val STOP_WORDS = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만")
