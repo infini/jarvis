@@ -45,28 +45,11 @@ object SpeechRecognitionIntentFactory {
     }
 
     fun biasingStringsFor(commandWindowOpen: Boolean): List<String> {
-        if (!commandWindowOpen) return emptyList()
-
-        return CommandCatalog.entries
-            .flatMap { it.phrases }
-            .plus(ADDITIONAL_COMMAND_BIASING_STRINGS)
-            .distinct()
+        return if (commandWindowOpen) COMMAND_BIASING_STRINGS else emptyList()
     }
 
     fun timingFor(commandWindowOpen: Boolean): TimingOptions {
-        return if (commandWindowOpen) {
-            TimingOptions(
-                minimumLengthMs = COMMAND_INPUT_MINIMUM_LENGTH_MS,
-                possiblyCompleteSilenceMs = COMMAND_POSSIBLY_COMPLETE_SILENCE_MS,
-                completeSilenceMs = COMMAND_COMPLETE_SILENCE_MS,
-            )
-        } else {
-            TimingOptions(
-                minimumLengthMs = IDLE_WAKE_INPUT_MINIMUM_LENGTH_MS,
-                possiblyCompleteSilenceMs = IDLE_WAKE_POSSIBLY_COMPLETE_SILENCE_MS,
-                completeSilenceMs = IDLE_WAKE_COMPLETE_SILENCE_MS,
-            )
-        }
+        return if (commandWindowOpen) COMMAND_TIMING else IDLE_WAKE_TIMING
     }
 
     fun maxResultsFor(commandWindowOpen: Boolean): Int {
@@ -87,6 +70,18 @@ object SpeechRecognitionIntentFactory {
     private const val COMMAND_COMPLETE_SILENCE_MS = 180L
     private const val COMMAND_MAX_RESULTS = 8
     private const val IDLE_WAKE_MAX_RESULTS = 5
+
+    private val COMMAND_TIMING = TimingOptions(
+        minimumLengthMs = COMMAND_INPUT_MINIMUM_LENGTH_MS,
+        possiblyCompleteSilenceMs = COMMAND_POSSIBLY_COMPLETE_SILENCE_MS,
+        completeSilenceMs = COMMAND_COMPLETE_SILENCE_MS,
+    )
+
+    private val IDLE_WAKE_TIMING = TimingOptions(
+        minimumLengthMs = IDLE_WAKE_INPUT_MINIMUM_LENGTH_MS,
+        possiblyCompleteSilenceMs = IDLE_WAKE_POSSIBLY_COMPLETE_SILENCE_MS,
+        completeSilenceMs = IDLE_WAKE_COMPLETE_SILENCE_MS,
+    )
 
     private val PHOTO_BIAS_WAKE_WORDS = listOf(
         "자비스",
@@ -172,4 +167,9 @@ object SpeechRecognitionIntentFactory {
             "자비쓰 사진 찍어",
             "서비스 사진 찍어",
         )
+
+    private val COMMAND_BIASING_STRINGS = CommandCatalog.entries
+        .flatMap { it.phrases }
+        .plus(ADDITIONAL_COMMAND_BIASING_STRINGS)
+        .distinct()
 }
