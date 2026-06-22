@@ -61,10 +61,12 @@ object CommandInterpreter {
 
         val hasPhotoShotAsrVariant = mentionsCamera && PHOTO_CONTEXT_SHOT_ASR_VARIANTS.any(normalized::contains)
         val hasDirectShotAsrVariant = !mentionsCamera && DIRECT_SHOT_ASR_VARIANTS.any(normalized::contains)
+        val hasDirectShortShot = !mentionsCamera && normalized in DIRECT_SHORT_SHOT_PATTERNS
         val wantsShot = SHOT_WORDS.any(normalized::contains) ||
             PARTIAL_SHOT_PATTERNS.any(normalized::endsWith) ||
             hasPhotoShotAsrVariant ||
-            hasDirectShotAsrVariant
+            hasDirectShotAsrVariant ||
+            hasDirectShortShot
         val wantsCameraOpen = mentionsCamera &&
             listOf("열어", "켜", "시작", "실행").any(normalized::contains)
         val wantsSpecificCameraMode = !wantsSwitchCamera &&
@@ -129,7 +131,7 @@ object CommandInterpreter {
 
         return if (
             FAST_PARTIAL_PHOTO_SHOT_PATTERNS.any(normalized::endsWith) ||
-            normalized in DIRECT_FAST_PARTIAL_SHOT_PATTERNS
+            normalized in DIRECT_SHORT_SHOT_PATTERNS
         ) {
             CommandBus.COMMAND_TAKE_PHOTO
         } else {
@@ -160,7 +162,7 @@ object CommandInterpreter {
             hasPhotoShotAsrVariant = hasPhotoShotAsrVariant,
             hasDirectShotAsrVariant = hasDirectShotAsrVariant,
             hasPhotoPartial = FAST_PARTIAL_PHOTO_SHOT_PATTERNS.any(normalized::endsWith),
-            hasDirectPartial = normalized in DIRECT_FAST_PARTIAL_SHOT_PATTERNS,
+            hasDirectPartial = normalized in DIRECT_SHORT_SHOT_PATTERNS,
             parsedCommand = parse(text, requireWakeWord),
             fastPartialCommand = parseFastPartial(text, requireWakeWord),
         )
@@ -267,7 +269,7 @@ object CommandInterpreter {
         "서비스",
     )
     private val ACTIVATION_ASR_EQUIVALENT_WAKE_WORDS = WAKE_WORDS + listOf("다비스")
-    private val DIRECT_FAST_PARTIAL_SHOT_PATTERNS =
+    private val DIRECT_SHORT_SHOT_PATTERNS =
         (WAKE_WORDS + COMMAND_ASR_EQUIVALENT_WAKE_WORDS).flatMap { wakeWord ->
             listOf("${wakeWord}찍", "${wakeWord}찌")
         }.toSet()
