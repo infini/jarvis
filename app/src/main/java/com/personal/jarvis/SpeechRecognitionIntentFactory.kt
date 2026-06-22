@@ -6,6 +6,7 @@ import android.speech.RecognizerIntent
 
 object SpeechRecognitionIntentFactory {
     fun create(context: Context, commandWindowOpen: Boolean): Intent {
+        val timing = timingFor(commandWindowOpen)
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(
                 RecognizerIntent.EXTRA_LANGUAGE_MODEL,
@@ -23,27 +24,45 @@ object SpeechRecognitionIntentFactory {
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,
-                if (commandWindowOpen) COMMAND_INPUT_MINIMUM_LENGTH_MS else IDLE_WAKE_INPUT_MINIMUM_LENGTH_MS,
+                timing.minimumLengthMs,
             )
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
-                if (commandWindowOpen) {
-                    COMMAND_POSSIBLY_COMPLETE_SILENCE_MS
-                } else {
-                    IDLE_WAKE_POSSIBLY_COMPLETE_SILENCE_MS
-                },
+                timing.possiblyCompleteSilenceMs,
             )
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
-                if (commandWindowOpen) COMMAND_COMPLETE_SILENCE_MS else IDLE_WAKE_COMPLETE_SILENCE_MS,
+                timing.completeSilenceMs,
             )
         }
     }
 
+    fun timingFor(commandWindowOpen: Boolean): TimingOptions {
+        return if (commandWindowOpen) {
+            TimingOptions(
+                minimumLengthMs = COMMAND_INPUT_MINIMUM_LENGTH_MS,
+                possiblyCompleteSilenceMs = COMMAND_POSSIBLY_COMPLETE_SILENCE_MS,
+                completeSilenceMs = COMMAND_COMPLETE_SILENCE_MS,
+            )
+        } else {
+            TimingOptions(
+                minimumLengthMs = IDLE_WAKE_INPUT_MINIMUM_LENGTH_MS,
+                possiblyCompleteSilenceMs = IDLE_WAKE_POSSIBLY_COMPLETE_SILENCE_MS,
+                completeSilenceMs = IDLE_WAKE_COMPLETE_SILENCE_MS,
+            )
+        }
+    }
+
+    data class TimingOptions(
+        val minimumLengthMs: Long,
+        val possiblyCompleteSilenceMs: Long,
+        val completeSilenceMs: Long,
+    )
+
     private const val IDLE_WAKE_INPUT_MINIMUM_LENGTH_MS = 600L
     private const val IDLE_WAKE_POSSIBLY_COMPLETE_SILENCE_MS = 250L
     private const val IDLE_WAKE_COMPLETE_SILENCE_MS = 600L
-    private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 220L
-    private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 120L
-    private const val COMMAND_COMPLETE_SILENCE_MS = 240L
+    private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 180L
+    private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 90L
+    private const val COMMAND_COMPLETE_SILENCE_MS = 180L
 }
