@@ -61,18 +61,19 @@ for trial in $(seq 1 "$TRIALS"); do
   LOG_FILE="$(awk -F= '/^log_file=/ { value=$2 } END { print value }' "$TRIAL_LOG")"
   DIAGNOSTIC_LOG_FILE="$(awk -F= '/^diagnostic_log_file=/ { value=$2 } END { print value }' "$TRIAL_LOG")"
   EVENTS_LINE="$(grep '^events ' "$TRIAL_LOG" | tail -1 || true)"
+  RESULT_LINE="$(grep '^result ' "$TRIAL_LOG" | tail -1 || true)"
   PASS_LINE="$(grep '^PASS:' "$TRIAL_LOG" | tail -1 || true)"
   FAIL_LINE="$(grep '^FAIL:' "$TRIAL_LOG" | tail -1 || true)"
 
   if [[ "$STATUS" -eq 0 ]]; then
     SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
-    echo "trial=$trial status=PASS ${EVENTS_LINE} log_file=${LOG_FILE:-unknown} diagnostic_log_file=${DIAGNOSTIC_LOG_FILE:-unknown}" | tee -a "$SUMMARY_FILE"
+    echo "trial=$trial status=PASS ${RESULT_LINE} ${EVENTS_LINE} log_file=${LOG_FILE:-unknown} diagnostic_log_file=${DIAGNOSTIC_LOG_FILE:-unknown}" | tee -a "$SUMMARY_FILE"
     if [[ -n "$PASS_LINE" ]]; then
       echo "  $PASS_LINE" | tee -a "$SUMMARY_FILE"
     fi
   else
     FAIL_COUNT=$((FAIL_COUNT + 1))
-    echo "trial=$trial status=FAIL exit_code=$STATUS ${EVENTS_LINE} log_file=${LOG_FILE:-unknown} diagnostic_log_file=${DIAGNOSTIC_LOG_FILE:-unknown} output_file=$TRIAL_LOG" | tee -a "$SUMMARY_FILE"
+    echo "trial=$trial status=FAIL exit_code=$STATUS ${RESULT_LINE} ${EVENTS_LINE} log_file=${LOG_FILE:-unknown} diagnostic_log_file=${DIAGNOSTIC_LOG_FILE:-unknown} output_file=$TRIAL_LOG" | tee -a "$SUMMARY_FILE"
     if [[ -n "$FAIL_LINE" ]]; then
       echo "  $FAIL_LINE" | tee -a "$SUMMARY_FILE"
     fi
@@ -85,6 +86,19 @@ done
 
 RATE=$((SUCCESS_COUNT * 100 / TRIALS))
 echo "summary trials=$TRIALS pass=$SUCCESS_COUNT fail=$FAIL_COUNT success_rate=${RATE}% summary_file=$SUMMARY_FILE" | tee -a "$SUMMARY_FILE"
+awk '
+  /^trial=/ && /status=FAIL/ {
+    for (i = 1; i <= NF; i++) {
+      split($i, pair, "=")
+      if (pair[1] == "failure_type") failures[pair[2]]++
+    }
+  }
+  END {
+    for (failure in failures) {
+      printf "failure_type=%s count=%d\n", failure, failures[failure]
+    }
+  }
+' "$SUMMARY_FILE" | sort | tee -a "$SUMMARY_FILE"
 
 if [[ "$FAIL_COUNT" -gt 0 ]]; then
   exit 1

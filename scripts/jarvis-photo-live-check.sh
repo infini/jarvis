@@ -59,6 +59,22 @@ count_event() {
   grep -Ec "event=${event}([[:space:]]|$)" "$LOG_FILE" || true
 }
 
+one_line() {
+  tr '\n' ' ' | sed 's/[[:space:]]\+/ /g; s/^ //; s/ $//'
+}
+
+result_line() {
+  local status="$1"
+  local failure_type="$2"
+  local parsed_source="$3"
+  local stt_text="$4"
+  printf 'result status=%s failure_type=%s parsed_source=%s stt_text=%s\n' \
+    "$status" \
+    "$failure_type" \
+    "$parsed_source" \
+    "$stt_text"
+}
+
 READY_COUNT="$(count_event ready_for_speech)"
 SPEECH_BEGIN_COUNT="$(count_event speech_begin)"
 PARTIAL_COUNT="$(count_event partial_results)"
@@ -74,12 +90,35 @@ SHUTTER_LINE="$(grep "Tapping fallback target=SHUTTER" "$LOG_FILE" | tail -1 || 
 COMPLETE_LINE="$(grep "event=command_complete" "$LOG_FILE" | grep "keepWindow=true" | tail -1 || true)"
 PARTIAL_TEXT="$(grep "event=partial_results" "$LOG_FILE" | tail -3 || true)"
 FINAL_TEXT="$(grep "event=final_results" "$LOG_FILE" | tail -3 || true)"
+STT_TEXT_SAMPLE="$(printf '%s\n%s\n' "$PARTIAL_TEXT" "$FINAL_TEXT" | one_line)"
+if [[ -z "$STT_TEXT_SAMPLE" ]]; then
+  STT_TEXT_SAMPLE="-"
+fi
+PARSED_SOURCE="-"
+if [[ "$PHOTO_PARSED_LINE" == *"source=partial"* ]]; then
+  PARSED_SOURCE="partial"
+elif [[ "$PHOTO_PARSED_LINE" == *"source=final"* ]]; then
+  PARSED_SOURCE="final"
+elif [[ "$PHOTO_PARSED_LINE" == *"source=local"* ]]; then
+  PARSED_SOURCE="local"
+elif [[ "$PHOTO_PARSED_LINE" == *"event=command_injected"* ]]; then
+  PARSED_SOURCE="injected"
+fi
 
 echo "log_file=$LOG_FILE"
 echo "diagnostic_log_file=$DIAGNOSTIC_LOG_FILE"
 echo "events ready_for_speech=$READY_COUNT speech_begin=$SPEECH_BEGIN_COUNT partial_results=$PARTIAL_COUNT final_results=$FINAL_COUNT"
 
 if [[ -z "$PHOTO_PARSED_LINE" ]]; then
+  FAILURE_TYPE="no_take_photo_parse"
+  if [[ "$READY_COUNT" == "0" ]]; then
+    FAILURE_TYPE="no_ready"
+  elif [[ "$SPEECH_BEGIN_COUNT" == "0" && "$PARTIAL_COUNT" == "0" && "$FINAL_COUNT" == "0" ]]; then
+    FAILURE_TYPE="no_speech"
+  elif [[ -n "$ANY_COMMAND_LINE" ]]; then
+    FAILURE_TYPE="wrong_command"
+  fi
+  result_line "FAIL" "$FAILURE_TYPE" "-" "$STT_TEXT_SAMPLE"
   echo "FAIL: '자비스 사진 찍어' was not parsed as take_photo." >&2
   if [[ -n "$ANY_COMMAND_LINE" ]]; then
     echo "Last parsed command: $ANY_COMMAND_LINE" >&2
@@ -96,20 +135,24 @@ if [[ -z "$PHOTO_PARSED_LINE" ]]; then
 fi
 
 if [[ -z "$ACCESS_LINE" ]]; then
+  result_line "FAIL" "no_accessibility" "$PARSED_SOURCE" "$STT_TEXT_SAMPLE"
   echo "FAIL: take_photo parsed, but did not reach JarvisAccessibilityService." >&2
   exit 1
 fi
 
 if [[ -z "$SHUTTER_LINE" ]]; then
+  result_line "FAIL" "no_shutter_fast_path" "$PARSED_SOURCE" "$STT_TEXT_SAMPLE"
   echo "FAIL: take_photo reached accessibility, but shutter fast path was not observed." >&2
   exit 1
 fi
 
 if [[ -z "$COMPLETE_LINE" ]]; then
+  result_line "FAIL" "no_command_complete" "$PARSED_SOURCE" "$STT_TEXT_SAMPLE"
   echo "FAIL: take_photo did not complete while keeping the command window open." >&2
   exit 1
 fi
 
+result_line "PASS" "none" "$PARSED_SOURCE" "$STT_TEXT_SAMPLE"
 if [[ -n "$INJECT_COMMAND" ]]; then
   echo "PASS: injected take_photo reached accessibility, used shutter fast path, and reopened command listening."
 else
