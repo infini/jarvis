@@ -119,6 +119,7 @@ class CommandInterpreterTest {
         assertTrue(finalShot.mentionsCamera)
         assertTrue(finalShot.hasShotWord)
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, finalShot.parsedCommand)
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, finalShot.fastPartialCommand)
 
         val partialShot = CommandInterpreter.photoCandidateDiagnostic("자비스, 사진 지")
         assertEquals("take_photo_partial", partialShot.reason)

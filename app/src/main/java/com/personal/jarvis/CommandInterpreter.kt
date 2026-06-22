@@ -40,20 +40,16 @@ object CommandInterpreter {
 
     fun parse(text: String, requireWakeWord: Boolean = true): String? {
         val normalized = normalize(text)
+        return parseNormalized(normalized, requireWakeWord)
+    }
 
+    private fun parseNormalized(normalized: String, requireWakeWord: Boolean): String? {
         if (normalized.isBlank()) return null
         if (requireWakeWord && !hasWakeWord(normalized)) return null
 
         val wantsFrontCamera = FRONT_CAMERA_WORDS.any(normalized::contains)
         val wantsRearCamera = REAR_CAMERA_WORDS.any(normalized::contains)
-        val wantsSwitchCamera = listOf(
-            "카메라전환",
-            "렌즈전환",
-            "전후면전환",
-            "전면후면전환",
-            "후면전면전환",
-            "반전",
-        ).any(normalized::contains)
+        val wantsSwitchCamera = SWITCH_CAMERA_WORDS.any(normalized::contains)
         val mentionsCamera = normalized.contains("카메라") ||
             normalized.contains("셀피") ||
             normalized.contains("셀카") ||
@@ -68,33 +64,26 @@ object CommandInterpreter {
             hasDirectShotAsrVariant ||
             hasDirectShortShot
         val wantsCameraOpen = mentionsCamera &&
-            listOf("열어", "켜", "시작", "실행").any(normalized::contains)
+            CAMERA_OPEN_WORDS.any(normalized::contains)
         val wantsSpecificCameraMode = !wantsSwitchCamera &&
             wantsFrontCamera.xor(wantsRearCamera) &&
             (mentionsCamera ||
-                listOf("모드", "전환", "바꿔", "변경", "열어", "켜", "시작", "실행").any(normalized::contains) ||
+                CAMERA_MODE_WORDS.any(normalized::contains) ||
                 FRONT_CAMERA_WORDS.any(normalized::endsWith) ||
                 REAR_CAMERA_WORDS.any(normalized::endsWith))
-        val wantsFilter = listOf("필터", "효과", "색감").any(normalized::contains)
-        val wantsBack = listOf("뒤로", "백").any(normalized::contains)
-        val wantsHome = listOf("홈", "홈으로").any(normalized::contains)
-        val mentionsScreen = listOf("화면", "디스플레이").any(normalized::contains)
-        val mentionsPhone = listOf("폰", "휴대폰").any(normalized::contains)
+        val wantsFilter = FILTER_WORDS.any(normalized::contains)
+        val wantsBack = BACK_WORDS.any(normalized::contains)
+        val wantsHome = HOME_WORDS.any(normalized::contains)
+        val mentionsScreen = SCREEN_WORDS.any(normalized::contains)
+        val mentionsPhone = PHONE_WORDS.any(normalized::contains)
         val wantsWakeScreen = (mentionsScreen || mentionsPhone) &&
-            listOf("켜", "깨워", "켜줘", "켜라", "온").any(normalized::contains)
-        val wantsSleepScreen = (mentionsScreen && listOf("꺼", "끄", "오프").any(normalized::contains)) ||
-            (mentionsPhone && listOf("잠가", "잠궈", "잠금", "락").any(normalized::contains))
+            WAKE_SCREEN_WORDS.any(normalized::contains)
+        val wantsSleepScreen = (mentionsScreen && SLEEP_SCREEN_WORDS.any(normalized::contains)) ||
+            (mentionsPhone && PHONE_LOCK_WORDS.any(normalized::contains))
         val wantsStop = STOP_WORDS.any { word ->
             normalized.contains(word) && !(word == "꺼" && wantsShot)
         }
-        val wantsFullStop = listOf(
-            "자비스완전종료",
-            "자비스서비스종료",
-            "자비스앱종료",
-            "자비스완전히꺼",
-            "자비스완전히꺼줘",
-            "jarvis완전종료",
-        ).any(normalized::contains)
+        val wantsFullStop = FULL_STOP_PATTERNS.any(normalized::contains)
         val wantsCloseApp = CLOSE_APP_WORDS.any { word ->
             normalized.contains(word) && !(word == "꺼" && wantsShot)
         }
@@ -122,10 +111,17 @@ object CommandInterpreter {
     }
 
     fun parseFastPartial(text: String, requireWakeWord: Boolean = true): String? {
-        val command = parse(text, requireWakeWord)
+        val normalized = normalize(text)
+        val command = parseNormalized(normalized, requireWakeWord)
         if (command != null) return command
 
-        val normalized = normalize(text)
+        return parseFastPartialNormalized(normalized, requireWakeWord)
+    }
+
+    private fun parseFastPartialNormalized(
+        normalized: String,
+        requireWakeWord: Boolean,
+    ): String? {
         if (normalized.isBlank()) return null
         if (requireWakeWord && !hasWakeWord(normalized)) return null
 
@@ -152,6 +148,8 @@ object CommandInterpreter {
             mentionsCamera && PHOTO_CONTEXT_SHOT_ASR_VARIANTS.any(normalized::contains)
         val hasDirectShotAsrVariant =
             !mentionsCamera && DIRECT_SHOT_ASR_VARIANTS.any(normalized::contains)
+        val parsedCommand = parseNormalized(normalized, requireWakeWord)
+        val fastPartialCommand = parsedCommand ?: parseFastPartialNormalized(normalized, requireWakeWord)
 
         return PhotoCandidateDiagnostic(
             normalized = normalized,
@@ -163,8 +161,8 @@ object CommandInterpreter {
             hasDirectShotAsrVariant = hasDirectShotAsrVariant,
             hasPhotoPartial = FAST_PARTIAL_PHOTO_SHOT_PATTERNS.any(normalized::endsWith),
             hasDirectPartial = normalized in DIRECT_SHORT_SHOT_PATTERNS,
-            parsedCommand = parse(text, requireWakeWord),
-            fastPartialCommand = parseFastPartial(text, requireWakeWord),
+            parsedCommand = parsedCommand,
+            fastPartialCommand = fastPartialCommand,
         )
     }
 
@@ -205,7 +203,7 @@ object CommandInterpreter {
     private fun normalize(text: String): String {
         return text
             .lowercase(Locale.KOREAN)
-            .replace("[^\\p{L}\\p{N}]+".toRegex(), "")
+            .replace(NON_LETTER_OR_DIGIT_PATTERN, "")
     }
 
     private fun hasWakeWord(normalized: String): Boolean {
@@ -215,6 +213,24 @@ object CommandInterpreter {
 
     private val FRONT_CAMERA_WORDS = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라")
     private val REAR_CAMERA_WORDS = listOf("후면", "후방", "뒷카메라", "뒤카메라", "백카메라", "리어카메라")
+    private val SWITCH_CAMERA_WORDS = listOf(
+        "카메라전환",
+        "렌즈전환",
+        "전후면전환",
+        "전면후면전환",
+        "후면전면전환",
+        "반전",
+    )
+    private val CAMERA_OPEN_WORDS = listOf("열어", "켜", "시작", "실행")
+    private val CAMERA_MODE_WORDS = listOf("모드", "전환", "바꿔", "변경", "열어", "켜", "시작", "실행")
+    private val FILTER_WORDS = listOf("필터", "효과", "색감")
+    private val BACK_WORDS = listOf("뒤로", "백")
+    private val HOME_WORDS = listOf("홈", "홈으로")
+    private val SCREEN_WORDS = listOf("화면", "디스플레이")
+    private val PHONE_WORDS = listOf("폰", "휴대폰")
+    private val WAKE_SCREEN_WORDS = listOf("켜", "깨워", "켜줘", "켜라", "온")
+    private val SLEEP_SCREEN_WORDS = listOf("꺼", "끄", "오프")
+    private val PHONE_LOCK_WORDS = listOf("잠가", "잠궈", "잠금", "락")
     private val SHOT_WORDS = listOf(
         "찍어",
         "찍기",
@@ -246,6 +262,14 @@ object CommandInterpreter {
     private val FAST_PARTIAL_PHOTO_SHOT_PATTERNS = PARTIAL_SHOT_PATTERNS + listOf("사진지", "사진치")
     private val STOP_WORDS = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만")
     private val CLOSE_APP_WORDS = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내")
+    private val FULL_STOP_PATTERNS = listOf(
+        "자비스완전종료",
+        "자비스서비스종료",
+        "자비스앱종료",
+        "자비스완전히꺼",
+        "자비스완전히꺼줘",
+        "jarvis완전종료",
+    )
     private val ACTIVATION_WORDS = listOf("깨어나")
     private val ACTIVATION_ASR_EQUIVALENT_WORDS = ACTIVATION_WORDS + listOf("게임", "때어나")
 
@@ -273,4 +297,5 @@ object CommandInterpreter {
         (WAKE_WORDS + COMMAND_ASR_EQUIVALENT_WAKE_WORDS).flatMap { wakeWord ->
             listOf("${wakeWord}찍", "${wakeWord}찌")
         }.toSet()
+    private val NON_LETTER_OR_DIGIT_PATTERN = "[^\\p{L}\\p{N}]+".toRegex()
 }
