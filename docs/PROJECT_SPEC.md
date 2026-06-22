@@ -6,13 +6,14 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 
 ## 1. Current Status
 
-작성일: 2026-06-22
+작성일: 2026-06-23
 
 현재 상태:
 
 - 2026-06-22 배터리 소모 이슈 때문에 기본 UX를 상시 음성 대기에서 시스템 어시스턴트 호출형으로 전환했다. 기본 동작은 더 이상 idle에서 `AudioRecord`/activation ASR을 계속 돌리지 않는다.
 - Android 전원 버튼 길게 누르기 자체는 일반 앱이 직접 가로챌 수 없다. Jarvis는 `JarvisAssistantActivity`를 `ACTION_ASSIST`/`ACTION_VOICE_COMMAND` 처리 Activity로 등록하고, 사용자가 Jarvis를 기본 디지털 어시스턴트 앱으로 선택했을 때 시스템 호출을 받는다. Xiaomi/HyperOS에서 전원 버튼 길게 누르기가 Gemini 대신 기본 어시스턴트를 실행하도록 설정되어 있어야 한다.
-- 하이퍼아일랜드와 카메라 세부 제어는 `JarvisAccessibilityService`가 켜져 있어야 동작한다. 2026-06-22 실기기에서 `enabled_accessibility_services=null` 상태가 확인됐고, 이 상태에서는 `카메라 실행`처럼 Activity intent만 필요한 명령은 가능해 보여도 `전면`/`후면`/`사진 찍어`/`카메라 종료`와 overlay는 동작하지 않는다. 이제 접근성 서비스가 꺼져 있으면 assistant 진입점과 앱 버튼 모두 command window를 시작하지 않고 앱 화면에서 접근성 설정을 안내한다.
+- 하이퍼아일랜드와 카메라 세부 제어는 `JarvisAccessibilityService`가 켜져 있고 실제 접근성 서비스가 현재 앱 프로세스에 연결되어 있어야 동작한다. 2026-06-22 실기기에서 `enabled_accessibility_services=null` 상태가 확인됐고, 이후 `enabled_accessibility_services`에는 남아 있지만 Android accessibility manager의 `Crashed services`에 들어간 상태도 확인됐다. 이 상태에서는 `카메라 실행`처럼 Activity intent만 필요한 명령은 가능해 보여도 `전면`/`후면`/`사진 찍어`/`카메라 종료`와 overlay는 동작하지 않는다. 이제 앱은 접근성 상태를 `꺼짐`, `연결 필요`, `켜짐`으로 구분하고, 꺼짐 또는 연결 필요 상태면 assistant 진입점과 앱 버튼 모두 command window를 시작하지 않고 앱 화면에서 접근성 설정을 안내한다.
+- 2026-06-23 앱 메인 화면에 `명령어 리스트` 항목을 유지하고, 목록에서는 전체 지원 명령의 대표 문구를 보여주며, 명령 선택 시 전체 인식 문구, 실행 동작, 상세 설명, 필요 조건, 명령 후 상태, 빠른 partial 실행 정책을 확인할 수 있게 했다.
 - `JarvisVoiceService`는 호출형 세션으로 동작한다. `JarvisVoiceServiceStarter.openCommandWindow()`가 30초 command window를 열 때만 마이크 foreground service를 시작하고, timeout/`자비스 잠들어`/`자비스 완전 종료` 이후에는 `START_NOT_STICKY` 서비스가 내려간다.
 - 접근성 서비스 watchdog이 `JarvisVoiceService`를 15초마다 되살리던 동작은 제거했다. 접근성 서비스는 이제 카메라/시스템 조작 명령을 실행하는 역할만 맡고, 음성 세션 시작은 기본 어시스턴트 호출, boot notification 탭, 앱의 `Jarvis 명령 듣기` 버튼이 담당한다.
 - 새 명령 UX는 command window 안에서도 호출어를 포함한다. 지원 기준 문구는 `자비스 카메라 실행`, `자비스 카메라 전면`, `자비스 카메라 후면`, `자비스 사진 찍어`, `자비스 카메라 종료`다. 호출어 없는 `찍어`, `후면` 같은 단독 명령은 live command path에서 실행하지 않는다.
@@ -190,7 +191,7 @@ Jarvis는 다음 조합으로 동작한다.
 
 일반 Android 앱은 전원 버튼 long press 이벤트를 직접 가로챌 수 없다. Jarvis가 Gemini 대신 호출되려면 사용자가 Android/HyperOS 설정에서 Jarvis를 기본 디지털 어시스턴트 앱으로 선택해야 한다. 전원 버튼 long press가 기본 어시스턴트를 실행할지, 전원 메뉴를 열지, Gemini를 강제할지는 OS/OEM 설정에 달려 있다. Jarvis 앱은 이 설정을 자동으로 바꾸지 않고, `기본 어시스턴트 설정` 버튼으로 시스템 설정 또는 RoleManager 요청 화면만 연다.
 
-`JarvisAssistantActivity`는 command window 시작 전에 마이크 권한, Jarvis 접근성 서비스 활성화, 소유자 프로필 설정을 확인한다. 접근성 서비스가 꺼져 있으면 하이퍼아일랜드 overlay와 카메라 세부 제어가 불가능하므로 command window를 열지 않고 `MainActivity`로 이동해 설정을 안내한다.
+`JarvisAssistantActivity`는 command window 시작 전에 마이크 권한, Jarvis 접근성 서비스 설정값, 현재 프로세스의 접근성 direct receiver 연결, 소유자 프로필 설정을 확인한다. 접근성 서비스가 꺼져 있거나 Android에 bind되지 않은 상태면 하이퍼아일랜드 overlay와 카메라 세부 제어가 불가능하므로 command window를 열지 않고 `MainActivity`로 이동해 설정을 안내한다.
 
 전면/후면 카메라 실행은 Android 카메라 인텐트에 렌즈 방향 힌트 extra를 넣은 뒤, 접근성 서비스에서 Xiaomi 카메라의 `com.android.camera:id/v9_camera_picker` 노드를 읽어 현재 렌즈를 확인한다. content description은 실기기에서 `전후면 카메라 전환,후면` 또는 `전후면 카메라 전환,전면` 형태로 노출된다. 현재 렌즈가 목표와 다를 때만 전환 버튼을 클릭한다.
 
@@ -241,9 +242,9 @@ JarvisAccessibilityService
 | --- | --- |
 | `MainActivity.kt` | 권한 요청, 접근성/기본 어시스턴트 설정 진입, Jarvis 명령 듣기와 명령어 리스트 진입 UI |
 | `JarvisAssistantActivity.kt` | Android `ACTION_ASSIST`/`ACTION_VOICE_COMMAND` 호출을 받아 30초 command window 시작 |
-| `JarvisAccessibilityStatus.kt` | Jarvis 접근성 서비스 활성화 여부 확인 |
-| `CommandCatalog.kt` | 지원 명령어 예시, 상세 동작, 필요 조건, command window 유지 정책을 UI 표시용으로 정리 |
-| `CommandListActivity.kt` | 앱의 `명령어 리스트` 화면. 지원 명령 수와 예시 문구 수를 표시하고, 목록에서 명령별 전체 예시 문구를 보여주며, 명령 선택 시 예시/동작/필요 조건/명령 ID 상세 표시 |
+| `JarvisAccessibilityStatus.kt` | Jarvis 접근성 서비스 설정값과 현재 프로세스 direct receiver 연결 상태를 함께 확인 |
+| `CommandCatalog.kt` | 지원 명령어 대표 문구, 전체 인식 문구, 상세 동작, 필요 조건, command window 유지 정책을 UI 표시용으로 정리 |
+| `CommandListActivity.kt` | 앱의 `명령어 리스트` 화면. 지원 명령 수와 예시 문구 수를 표시하고, 목록에서 명령별 대표 문구를 보여주며, 명령 선택 시 전체 인식 문구/동작/상세 설명/필요 조건/명령 후 상태/인식 속도 정책/명령 ID 상세 표시 |
 | `OwnerVoiceEnrollmentController.kt` | 소유자 목소리 등록 workflow, 진행률, 완료/실패 callback |
 | `JarvisBootReceiver.kt` | 부팅/앱 업데이트 후 Jarvis command window 시작 알림 표시 |
 | `JarvisVoiceService.kt` | command window 동안만 동작하는 포그라운드 음성 인식 서비스 orchestration |
@@ -628,10 +629,10 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 - 마이크 권한 허용 상태가 UI에 표시됨
 - 알림 권한 허용 상태가 UI에 표시됨
-- 접근성 서비스 켜짐/꺼짐 상태가 UI에 표시됨
-- 접근성 서비스가 꺼져 있으면 `Jarvis 명령 듣기`와 기본 어시스턴트 호출이 command window를 시작하지 않고 접근성 설정을 안내함
+- 접근성 서비스 `꺼짐`/`연결 필요`/`켜짐` 상태가 UI에 표시됨
+- 접근성 서비스가 꺼져 있거나 설정에는 남아 있지만 bind되지 않았으면 `Jarvis 명령 듣기`와 기본 어시스턴트 호출이 command window를 시작하지 않고 접근성 설정을 안내함
 - 배터리 최적화/앱 정보 설정 화면으로 이동할 수 있음
-- 앱 메인 화면의 `명령어 리스트`에서 지원 명령 수, 예시 문구 수, 모든 `CommandBus` 명령의 전체 예시 문구와 상세 동작을 확인할 수 있음
+- 앱 메인 화면의 `명령어 리스트`에서 지원 명령 수, 예시 문구 수, 모든 `CommandBus` 명령의 대표 문구를 확인할 수 있고, 명령 선택 시 전체 인식 문구와 상세 동작을 확인할 수 있음
 
 ### Voice Test
 

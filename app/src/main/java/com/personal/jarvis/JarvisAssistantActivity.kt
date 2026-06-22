@@ -11,12 +11,16 @@ class JarvisAssistantActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val accessibilityStatus = JarvisAccessibilityStatus.current(this)
         when {
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED -> {
                 openMainActivity("Jarvis 마이크 권한이 필요합니다.")
             }
-            !JarvisAccessibilityStatus.isEnabled(this) -> {
-                openMainActivity("Jarvis 접근성 서비스를 켜야 상태 표시와 카메라 제어가 동작합니다.")
+            !accessibilityStatus.isReadyForAutomation -> {
+                openMainActivity(
+                    accessibilityStatus.guidance
+                        ?: "Jarvis 접근성 서비스를 확인해야 합니다.",
+                )
             }
             !OwnerVoiceStore.isConfigured(this) -> {
                 openMainActivity("소유자 목소리 등록을 먼저 완료하세요.")

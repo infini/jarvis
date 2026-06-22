@@ -40,7 +40,7 @@ class CommandListActivity : Activity() {
         )
         root.addView(
             TextView(this).apply {
-                text = "지원 명령 ${commandCount}개, 예시 문구 ${phraseCount}개. 항목을 선택하면 실제 동작과 필요 조건을 확인합니다."
+                text = "지원 명령 ${commandCount}개, 예시 문구 ${phraseCount}개. 항목을 선택하면 실행 동작, 필요 조건, 명령 후 상태를 확인합니다."
                 textSize = 14f
                 setTextColor(Color.rgb(76, 86, 96))
                 gravity = Gravity.CENTER_HORIZONTAL
@@ -108,7 +108,7 @@ class CommandListActivity : Activity() {
             )
             addView(
                 TextView(context).apply {
-                    text = "예시 문구"
+                    text = "대표 명령"
                     textSize = 12f
                     typeface = Typeface.DEFAULT_BOLD
                     setTextColor(Color.rgb(90, 100, 112))
@@ -117,7 +117,7 @@ class CommandListActivity : Activity() {
             )
             addView(
                 TextView(context).apply {
-                    text = entry.phrases.joinToString(separator = "\n")
+                    text = entry.phrases.first()
                     textSize = 14f
                     setTextColor(Color.rgb(0, 122, 255))
                 },
@@ -144,23 +144,29 @@ class CommandListActivity : Activity() {
 
     private fun detailText(entry: CommandCatalog.Entry): String {
         return buildString {
-            appendLine("예시")
+            appendLine("대표 명령")
+            appendLine(entry.phrases.first())
+            appendLine()
+            appendLine("인식 문구")
             entry.phrases.forEach { appendLine("- $it") }
             appendLine()
-            appendLine("동작")
+            appendLine("실행 동작")
+            appendLine(entry.summary)
+            appendLine()
+            appendLine("상세 설명")
             appendLine(entry.detail)
             appendLine()
             appendLine("필요 조건")
             entry.requirements.forEach { appendLine("- $it") }
             appendLine()
-            appendLine("명령 ID")
-            appendLine(entry.commandId)
-            appendLine()
-            appendLine("명령 대기 유지")
+            appendLine("명령 후 상태")
             appendLine(if (entry.keepsCommandWindowOpen) "처리 후 30초 명령 대기를 다시 엽니다." else "처리 후 현재 명령 대기를 닫습니다.")
             appendLine()
-            appendLine("빠른 실행")
-            append(if (entry.fastPartial) "partial STT 결과에서 먼저 잡히면 final 결과를 기다리지 않고 실행합니다." else "final STT 결과까지 기다릴 수 있습니다.")
+            appendLine("인식 속도 정책")
+            appendLine(if (entry.fastPartial) "partial STT 결과에서 먼저 잡히면 final 결과를 기다리지 않고 실행합니다." else "final STT 결과까지 기다릴 수 있습니다.")
+            appendLine()
+            appendLine("명령 ID")
+            appendLine(entry.commandId)
         }
     }
 

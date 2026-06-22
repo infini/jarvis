@@ -239,8 +239,10 @@ class MainActivity : Activity() {
             requestRuntimePermissions()
             return
         }
-        if (!JarvisAccessibilityStatus.isEnabled(this)) {
-            val message = "Jarvis 접근성 서비스를 먼저 켜세요. 하이퍼아일랜드와 카메라 세부 제어에 필요합니다."
+        val accessibilityStatus = JarvisAccessibilityStatus.current(this)
+        if (!accessibilityStatus.isReadyForAutomation) {
+            val message = accessibilityStatus.guidance
+                ?: "Jarvis 접근성 서비스를 먼저 확인하세요. 하이퍼아일랜드와 카메라 세부 제어에 필요합니다."
             statusView.text = message
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
             openAccessibilitySettings()
@@ -294,7 +296,7 @@ class MainActivity : Activity() {
         val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val notification = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        val accessibility = JarvisAccessibilityStatus.isEnabled(this)
+        val accessibilityStatus = JarvisAccessibilityStatus.current(this)
         val hasOwnerProfile = OwnerVoiceStore.hasProfile(this)
         val ownerProfileConfigured = OwnerVoiceStore.isConfigured(this)
         val ownerEmbeddingCount = OwnerVoiceStore.embeddingCount(this)
@@ -303,10 +305,13 @@ class MainActivity : Activity() {
         statusView.text = buildString {
             appendLine("마이크 권한: ${if (mic) "허용됨" else "필요함"}")
             appendLine("알림 권한: ${if (notification) "허용됨" else "필요함"}")
-            appendLine("접근성 서비스: ${if (accessibility) "켜짐" else "꺼짐"}")
+            appendLine("접근성 서비스: ${accessibilityStatus.label}")
             appendLine("Jarvis 명령 대기: ${if (JarvisVoiceService.isRunning) "실행 중" else "꺼짐"}")
             appendLine()
-            append("하이퍼아일랜드와 카메라 세부 제어는 Jarvis 접근성 서비스가 켜져 있어야 동작합니다.")
+            append(
+                accessibilityStatus.guidance
+                    ?: "하이퍼아일랜드와 카메라 세부 제어를 실행할 준비가 되어 있습니다.",
+            )
         }
 
         ownerVoiceStatusView.text = buildString {

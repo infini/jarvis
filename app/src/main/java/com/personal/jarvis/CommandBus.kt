@@ -46,6 +46,10 @@ object CommandBus {
         if (directReceiver === receiver) directReceiver = null
     }
 
+    fun hasDirectReceiver(): Boolean {
+        return directReceiver != null
+    }
+
     fun send(
         context: Context,
         command: String,

@@ -13,6 +13,7 @@ import android.view.accessibility.AccessibilityEvent
 
 class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectReceiver {
     private val handler = Handler(Looper.getMainLooper())
+    private var receiversRegistered = false
     private val cameraController by lazy {
         CameraAccessibilityController(this, handler)
     }
@@ -48,6 +49,23 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
     }
     override fun onServiceConnected() {
         super.onServiceConnected()
+        registerServiceReceivers()
+        CommandBus.registerDirectReceiver(this)
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        releaseServiceBindings()
+        return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        releaseServiceBindings()
+        super.onDestroy()
+    }
+
+    private fun registerServiceReceivers() {
+        if (receiversRegistered) return
+
         val commandFilter = IntentFilter(CommandBus.ACTION_COMMAND)
         val stateFilter = IntentFilter(JarvisStateBus.ACTION_STATE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -57,15 +75,17 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
             registerReceiver(commandReceiver, commandFilter)
             registerReceiver(stateReceiver, stateFilter)
         }
-        CommandBus.registerDirectReceiver(this)
+        receiversRegistered = true
     }
 
-    override fun onDestroy() {
+    private fun releaseServiceBindings() {
         CommandBus.unregisterDirectReceiver(this)
-        runCatching { unregisterReceiver(commandReceiver) }
-        runCatching { unregisterReceiver(stateReceiver) }
+        if (receiversRegistered) {
+            runCatching { unregisterReceiver(commandReceiver) }
+            runCatching { unregisterReceiver(stateReceiver) }
+            receiversRegistered = false
+        }
         stateIndicatorController.dispose()
-        super.onDestroy()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit

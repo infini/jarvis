@@ -16,14 +16,15 @@
 - `LocalCommandRecognizer`: sherpa-onnx 한국어 streaming ASR 모델로 Android STT 실패 fallback을 인식합니다.
 - `LocalCommandSession`: 로컬 명령 ASR 스레드 상태를 관리합니다.
 - `SpeechRecognitionIntentFactory`: Android `SpeechRecognizer` 실행 옵션을 한곳에서 생성합니다.
-- `CommandCatalog`: 앱에 표시할 명령어 예시, 상세 동작, 필요 조건을 관리합니다.
-- `CommandListActivity`: `명령어 리스트` 화면에서 전체 명령어와 선택한 명령의 상세 설명을 보여줍니다.
+- `CommandCatalog`: 앱에 표시할 대표 명령, 인식 문구, 상세 동작, 필요 조건을 관리합니다.
+- `CommandListActivity`: `명령어 리스트` 화면에서 전체 명령어를 보여주고, 선택한 명령의 전체 인식 문구와 동작 설명을 보여줍니다.
 - `JarvisCommandExecutor`: 내부 명령 실행, 중복 실행 방지, 카메라 세션 window 유지 정책을 담당합니다.
 - `JarvisNotificationController`: 음성 서비스 foreground notification과 상태 문구를 관리합니다.
 - `JarvisFeedbackController`: 명령 가능/처리/실패 상태의 소리, 진동, 상태 broadcast를 담당합니다.
 - `JarvisStateIndicatorController`: 접근성 overlay로 현재 Jarvis 상태를 화면 위에 표시합니다.
 - `JarvisBootReceiver`: 재부팅 또는 앱 업데이트 후 Jarvis command window 시작 알림을 띄웁니다.
 - `JarvisAssistantActivity`: 기본 어시스턴트 호출을 받아 30초 Jarvis 명령 대기를 시작합니다.
+- `JarvisAccessibilityStatus`: 접근성 설정값과 현재 프로세스의 접근성 서비스 연결 상태를 구분합니다.
 - `JarvisAccessibilityService`: 접근성 서비스 생명주기와 명령 수신을 담당합니다. 음성 서비스 자동 재시작은 하지 않습니다.
 - `CameraAccessibilityController`: Xiaomi 기본 카메라의 셔터/필터/전후면 전환 자동화를 담당합니다.
 - `AccessibilityNodeMatcher`: 접근성 노드 키워드 검색과 스코어링을 담당합니다.
@@ -52,9 +53,9 @@ Jarvis는 기본적으로 상시 음성 대기를 하지 않습니다. 전원 �
 
 `JARVIS LISTENING` Hyper Island overlay가 보이는 동안에만 명령을 받습니다. 카메라 세션 명령을 처리하면 30초 command window를 다시 열고, 30초 안에 다음 명령이 없으면 Jarvis는 실패음 없이 overlay를 숨긴 뒤 음성 foreground service를 종료합니다. 열린 command window 안에서도 `찍어`, `후면`, `종료`처럼 `자비스`가 빠진 단독 명령은 실행하지 않습니다.
 
-앱 메인 화면의 `명령어 리스트`에서 지원 명령 수와 예시 문구 수, 지원 명령 전체와 각 명령의 모든 예시 문장을 볼 수 있습니다. 명령을 선택하면 실제 동작, 필요 조건, command window 유지 여부, 빠른 partial 실행 여부를 확인할 수 있습니다.
+앱 메인 화면의 `명령어 리스트`에서 지원 명령 수와 예시 문구 수, 지원 명령 전체의 대표 문구를 볼 수 있습니다. 명령을 선택하면 전체 인식 문구, 실행 동작, 상세 설명, 필요 조건, 명령 후 30초 대기 유지 여부, 빠른 partial 실행 여부를 확인할 수 있습니다.
 
-하이퍼아일랜드와 `전면`/`후면`/`사진 찍어`/`카메라 종료` 같은 카메라 세부 제어는 Jarvis 접근성 서비스가 켜져 있어야 동작합니다. 접근성이 꺼져 있으면 기본 어시스턴트 호출 시 명령 대기를 시작하지 않고 Jarvis 앱 화면으로 이동해 접근성 설정을 안내합니다.
+하이퍼아일랜드와 `전면`/`후면`/`사진 찍어`/`카메라 종료` 같은 카메라 세부 제어는 Jarvis 접근성 서비스가 켜져 있고 실제 서비스가 Android에 연결되어 있어야 동작합니다. 앱 상태 화면은 접근성을 `꺼짐`, `연결 필요`, `켜짐`으로 구분합니다. 접근성이 꺼져 있거나 설정에는 남아 있지만 서비스가 bind되지 않은 상태면 기본 어시스턴트 호출과 `Jarvis 명령 듣기` 모두 command window를 시작하지 않고 Jarvis 앱 화면에서 접근성 설정을 안내합니다.
 
 Android STT가 실제 발화를 감지한 뒤 실패했거나 사용할 수 없을 때만 local ASR fallback을 사용합니다. fallback도 `자비스` 호출어가 포함된 명령만 실행합니다. 과거 `자비스 깨어나` 상시 wake, acoustic wake fallback, owner gate 튜닝 이력은 `docs/PROJECT_SPEC.md`에 보존되어 있지만 현재 기본 UX에서는 idle 마이크 대기를 시작하지 않습니다.
 
