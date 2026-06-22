@@ -479,7 +479,7 @@ command window는 기본 어시스턴트 호출, boot notification 탭, 앱의 `
 
 사진 촬영 명령은 `자비스 사진 찍어`, `자비스 사진 찍어줘`, `자비스 사진 찍어 주세요`, `자비스 찍어`, `자비스 셔터`, `자비스 셔터 눌러`, `자비스 촬영해줘`, `자비스 찰칵`을 `take_photo`로 매핑한다. `자비스 사진 찍어`의 partial 인식 속도를 높이기 위해 문장이 `자비스사진찍` 또는 `자비스사진찌` 패턴으로 끝나는 경우도 촬영 명령으로 인정한다. Android STT가 `찍어`를 `찌거`, `찌꺼`, `지거`, `지꺼`처럼 반환하는 경우도 촬영 동사 ASR 변형으로 인정한다. 단, `자비스 사진`처럼 촬영 동사가 없는 문장이나 `자비스 사진 찍지 마`처럼 뒤에 다른 동사가 이어지는 문장은 실행하지 않는다.
 
-command window 안의 명령 파서는 activation 파서보다 호출어 equivalent를 더 넓게 허용한다. `자비서`, `자비쓰`, `자비수`, `잡이스`, `서비스`처럼 Android STT가 `자비스`를 잘못 반환한 후보가 문장 앞에 있으면 command 호출어로 인정한다. 이 보정은 `isActivationWakeAsrEquivalent()`에는 적용하지 않아 과거 wake false positive 문제를 되살리지 않는다.
+command window 안의 명령 파서는 activation 파서보다 호출어 equivalent를 더 넓게 허용한다. `제이비스`, `자비서`, `자비써`, `자비쓰`, `자비수`, `잡이스`, `서비스`처럼 Android STT가 `자비스`를 잘못 반환한 후보가 문장 앞에 있으면 command 호출어로 인정한다. 이 보정은 `isActivationWakeAsrEquivalent()`에는 적용하지 않아 과거 wake false positive 문제를 되살리지 않는다.
 
 카메라 세션 명령은 처리 후에도 command window를 다시 30초로 연다. 대상 명령은 `open_camera`, `open_front_camera`, `open_rear_camera`, `open_camera_and_take_photo`, `take_photo`, `open_filters`, `switch_camera`, `home`, `back`이다. 따라서 전원 버튼 long press로 Jarvis를 호출한 뒤 `자비스 카메라 실행`, `자비스 카메라 후면`, `자비스 카메라 전면`, `자비스 사진 찍어`, `자비스 카메라 종료`를 연속 처리할 수 있어야 한다. Jarvis는 이 30초를 `JarvisVoiceService`의 hard deadline으로 별도 관리한다. 30초 안에 다음 명령이 없으면 active recognizer를 취소하고 overlay를 제거한 뒤 foreground service를 종료한다.
 

@@ -166,7 +166,9 @@ object CommandInterpreter {
         "jarvis",
     )
     private val COMMAND_ASR_EQUIVALENT_WAKE_WORDS = listOf(
+        "제이비스",
         "자비서",
+        "자비써",
         "자비쓰",
         "자비수",
         "잡이스",
