@@ -115,10 +115,10 @@ object CommandInterpreter {
 
     fun parseFastPartial(text: String, requireWakeWord: Boolean = true): String? {
         val normalized = normalize(text)
-        val command = parseNormalized(normalized, requireWakeWord)
-        if (command != null) return command
+        val fastPartialCommand = parseFastPartialNormalized(normalized, requireWakeWord)
+        if (fastPartialCommand != null) return fastPartialCommand
 
-        return parseFastPartialNormalized(normalized, requireWakeWord)
+        return parseNormalized(normalized, requireWakeWord)
     }
 
     private fun parseFastPartialNormalized(
@@ -128,14 +128,17 @@ object CommandInterpreter {
         if (normalized.isBlank()) return null
         if (requireWakeWord && !hasWakeWord(normalized)) return null
 
-        return if (
-            FAST_PARTIAL_PHOTO_SHOT_PATTERNS.any(normalized::endsWith) ||
-            normalized in DIRECT_SHORT_SHOT_PATTERNS
-        ) {
+        return if (hasFastPhotoPartialSignal(normalized)) {
             CommandBus.COMMAND_TAKE_PHOTO
         } else {
             null
         }
+    }
+
+    private fun hasFastPhotoPartialSignal(normalized: String): Boolean {
+        return (normalized.contains("사진") &&
+            PHOTO_FAST_PARTIAL_SUFFIX_PATTERNS.any(normalized::endsWith)) ||
+            normalized in DIRECT_SHORT_SHOT_PATTERNS
     }
 
     fun photoCandidateDiagnostic(
@@ -249,6 +252,7 @@ object CommandInterpreter {
     private val CAMERA_OPEN_WORDS = listOf("열어", "켜고", "시작", "실행")
     private val CAMERA_OPEN_SUFFIX_WORDS = listOf("켜")
     private val CAMERA_OPEN_SUFFIX_PATTERNS = commandVerbForms(CAMERA_OPEN_SUFFIX_WORDS)
+    private val PHOTO_COMPLETE_SHOT_PATTERNS = commandVerbForms(listOf("사진찍어"))
     private val SHOT_WORDS = listOf(
         "찍어",
         "찍기",
@@ -285,6 +289,10 @@ object CommandInterpreter {
         commandVerbForms(PHOTO_CONTEXT_SHOT_ASR_VARIANTS)
     private val PARTIAL_SHOT_PATTERNS = listOf("사진찍", "사진찌")
     private val FAST_PARTIAL_PHOTO_SHOT_PATTERNS = PARTIAL_SHOT_PATTERNS + listOf("사진지", "사진치")
+    private val PHOTO_FAST_PARTIAL_SUFFIX_PATTERNS =
+        (PHOTO_COMPLETE_SHOT_PATTERNS +
+            PHOTO_CONTEXT_SHOT_ASR_VARIANT_PATTERNS +
+            FAST_PARTIAL_PHOTO_SHOT_PATTERNS).distinct()
     private val STOP_WORDS = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만")
     private val CLOSE_APP_WORDS = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내")
     private val FULL_STOP_PATTERNS = listOf(

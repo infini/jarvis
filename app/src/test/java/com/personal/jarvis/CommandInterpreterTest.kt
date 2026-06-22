@@ -92,6 +92,9 @@ class CommandInterpreterTest {
 
     @Test
     fun fastPartialPhotoCommandAcceptsShortPhotoPrefixesOnlyWithWakeWord() {
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 찍어"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 찍어줘"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 찍어 주세요"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 지"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 치"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("제이비스, 사진 지"))
@@ -100,6 +103,8 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("서비스, 사진치"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 찍"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 찌"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 지겨"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 사진 찍혀 주세요"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 찍"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자비스, 찌"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parseFastPartial("자베스, 찍"))
@@ -117,6 +122,10 @@ class CommandInterpreterTest {
         assertNull(CommandInterpreter.parseFastPartial("자비스, 지금 찍"))
         assertNull(CommandInterpreter.parseFastPartial("자비스, 사진 지우"))
         assertNull(CommandInterpreter.parseFastPartial("자비스, 사진 치워"))
+        assertEquals(
+            CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO,
+            CommandInterpreter.parseFastPartial("자비스, 카메라 실행하고 찍어"),
+        )
     }
 
     @Test
