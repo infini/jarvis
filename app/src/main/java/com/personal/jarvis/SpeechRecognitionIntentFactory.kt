@@ -110,6 +110,8 @@ object SpeechRecognitionIntentFactory {
         "사진 찍어",
         "사진 찍어줘",
         "사진 찍어 줘",
+        "사진 찍어주세요",
+        "사진 찍어 주세요",
     )
 
     private val PHOTO_PREFIX_ENDINGS = listOf(
