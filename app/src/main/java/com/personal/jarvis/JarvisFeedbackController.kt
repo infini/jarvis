@@ -54,7 +54,6 @@ class JarvisFeedbackController(
         signal(JarvisVoiceState.COMMAND_HANDLED, force = true) {
             Log.d(TAG, "feedback=command_handled")
             vibrate(longArrayOf(0L, 55L))
-            tone(ToneGenerator.TONE_PROP_ACK, 80)
         }
     }
 
