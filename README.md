@@ -142,6 +142,22 @@ scripts/jarvis-command-trace.sh 45
 7. HyperOS 설정에서 전원 버튼 길게 누르기가 기본 어시스턴트를 실행하도록 설정합니다.
 8. 전원 버튼을 길게 누르거나 앱의 `Jarvis 명령 듣기`를 누른 뒤 `자비스 카메라 실행`처럼 말합니다.
 
+접근성 화면에서 `앱의 액세스가 거부됨` 또는 비슷한 제한 문구가 보이면 Android/HyperOS가 debug APK나 수동 설치 APK의 접근성 권한을 제한한 상태입니다. 폰에서 `설정 > 앱 > 앱 관리 > Jarvis`로 들어가 오른쪽 상단 메뉴의 `제한된 설정 허용`을 먼저 켠 뒤, 다시 접근성 설정에서 `Jarvis` 서비스를 켭니다. USB 디버깅이 연결된 개발 기기에서는 아래처럼 기존 접근성 서비스 목록을 보존하면서 ADB로 테스트용 활성화도 가능합니다.
+
+```sh
+service='com.personal.jarvis/com.personal.jarvis.JarvisAccessibilityService'
+current=$(adb shell settings get secure enabled_accessibility_services | tr -d '\r')
+if [ "$current" = "null" ] || [ -z "$current" ]; then
+  next="$service"
+elif printf '%s' ":$current:" | grep -q ":$service:"; then
+  next="$current"
+else
+  next="$current:$service"
+fi
+adb shell settings put secure enabled_accessibility_services "$next"
+adb shell settings put secure accessibility_enabled 1
+```
+
 USB 디버깅이 연결되어 있으면 `scripts/jarvis-owner-enroll.sh 6`으로 소유자 목소리를 다시 등록하고, `scripts/jarvis-profile-status.sh`로 `profile_configured=true`인지 확인할 수 있습니다. 구버전 단일 샘플 프로필 또는 `자비스 깨어나` activation 이전 프로필은 `profile_configured=false`로 표시되며, 이 상태에서는 Jarvis command window를 시작하지 않습니다.
 
 ## 설치 방법
@@ -166,7 +182,7 @@ USB 디버깅이 연결되어 있으면 `scripts/jarvis-owner-enroll.sh 6`으로
 3. 폰에서 APK를 열고 설치합니다.
 4. 설치가 막히면 `이 출처의 앱 설치 허용`을 켭니다.
 
-접근성 권한은 APK 설치만으로 자동 허용되지 않습니다. Jarvis 앱을 처음 실행한 뒤 `접근성 설정 열기`를 눌러 `Jarvis` 접근성 서비스를 직접 켜야 합니다.
+접근성 권한은 APK 설치만으로 자동 허용되지 않습니다. Jarvis 앱을 처음 실행한 뒤 `접근성 설정 열기`를 눌러 `Jarvis` 접근성 서비스를 직접 켜야 합니다. Android/HyperOS가 `앱의 액세스가 거부됨`을 표시하면 앱 정보 화면에서 `제한된 설정 허용`을 먼저 켜야 접근성 서비스를 활성화할 수 있습니다.
 
 ## 한계
 

@@ -595,7 +595,7 @@ Legacy 제약:
 10. HyperOS에서 전원 버튼 long press가 기본 어시스턴트를 실행하도록 설정
 11. 전원 버튼 long press 또는 `Jarvis 명령 듣기`로 command window 시작
 
-APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자가 직접 켜야 한다.
+APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자가 직접 켜야 한다. Android/HyperOS가 debug APK 또는 수동 설치 APK에 대해 `앱의 액세스가 거부됨`을 표시하면 `설정 > 앱 > 앱 관리 > Jarvis > 오른쪽 상단 메뉴 > 제한된 설정 허용`을 먼저 켠 뒤 접근성 설정에서 Jarvis를 다시 활성화한다. USB 디버깅이 연결된 개발 기기에서는 `enabled_accessibility_services`의 기존 값을 보존한 채 `com.personal.jarvis/com.personal.jarvis.JarvisAccessibilityService`를 추가하고 `accessibility_enabled=1`로 설정해 테스트용 활성화가 가능하다. 이 설정이 꺼져 있으면 하이퍼아일랜드 overlay와 `전면`/`후면`/`사진 찍어`/`카메라 종료`는 동작하지 않는다.
 
 ## 12. Test Plan
 
