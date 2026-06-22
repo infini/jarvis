@@ -87,7 +87,7 @@ class CommandListActivity : Activity() {
             )
             addView(
                 TextView(context).apply {
-                    text = entry.phrases.first()
+                    text = entry.phrases.joinToString(separator = "\n")
                     textSize = 14f
                     setTextColor(Color.rgb(0, 122, 255))
                 },

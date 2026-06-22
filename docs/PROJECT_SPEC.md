@@ -243,7 +243,7 @@ JarvisAccessibilityService
 | `JarvisAssistantActivity.kt` | Android `ACTION_ASSIST`/`ACTION_VOICE_COMMAND` 호출을 받아 30초 command window 시작 |
 | `JarvisAccessibilityStatus.kt` | Jarvis 접근성 서비스 활성화 여부 확인 |
 | `CommandCatalog.kt` | 지원 명령어 예시, 상세 동작, 필요 조건, command window 유지 정책을 UI 표시용으로 정리 |
-| `CommandListActivity.kt` | 앱의 `명령어 리스트` 화면. 명령 선택 시 예시/동작/필요 조건/명령 ID 상세 표시 |
+| `CommandListActivity.kt` | 앱의 `명령어 리스트` 화면. 목록에서 명령별 전체 예시 문구를 표시하고, 명령 선택 시 예시/동작/필요 조건/명령 ID 상세 표시 |
 | `OwnerVoiceEnrollmentController.kt` | 소유자 목소리 등록 workflow, 진행률, 완료/실패 callback |
 | `JarvisBootReceiver.kt` | 부팅/앱 업데이트 후 Jarvis command window 시작 알림 표시 |
 | `JarvisVoiceService.kt` | command window 동안만 동작하는 포그라운드 음성 인식 서비스 orchestration |
@@ -615,7 +615,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - 접근성 서비스 켜짐/꺼짐 상태가 UI에 표시됨
 - 접근성 서비스가 꺼져 있으면 `Jarvis 명령 듣기`와 기본 어시스턴트 호출이 command window를 시작하지 않고 접근성 설정을 안내함
 - 배터리 최적화/앱 정보 설정 화면으로 이동할 수 있음
-- 앱 메인 화면의 `명령어 리스트`에서 모든 `CommandBus` 명령의 예시와 상세 동작을 확인할 수 있음
+- 앱 메인 화면의 `명령어 리스트`에서 모든 `CommandBus` 명령의 전체 예시 문구와 상세 동작을 확인할 수 있음
 
 ### Voice Test
 

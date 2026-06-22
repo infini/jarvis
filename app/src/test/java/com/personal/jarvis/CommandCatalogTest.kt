@@ -40,6 +40,19 @@ class CommandCatalogTest {
     }
 
     @Test
+    fun catalogAllPhrasesMatchInterpreter() {
+        CommandCatalog.entries.forEach { entry ->
+            entry.phrases.forEach { phrase ->
+                assertEquals(
+                    expected = entry.commandId,
+                    actual = CommandInterpreter.parse(phrase),
+                    message = phrase,
+                )
+            }
+        }
+    }
+
+    @Test
     fun catalogHasDetailedUserFacingContent() {
         CommandCatalog.entries.forEach { entry ->
             assertTrue(entry.title.isNotBlank())
