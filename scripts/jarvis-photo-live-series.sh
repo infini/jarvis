@@ -68,7 +68,7 @@ mkdir -p "$(dirname "$SUMMARY_FILE")"
 mkdir -p "$(dirname "$TSV_FILE")"
 : > "$SUMMARY_FILE"
 : > "$TSV_FILE"
-printf 'trial\tstatus\tfailure_type\tparsed_source\tstt_text\tready_for_speech\tspeech_begin\tpartial_results\tfinal_results\tlog_file\tdiagnostic_log_file\toutput_file\n' > "$TSV_FILE"
+printf 'trial\tstatus\tfailure_type\tparsed_source\tparsed_ms\tspeech_parse_ms\taccess_ms\tspeech_access_ms\tcommand_access_ms\tstt_text\tready_for_speech\tspeech_begin\tpartial_results\tfinal_results\tlog_file\tdiagnostic_log_file\toutput_file\n' > "$TSV_FILE"
 
 echo "photo_live_series request_id=$REQUEST_ID trials=$TRIALS duration_seconds=$DURATION_SECONDS" | tee -a "$SUMMARY_FILE"
 echo "Say '자비스 사진 찍어' once per trial when prompted." | tee -a "$SUMMARY_FILE"
@@ -98,6 +98,11 @@ for trial in $(seq 1 "$TRIALS"); do
   RESULT_STATUS="$(extract_field "$RESULT_LINE" status)"
   FAILURE_TYPE="$(extract_field "$RESULT_LINE" failure_type)"
   PARSED_SOURCE="$(extract_field "$RESULT_LINE" parsed_source)"
+  PARSED_MS="$(extract_field "$RESULT_LINE" parsed_ms)"
+  SPEECH_PARSE_MS="$(extract_field "$RESULT_LINE" speech_parse_ms)"
+  ACCESS_MS="$(extract_field "$RESULT_LINE" access_ms)"
+  SPEECH_ACCESS_MS="$(extract_field "$RESULT_LINE" speech_access_ms)"
+  COMMAND_ACCESS_MS="$(extract_field "$RESULT_LINE" command_access_ms)"
   STT_TEXT="$(extract_field "$RESULT_LINE" stt_text)"
   READY_COUNT="$(extract_field "$EVENTS_LINE" ready_for_speech)"
   SPEECH_BEGIN_COUNT="$(extract_field "$EVENTS_LINE" speech_begin)"
@@ -106,6 +111,11 @@ for trial in $(seq 1 "$TRIALS"); do
   RESULT_STATUS="${RESULT_STATUS:-unknown}"
   FAILURE_TYPE="${FAILURE_TYPE:-unknown}"
   PARSED_SOURCE="${PARSED_SOURCE:-unknown}"
+  PARSED_MS="${PARSED_MS:-0}"
+  SPEECH_PARSE_MS="${SPEECH_PARSE_MS:-0}"
+  ACCESS_MS="${ACCESS_MS:-0}"
+  SPEECH_ACCESS_MS="${SPEECH_ACCESS_MS:-0}"
+  COMMAND_ACCESS_MS="${COMMAND_ACCESS_MS:-0}"
   STT_TEXT="${STT_TEXT:-unknown}"
   READY_COUNT="${READY_COUNT:-0}"
   SPEECH_BEGIN_COUNT="${SPEECH_BEGIN_COUNT:-0}"
@@ -125,11 +135,16 @@ for trial in $(seq 1 "$TRIALS"); do
       echo "  $FAIL_LINE" | tee -a "$SUMMARY_FILE"
     fi
   fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$trial" \
     "$RESULT_STATUS" \
     "$FAILURE_TYPE" \
     "$PARSED_SOURCE" \
+    "$PARSED_MS" \
+    "$SPEECH_PARSE_MS" \
+    "$ACCESS_MS" \
+    "$SPEECH_ACCESS_MS" \
+    "$COMMAND_ACCESS_MS" \
     "$(sanitize_tsv "$STT_TEXT")" \
     "$READY_COUNT" \
     "$SPEECH_BEGIN_COUNT" \

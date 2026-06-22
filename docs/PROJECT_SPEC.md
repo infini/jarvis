@@ -491,7 +491,7 @@ live command는 Android 기본 `SpeechRecognizer`가 먼저 듣고 partial/final
 
 `scripts/jarvis-photo-live-check.sh`는 카메라 앱을 연 뒤 debug command window를 시작하고 사용자가 `자비스 사진 찍어`를 한 번 말하는 실발화 검증용 스크립트다. `partial_results`, `final_results`, `command_parsed command=take_photo`, `accessibility_command_received`, 셔터 좌표 fast path 로그를 함께 확인한다. 자동 smoke 검증이 필요할 때는 `JARVIS_PHOTO_LIVE_INJECT_COMMAND=take_photo`를 지정해 실제 발화 없이 같은 실행 경로를 점검한다.
 
-`scripts/jarvis-photo-live-series.sh`는 `jarvis-photo-live-check.sh`를 여러 번 반복 실행해 `자비스 사진 찍어`의 체감 인식률을 수치화한다. 기본은 5회, trial당 12초이며, 각 trial의 원본 출력/latency 로그, 마지막 STT 텍스트, 실패 유형, 최종 성공률 summary와 TSV 결과 파일을 `/tmp`에 남긴다. 실패 유형은 `no_ready`, `no_speech`, `no_take_photo_parse`, `wrong_command`, `no_accessibility`, `no_shutter_fast_path`, `no_command_complete`로 분류한다. 사용자가 인식 실패 상황을 모아 보고할 때는 summary/TSV 파일과 실패 trial의 `log_file`을 함께 확인한다.
+`scripts/jarvis-photo-live-series.sh`는 `jarvis-photo-live-check.sh`를 여러 번 반복 실행해 `자비스 사진 찍어`의 체감 인식률과 속도를 수치화한다. 기본은 5회, trial당 12초이며, 각 trial의 원본 출력/latency 로그, 마지막 STT 텍스트, 실패 유형, `parsed_ms`/`speech_parse_ms`/`access_ms`/`speech_access_ms`/`command_access_ms`, 최종 성공률 summary와 TSV 결과 파일을 `/tmp`에 남긴다. 실패 유형은 `no_ready`, `no_speech`, `no_take_photo_parse`, `wrong_command`, `no_accessibility`, `no_shutter_fast_path`, `no_command_complete`, `slow_parse`, `slow_speech_parse`, `slow_speech_access`, `slow_command_access`로 분류한다. 사용자가 인식 실패 상황을 모아 보고할 때는 summary/TSV 파일과 실패 trial의 `log_file`을 함께 확인한다.
 
 ## 8.1 Owner Voice Gate
 
