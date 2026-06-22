@@ -16,6 +16,7 @@ MAX_PARSED_MS="${JARVIS_PHOTO_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSE_MS="${JARVIS_PHOTO_MAX_SPEECH_PARSE_MS:-1500}"
 MAX_ACCESS_MS="${JARVIS_PHOTO_MAX_ACCESS_MS:-3000}"
 MAX_COMMAND_ACCESS_MS="${JARVIS_PHOTO_MAX_COMMAND_ACCESS_MS:-800}"
+MIN_STT_BIAS_COUNT="${JARVIS_PHOTO_MIN_BIAS_COUNT:-109}"
 
 case "$DURATION_SECONDS" in
   ''|*[!0-9]*)
@@ -215,6 +216,7 @@ echo "log_file=$LOG_FILE"
 echo "diagnostic_log_file=$DIAGNOSTIC_LOG_FILE"
 echo "events ready_for_speech=$READY_COUNT speech_begin=$SPEECH_BEGIN_COUNT partial_results=$PARTIAL_COUNT final_results=$FINAL_COUNT parse_no_command=$PARSE_NO_COMMAND_COUNT"
 echo "accessibility state=$ACCESSIBILITY_STATE enabled=${ACCESSIBILITY_ENABLED:-unknown} service_configured=$([[ "$ACCESSIBILITY_SERVICES" == *"$ACCESSIBILITY_SERVICE"* ]] && printf 1 || printf 0)"
+echo "stt_bias expected_min=$MIN_STT_BIAS_COUNT actual=$STT_BIAS_COUNT"
 
 if [[ -z "$PHOTO_PARSED_LINE" ]]; then
   FAILURE_TYPE="no_take_photo_parse"
@@ -297,6 +299,12 @@ fi
 if [[ "$COMMAND_ACCESS_MS" -gt "$MAX_COMMAND_ACCESS_MS" ]]; then
   result_line "FAIL" "slow_command_access" "$PARSED_SOURCE" "$PARSED_CANDIDATE_INDEX" "$PARSED_MS" "$SPEECH_PARSE_MS" "$ACCESS_MS" "$SPEECH_ACCESS_MS" "$COMMAND_ACCESS_MS" "$STT_BIAS_COUNT" "$STT_MIN_MS" "$STT_POSSIBLE_SILENCE_MS" "$STT_COMPLETE_SILENCE_MS" "$STT_TEXT_SAMPLE"
   echo "FAIL: take_photo reached accessibility too slowly after parsing: ${COMMAND_ACCESS_MS}ms > ${MAX_COMMAND_ACCESS_MS}ms." >&2
+  exit 1
+fi
+
+if [[ "$STT_BIAS_COUNT" =~ ^[0-9]+$ && "$STT_BIAS_COUNT" -lt "$MIN_STT_BIAS_COUNT" ]]; then
+  result_line "FAIL" "stale_or_missing_bias" "$PARSED_SOURCE" "$PARSED_CANDIDATE_INDEX" "$PARSED_MS" "$SPEECH_PARSE_MS" "$ACCESS_MS" "$SPEECH_ACCESS_MS" "$COMMAND_ACCESS_MS" "$STT_BIAS_COUNT" "$STT_MIN_MS" "$STT_POSSIBLE_SILENCE_MS" "$STT_COMPLETE_SILENCE_MS" "$STT_TEXT_SAMPLE"
+  echo "FAIL: installed Jarvis command bias count is ${STT_BIAS_COUNT}, expected at least ${MIN_STT_BIAS_COUNT}. Install the latest debug APK before judging photo recognition." >&2
   exit 1
 fi
 

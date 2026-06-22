@@ -87,7 +87,7 @@ scripts/jarvis-latency-report.sh
 scripts/jarvis-photo-command-audit.sh
 ```
 
-실제 음성 인식까지 확인하려면 카메라 앱이 열리는 것을 확인한 뒤 아래 스크립트가 출력하는 안내에 맞춰 `자비스 사진 찍어`를 한 번 말합니다. 스크립트는 partial/final STT 텍스트, 파싱된 후보 순번, STT bias/timing 값, `take_photo` 파싱 여부, 접근성 서비스 수신, 셔터 좌표 fast path를 함께 판정합니다. 접근성 서비스가 Android에서 crashed/not bound 상태면 `accessibility_crashed` 또는 `accessibility_not_bound`로 분류하므로, 이 경우 Jarvis 접근성 서비스를 설정에서 껐다 켠 뒤 다시 측정합니다. HyperOS dumpsys가 bound service component를 숨기고 `Service[label=Jarvis]`만 표시하는 경우도 bound 상태로 인정합니다.
+실제 음성 인식까지 확인하려면 카메라 앱이 열리는 것을 확인한 뒤 아래 스크립트가 출력하는 안내에 맞춰 `자비스 사진 찍어`를 한 번 말합니다. 스크립트는 partial/final STT 텍스트, 파싱된 후보 순번, STT bias/timing 값, `take_photo` 파싱 여부, 접근성 서비스 수신, 셔터 좌표 fast path를 함께 판정합니다. 현재 debug 기준 `stt_bias expected_min=109`보다 설치 APK의 `actual` 값이 낮으면 `stale_or_missing_bias`로 실패시켜 구버전 APK에서 인식률을 잘못 판단하지 않게 합니다. 기준은 `JARVIS_PHOTO_MIN_BIAS_COUNT`로 조정할 수 있습니다. 접근성 서비스가 Android에서 crashed/not bound 상태면 `accessibility_crashed` 또는 `accessibility_not_bound`로 분류하므로, 이 경우 Jarvis 접근성 서비스를 설정에서 껐다 켠 뒤 다시 측정합니다. HyperOS dumpsys가 bound service component를 숨기고 `Service[label=Jarvis]`만 표시하는 경우도 bound 상태로 인정합니다.
 
 ```bash
 scripts/jarvis-photo-live-check.sh 12

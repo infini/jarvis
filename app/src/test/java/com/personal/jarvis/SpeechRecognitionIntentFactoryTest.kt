@@ -62,6 +62,17 @@ class SpeechRecognitionIntentFactoryTest {
     }
 
     @Test
+    fun commandWindowBiasingStringsAreAcceptedByCommandParsers() {
+        SpeechRecognitionIntentFactory.biasingStringsFor(commandWindowOpen = true).forEach { phrase ->
+            assertTrue(
+                actual = CommandInterpreter.parse(phrase) != null ||
+                    CommandInterpreter.parseFastPartial(phrase) != null,
+                message = phrase,
+            )
+        }
+    }
+
+    @Test
     fun idleWakeDoesNotUseCommandBiasingStrings() {
         assertEquals(
             emptyList(),
