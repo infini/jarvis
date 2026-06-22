@@ -106,6 +106,12 @@ object SpeechRecognitionIntentFactory {
         "서비스",
     )
 
+    private val PHOTO_FULL_ENDINGS = listOf(
+        "사진 찍어",
+        "사진 찍어줘",
+        "사진 찍어 줘",
+    )
+
     private val PHOTO_PREFIX_ENDINGS = listOf(
         "사진 찍",
         "사진 찌",
@@ -115,14 +121,14 @@ object SpeechRecognitionIntentFactory {
 
     private val DIRECT_SHORT_SHOT_ENDINGS = listOf("찍", "찌")
 
-    private val GENERATED_PHOTO_PREFIX_BIASING_STRINGS = PHOTO_BIAS_WAKE_WORDS.flatMap { wakeWord ->
-        PHOTO_PREFIX_ENDINGS.map { ending -> "$wakeWord $ending" } +
+    private val GENERATED_PHOTO_BIASING_STRINGS = PHOTO_BIAS_WAKE_WORDS.flatMap { wakeWord ->
+        PHOTO_FULL_ENDINGS.map { ending -> "$wakeWord $ending" } +
+            PHOTO_PREFIX_ENDINGS.map { ending -> "$wakeWord $ending" } +
             DIRECT_SHORT_SHOT_ENDINGS.map { ending -> "$wakeWord $ending" }
     }
 
     private val ADDITIONAL_COMMAND_BIASING_STRINGS =
-        GENERATED_PHOTO_PREFIX_BIASING_STRINGS + listOf(
-            "자비스 사진 찍어 줘",
+        GENERATED_PHOTO_BIASING_STRINGS + listOf(
             "자비스 사진 찌거",
             "자비스 사진 찌꺼",
             "자비스 사진 지거",
