@@ -95,6 +95,8 @@ function printTrace(id) {
   ownerGate = ownerGateElapsed[id] + 0
   displayCandidateIndex = parsedCandidateIndex[id]
   if (displayCandidateIndex == "") displayCandidateIndex = "-"
+  displayParsedSource = parsedSource[id]
+  if (displayParsedSource == "") displayParsedSource = "-"
   displayBiasCount = sttBiasCount[id]
   if (displayBiasCount == "") displayBiasCount = "-"
   displayMinMs = sttMinMs[id]
@@ -103,7 +105,7 @@ function printTrace(id) {
   if (displayPossibleSilenceMs == "") displayPossibleSilenceMs = "-"
   displayCompleteSilenceMs = sttCompleteSilenceMs[id]
   if (displayCompleteSilenceMs == "") displayCompleteSilenceMs = "-"
-  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms parsed_candidate_index=%s speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms stt_bias_count=%s stt_min_ms=%s stt_possible_silence_ms=%s stt_complete_silence_ms=%s\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], displayCandidateIndex, speechParse, access[id], speechAccess, commandAccess, bus[id], displayBiasCount, displayMinMs, displayPossibleSilenceMs, displayCompleteSilenceMs
+  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms parsed_source=%s parsed_candidate_index=%s speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms stt_bias_count=%s stt_min_ms=%s stt_possible_silence_ms=%s stt_complete_silence_ms=%s\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], displayParsedSource, displayCandidateIndex, speechParse, access[id], speechAccess, commandAccess, bus[id], displayBiasCount, displayMinMs, displayPossibleSilenceMs, displayCompleteSilenceMs
 
   if (ownerAcceptance[id] != "") {
     printf "  owner_acceptance=%s owner_auth_speech=%sms", ownerAcceptance[id], ownerAuthSpeech[id]
@@ -240,6 +242,8 @@ function printTrace(id) {
 
   if (event == "command_parsed" && totalRaw != "") {
     parsed[trace] = millis(totalRaw)
+    source = value($0, "source")
+    if (source != "") parsedSource[trace] = source
     candidateIndex = value($0, "candidateIndex")
     if (candidateIndex != "") parsedCandidateIndex[trace] = candidateIndex
   }

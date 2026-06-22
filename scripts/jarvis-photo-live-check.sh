@@ -182,6 +182,7 @@ elif [[ "$PHOTO_PARSED_LINE" == *"event=command_injected"* ]]; then
   PARSED_SOURCE="injected"
 fi
 PARSED_MS="$(report_field "$PHOTO_REPORT_LINE" parsed)"
+REPORT_PARSED_SOURCE="$(report_field "$PHOTO_REPORT_LINE" parsed_source)"
 PARSED_CANDIDATE_INDEX="$(report_field "$PHOTO_REPORT_LINE" parsed_candidate_index)"
 SPEECH_PARSE_MS="$(report_field "$PHOTO_REPORT_LINE" speech_parse)"
 ACCESS_MS="$(report_field "$PHOTO_REPORT_LINE" access)"
@@ -202,6 +203,9 @@ if [[ -z "$STT_POSSIBLE_SILENCE_MS" || "$STT_POSSIBLE_SILENCE_MS" == "-" ]]; the
 fi
 if [[ -z "$STT_COMPLETE_SILENCE_MS" || "$STT_COMPLETE_SILENCE_MS" == "-" ]]; then
   STT_COMPLETE_SILENCE_MS="$(report_field "$LISTEN_LINE" completeSilenceMs)"
+fi
+if [[ -n "$REPORT_PARSED_SOURCE" && "$REPORT_PARSED_SOURCE" != "-" ]]; then
+  PARSED_SOURCE="$REPORT_PARSED_SOURCE"
 fi
 PARSED_CANDIDATE_INDEX="${PARSED_CANDIDATE_INDEX:--}"
 PARSED_MS="${PARSED_MS:-0}"
