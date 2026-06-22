@@ -92,7 +92,7 @@ scripts/jarvis-photo-command-audit.sh
 scripts/jarvis-photo-live-check.sh 12
 ```
 
-인식률을 수치로 보려면 같은 문장을 여러 번 반복 측정합니다. 아래 예시는 5회 반복하며, 각 trial의 원본 로그, 마지막 STT 텍스트, 실패 유형, 최종 성공률 요약을 `/tmp`에 남깁니다.
+인식률을 수치로 보려면 같은 문장을 여러 번 반복 측정합니다. 아래 예시는 5회 반복하며, 각 trial의 원본 로그, 마지막 STT 텍스트, 실패 유형, 최종 성공률 요약과 TSV 결과 파일을 `/tmp`에 남깁니다.
 
 ```bash
 scripts/jarvis-photo-live-series.sh 5 12
