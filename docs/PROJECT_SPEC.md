@@ -52,7 +52,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - local ASR 종료 시 `local_complete` 이벤트에 endpoint, local elapsed, active speech, trailing silence, peak/mean RMS를 기록해 실제 빠른 종료 여부와 음성 입력 레벨을 리포트에서 확인할 수 있게 함
 - 2026-06-21 실기기 trace에서 owner gate 통과 발화와 command window 입력 peak RMS가 `0.005`대인 케이스가 확인되어, live local ASR 말소리 판정 기준을 `0.0035` RMS로 낮췄다. 이후 `VOICE_RECOGNITION` source 적용 후에도 낮은 입력이 반복되어 command fallback 기준은 `0.0012`, activation 기준은 `0.00022` RMS로 낮췄고, ASR gain 적용 시작점도 `0.00008` RMS로 낮췄다. activation ASR은 짧은 파편을 너무 빨리 endpoint 처리하지 않도록 최소 active speech 560ms, trailing silence 600ms로 보정했다.
 - 낮은 입력 음량에서 sherpa-onnx local ASR 텍스트가 비는 문제를 줄이기 위해, 원본 RMS가 `0.00008` 이상인 구간은 ASR 입력에만 목표 RMS `0.04`, 최대 `30x` gain을 적용하고 원본 RMS와 gain을 trace에 남김
-- Jarvis 자체 확인음이 ASR에 녹음되어 다음 명령을 방해하지 않도록 command window 진입 준비음은 Android STT `ready_for_speech` 시점에만 내고, 카메라 세션 명령 처리 완료는 확인음 없이 `DONE` overlay와 짧은 진동으로만 표시한 뒤 즉시 다음 리스닝을 시작함
+- Jarvis 자체 확인음이 ASR에 녹음되어 다음 명령을 방해하지 않도록 command window 진입 준비음은 Android STT `ready_for_speech` 시점에 짧게 1회만 내고, 카메라 세션 명령 처리 완료는 확인음 없이 `DONE` overlay와 짧은 진동으로만 표시한 뒤 즉시 다음 리스닝을 시작함
 - idle wake 경로를 owner gate-first에서 activation ASR-first로 전환했다. local activation ASR이 `자비스 깨어나`를 잡으면 해당 rolling audio를 owner verification에 넣고, owner score가 통과한 경우에만 command window를 연다.
 - 2026-06-21 Xiaomi 15 Ultra 실기기 trace에서 owner gate는 통과했지만 activation hotwords ASR이 `자비스 깨어나`를 `다비스때어나`, `아에스에어나`로 반환한 케이스가 확인되어 넓은 fuzzy equivalent를 실험했다. 이후 무발화 false activation이 재현되어 현재 live 경로에서는 호출어와 activation 단어가 함께 잡힌 제한된 equivalent만 허용하고, `아에스에어나` 같은 넓은 fuzzy 결과는 거절한다.
 - 2026-06-21 live trace에서 streaming activation ASR이 같은 발화를 `깨우나`로만 반환했지만 저장 WAV replay는 `아비스깨어나`와 strict owner score로 통과하는 케이스가 확인됐다. 이에 따라 idle activation은 60초 `AudioRecord` 세션을 유지하고, 최근 3.6초 rolling audio를 0.8초마다 buffered hotword decode로 재확인한다. ASR stream은 마이크를 닫지 않고 최대 8초 segment 단위로만 재시작한다. 단, `깨어나`, `깨우나`, `깨워나`, `때어나`처럼 activation 동사만 남은 결과는 더 이상 live wake로 인정하지 않는다.
@@ -67,7 +67,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 2026-06-21 19:23 KST Xiaomi 15 Ultra debug command window에서 Hyper Island overlay를 실기기 캡처로 확인했다. 글자 크기와 pill 하단 정렬은 유지하고 상단만 줄인 뒤 `JarvisStateIndicator overlay_visible state=COMMAND_READY width=446 height=78 gap=73 x=34 y=27 left=136 right=203` 로그가 남았고, 화면에서는 시안 `JARVIS`와 초록 `LISTENING` 전체 텍스트가 잘림 없이 표시됐다.
 - live command는 Android 기본 STT가 먼저 듣고 partial 결과에서 빠른 명령을 즉시 실행한다. Android STT가 실제 발화를 감지한 뒤 실패했을 때만 local ASR fallback이 6초 동안 첫 명령 발화를 기다리고, 아무 말이 없거나 텍스트 없는 360ms 미만의 짧은 소리만 있으면 local 대기를 이어간다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패 피드백 없이 command window 안에서 조용히 다시 듣는다.
 - Android STT command window는 짧은 명령 구문에 맞춰 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 220ms, possibly-complete silence 120ms, complete silence 240ms를 사용한다. 빠른 실행은 final보다 partial command path로 우선 달성한다.
-- 2026-06-22 command window 시작 직후 STT 시작 대기를 80ms에서 0ms로 줄이고, debug command window 시작 대기도 300ms에서 0ms로 줄였다. partial 명령 처리 후 recognizer 정리 fallback timeout은 100ms에서 20ms로 줄였다. 이후 연속 command STT 전환 대기도 80ms에서 0ms로 줄이고, command handled 확인음은 제거해 다음 STT 입력에 피드백음이 섞이지 않게 했다. 실기기 검증에서 기본 어시스턴트 호출은 `listen_start=20ms`, `ready_for_speech=65ms`, 최종 설치본의 debug command window는 `listen_start=8ms`, `ready_for_speech=39ms`를 기록했다. `open_camera` debug 주입 검증에서는 `command_complete` 후 다음 `listen_start`가 약 5ms 뒤에 이어졌다.
+- 2026-06-22 command window 시작 직후 STT 시작 대기를 80ms에서 0ms로 줄이고, debug command window 시작 대기도 300ms에서 0ms로 줄였다. partial 명령 처리 후 recognizer 정리 fallback timeout은 100ms에서 20ms로 줄였다. 이후 연속 command STT 전환 대기도 80ms에서 0ms로 줄이고, command handled 확인음은 제거해 다음 STT 입력에 피드백음이 섞이지 않게 했다. command ready 확인음도 2회에서 1회로 줄여 사용자가 `LISTENING` 직후 바로 말할 수 있게 했다. 실기기 검증에서 기본 어시스턴트 호출은 `listen_start=20ms`, `ready_for_speech=65ms`, 최종 설치본의 debug command window는 `listen_start=8-33ms`, `ready_for_speech=39-62ms` 범위를 기록했다. `open_camera` debug 주입 검증에서는 `command_complete` 후 다음 `listen_start`가 약 3ms 뒤에 이어졌다.
 - local activation ASR은 idle에서 Android STT를 열기 전 activation phrase만 확인한다. local activation ASR에서 `자비스 깨어나`를 잡고 owner verification까지 통과하면 30초 command window와 Android command STT를 시작하고, 그렇지 않으면 overlay/비프음 없이 idle activation 대기로 돌아간다.
 - activation 디버깅은 반복 수동 발화를 요구하지 않도록 변경한다. debug APK는 idle activation ASR이 사용한 원본 rolling WAV와 JSON 메타데이터를 cache `jarvis-activation-attempts/`에 자동 저장하며, `scripts/jarvis-wake-diagnose.sh`는 프로필/저장 샘플 replay/logcat을 한 번에 묶어 wake 실패 원인을 분류한다. `scripts/jarvis-activation-replay.sh`는 저장된 WAV들을 현재 APK의 local activation ASR로 재디코딩하고 owner score를 함께 기록하며, `scripts/jarvis-activation-captures.sh`는 저장 샘플을 host `/tmp`로 가져온다. live wake 리포트는 `android_activation_local_replay_complete`와 `android_activation_local_replay_detected`를 함께 세어 Android STT 실패 snapshot이 local replay에서 복구됐는지 확인한다.
 - idle guard와 command window timeout은 사용자의 발화 없이 검증한다. `scripts/jarvis-idle-guard.sh 20`은 idle 상태에서 accepted activation 또는 command STT `listen_start`/`ready_for_speech`가 발생하지 않는지 검사한다. `activation_phrase_missing`과 `activation_owner_rejected`는 호출어 또는 owner voice가 아니어서 조용히 거절된 정상 idle 경로로 본다. 성공 시에는 요약과 원본 logcat 파일 경로만 출력하고, 실패 시에는 원인 이벤트를 함께 출력한다. `scripts/jarvis-command-window-timeout.sh 30`은 debug APK의 no-display `JarvisDebugCommandWindowActivity`로 command window를 30초 열고 command window close 이후 `ready_for_speech`가 다시 발생하지 않는지 검사한다. close 이벤트는 일반 timeout, active speech grace 만료, listen timeout 만료, deadline 이후 speech error/final/local no-command 종료를 포함한다. `scripts/jarvis-command-window-timeout.sh 30 open_camera`처럼 command id를 넘기면 실제 명령 처리 후 command window가 다시 열린 뒤 닫히는 경로를 검증한다.
@@ -305,7 +305,7 @@ Jarvis는 Android 상태바의 초록색 마이크 표시만으로 상태를 판
 
 | State | Overlay | Sound/Vibration | Meaning |
 | --- | --- | --- | --- |
-| `COMMAND_READY` | 컷아웃 영역 Hyper Island pill `JARVIS [camera hole] LISTENING` | 확인음 2회, 짧은 진동 1회 | `자비스` 호출어가 포함된 명령 가능 |
+| `COMMAND_READY` | 컷아웃 영역 Hyper Island pill `JARVIS [camera hole] LISTENING` | 짧은 확인음 1회, 짧은 진동 1회 | `자비스` 호출어가 포함된 명령 가능 |
 | `COMMAND_PROCESSING` | 컷아웃 영역 Hyper Island pill `JARVIS [camera hole] WORKING` | 없음 | 명령을 실행 중 |
 | `COMMAND_HANDLED` | 컷아웃 영역 Hyper Island pill `JARVIS [camera hole] DONE` | 짧은 진동 1회 | 명령 처리 완료, 다음 명령 가능 |
 | `COMMAND_FAILED` | 컷아웃 영역 Hyper Island pill `JARVIS [camera hole] FAILED` | 실패음 2회, 짧은 진동 2회 | 인식 실패 또는 command window 안의 무명령 |
@@ -637,7 +637,7 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 
 ### State Feedback Test
 
-- 기본 어시스턴트 호출 또는 `Jarvis 명령 듣기` 후 컷아웃 영역 Hyper Island pill `JARVIS [camera hole] LISTENING`, 확인음 2회, 짧은 진동 1회가 발생한다.
+- 기본 어시스턴트 호출 또는 `Jarvis 명령 듣기` 후 컷아웃 영역 Hyper Island pill `JARVIS [camera hole] LISTENING`, 짧은 확인음 1회, 짧은 진동 1회가 발생한다.
 - 카메라 명령 처리 후 Hyper Island pill `JARVIS [camera hole] DONE`과 짧은 진동 1회가 발생하고, 다음 command STT가 즉시 시작된다.
 - command window 안에서 인식 실패 시 Hyper Island pill `JARVIS [camera hole] FAILED`, 실패음 2회, 짧은 진동 2회가 발생한다.
 - local command ASR 실패 후 Android `SpeechRecognizer` fallback이 시작되면 상태 단어가 `LISTENING`으로 돌아간다.
