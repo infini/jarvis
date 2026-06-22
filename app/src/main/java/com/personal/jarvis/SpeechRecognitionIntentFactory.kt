@@ -19,7 +19,7 @@ object SpeechRecognitionIntentFactory {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ko-KR")
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, maxResultsFor(commandWindowOpen))
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             val biasingStrings = biasingStringsFor(commandWindowOpen)
@@ -69,6 +69,10 @@ object SpeechRecognitionIntentFactory {
         }
     }
 
+    fun maxResultsFor(commandWindowOpen: Boolean): Int {
+        return if (commandWindowOpen) COMMAND_MAX_RESULTS else IDLE_WAKE_MAX_RESULTS
+    }
+
     data class TimingOptions(
         val minimumLengthMs: Long,
         val possiblyCompleteSilenceMs: Long,
@@ -81,6 +85,8 @@ object SpeechRecognitionIntentFactory {
     private const val COMMAND_INPUT_MINIMUM_LENGTH_MS = 180L
     private const val COMMAND_POSSIBLY_COMPLETE_SILENCE_MS = 90L
     private const val COMMAND_COMPLETE_SILENCE_MS = 180L
+    private const val COMMAND_MAX_RESULTS = 8
+    private const val IDLE_WAKE_MAX_RESULTS = 5
 
     private val PHOTO_BIAS_WAKE_WORDS = listOf(
         "자비스",

@@ -25,6 +25,12 @@ class SpeechRecognitionIntentFactoryTest {
     }
 
     @Test
+    fun commandWindowRequestsMoreFinalAlternativesThanIdleWake() {
+        assertEquals(8, SpeechRecognitionIntentFactory.maxResultsFor(commandWindowOpen = true))
+        assertEquals(5, SpeechRecognitionIntentFactory.maxResultsFor(commandWindowOpen = false))
+    }
+
+    @Test
     fun commandWindowBiasesRecognizerTowardSupportedCommandPhrases() {
         val biasingStrings = SpeechRecognitionIntentFactory.biasingStringsFor(commandWindowOpen = true)
 

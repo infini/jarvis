@@ -99,13 +99,15 @@ function printTrace(id) {
   if (displayParsedSource == "") displayParsedSource = "-"
   displayBiasCount = sttBiasCount[id]
   if (displayBiasCount == "") displayBiasCount = "-"
+  displayMaxResults = sttMaxResults[id]
+  if (displayMaxResults == "") displayMaxResults = "-"
   displayMinMs = sttMinMs[id]
   if (displayMinMs == "") displayMinMs = "-"
   displayPossibleSilenceMs = sttPossibleSilenceMs[id]
   if (displayPossibleSilenceMs == "") displayPossibleSilenceMs = "-"
   displayCompleteSilenceMs = sttCompleteSilenceMs[id]
   if (displayCompleteSilenceMs == "") displayCompleteSilenceMs = "-"
-  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms parsed_source=%s parsed_candidate_index=%s speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms stt_bias_count=%s stt_min_ms=%s stt_possible_silence_ms=%s stt_complete_silence_ms=%s\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], displayParsedSource, displayCandidateIndex, speechParse, access[id], speechAccess, commandAccess, bus[id], displayBiasCount, displayMinMs, displayPossibleSilenceMs, displayCompleteSilenceMs
+  printf "trace=%s total=%dms path=%s command=%s status=%s owner_gate=%dms listen=%dms listen_ready=%dms parsed=%dms parsed_source=%s parsed_candidate_index=%s speech_parse=%dms access=%dms speech_access=%dms command_access=%dms bus=%dms stt_bias_count=%s stt_max_results=%s stt_min_ms=%s stt_possible_silence_ms=%s stt_complete_silence_ms=%s\n", id, total[id], displayPath, displayCommand, displayStatus, ownerGate, androidListenStart[id], listenReady, parsed[id], displayParsedSource, displayCandidateIndex, speechParse, access[id], speechAccess, commandAccess, bus[id], displayBiasCount, displayMaxResults, displayMinMs, displayPossibleSilenceMs, displayCompleteSilenceMs
 
   if (ownerAcceptance[id] != "") {
     printf "  owner_acceptance=%s owner_auth_speech=%sms", ownerAcceptance[id], ownerAuthSpeech[id]
@@ -230,6 +232,7 @@ function printTrace(id) {
   if (event == "listen_start" && contains($0, "engine=android_stt")) {
     if (totalRaw != "" && androidListenStart[trace] == "") androidListenStart[trace] = millis(totalRaw)
     if (sttBiasCount[trace] == "") sttBiasCount[trace] = value($0, "biasCount")
+    if (sttMaxResults[trace] == "") sttMaxResults[trace] = value($0, "maxResults")
     if (sttMinMs[trace] == "") sttMinMs[trace] = value($0, "minMs")
     if (sttPossibleSilenceMs[trace] == "") sttPossibleSilenceMs[trace] = value($0, "possibleSilenceMs")
     if (sttCompleteSilenceMs[trace] == "") sttCompleteSilenceMs[trace] = value($0, "completeSilenceMs")

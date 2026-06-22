@@ -536,6 +536,11 @@ class JarvisVoiceService : Service(), RecognitionListener {
         } else {
             0
         }
+        val commandMaxResults = if (commandWindowOpen) {
+            SpeechRecognitionIntentFactory.maxResultsFor(commandWindowOpen = true)
+        } else {
+            SpeechRecognitionIntentFactory.maxResultsFor(commandWindowOpen = false)
+        }
 
         try {
             listening = true
@@ -552,9 +557,10 @@ class JarvisVoiceService : Service(), RecognitionListener {
                     "engine=android_stt fallbackAfterLocal=$isAndroidFallbackAfterLocal",
                 ).mark(
                     "listen_start",
-                    "engine=android_stt timeoutMs=${listeningTimeoutMs()} " +
+                        "engine=android_stt timeoutMs=${listeningTimeoutMs()} " +
                         "fallbackAfterLocal=$isAndroidFallbackAfterLocal " +
                         "biasCount=$commandBiasingCount " +
+                        "maxResults=$commandMaxResults " +
                         "minMs=${commandSpeechTiming?.minimumLengthMs ?: 0} " +
                         "possibleSilenceMs=${commandSpeechTiming?.possiblyCompleteSilenceMs ?: 0} " +
                         "completeSilenceMs=${commandSpeechTiming?.completeSilenceMs ?: 0}",
@@ -1963,7 +1969,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
         private const val PARTIAL_COMMAND_FINALIZE_TIMEOUT_MS = 20L
         private const val SERVICE_STOP_DELAY_MS = 200L
         private const val COMMAND_WINDOW_LISTEN_DELAY_MS = 0L
-        private const val MAX_LOGGED_SPEECH_CANDIDATES = 5
+        private const val MAX_LOGGED_SPEECH_CANDIDATES = 8
         private const val MAX_LOGGED_SPEECH_CANDIDATE_CHARS = 80
         private const val MAX_LOGGED_PHOTO_DIAGNOSTIC_CANDIDATE_CHARS = 40
         const val EXTRA_DEBUG_COMMAND_WINDOW_MS = "debug_command_window_ms"
