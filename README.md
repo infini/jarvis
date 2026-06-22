@@ -80,6 +80,12 @@ trace별 요약은 다음 스크립트로 확인합니다.
 scripts/jarvis-latency-report.sh
 ```
 
+촬영 명령 실행 경로만 빠르게 재검증하려면 debug APK 설치 후 다음 스크립트를 사용합니다. 이 스크립트는 `take_photo`를 주입하고 접근성 서비스 수신, 셔터 좌표 fast path, 다음 command listening 재개 여부를 확인합니다.
+
+```bash
+scripts/jarvis-photo-command-audit.sh
+```
+
 기존 측정 로그와 진단 로그를 함께 판독해 실패 단계를 분류하려면 다음 스크립트를 사용합니다.
 
 ```bash

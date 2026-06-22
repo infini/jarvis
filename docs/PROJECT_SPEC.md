@@ -483,6 +483,8 @@ command window는 기본 어시스턴트 호출, boot notification 탭, 앱의 `
 
 live command는 Android 기본 `SpeechRecognizer`가 먼저 듣고 partial/final 결과에서 명령을 파싱한다. Android STT command window는 `LANGUAGE_MODEL_WEB_SEARCH`, minimum input 220ms, possibly-complete silence 120ms, complete silence 240ms를 사용한다. command window를 열면 추가 대기 없이 STT를 시작하고, debug command window도 동일하게 즉시 시작한다. Android STT가 발화 시작이나 partial을 감지한 뒤 실패했거나 사용할 수 없을 때만 local ASR fallback을 사용하며, fallback은 `0.0012` RMS 이상의 160ms active speech, 최소 560ms 청취, 240ms trailing silence가 감지되면 6초 live listen timeout 전에도 final decode를 실행한다. Android STT가 발화 시작/partial 없이 `NO_MATCH` 또는 timeout을 반환하면 실패음/빨간 표시 없이 command window 안에서 조용히 다시 듣고, command window deadline은 연장하지 않는다. local ASR 입력은 원본 RMS가 `0.00008` 이상일 때 목표 RMS `0.04`, 최대 `30x`까지 gain을 적용한다. 실제 사용자 준비음/진동은 Android STT `ready_for_speech` callback에서 낸다. 빠른 partial 명령은 final 결과를 기다리지 않고 즉시 실행하며, cancel callback이 오지 않는 경우에도 20ms 뒤 recognizer를 재생성하고 다음 흐름으로 넘어간다. 명령 처리 후 연속 command STT는 확인음 없이 즉시 시작한다. deadline 이후 Android STT가 speech-active 상태로 결과를 붙잡고 있으면 3.5초 grace 뒤 취소하며, listening timeout은 발화 중인 recognizer를 먼저 취소하지 않는다. `home`, `back`은 현재 앱만 제어하고 command window를 유지한다. `stop_listening`, `stop_service`, `wake_screen`, `sleep_screen`도 partial command path에서 빠르게 실행할 수 있다. `자비스 잠들어`와 `stop_listening`은 command window를 닫고 service를 종료한다. `자비스 완전 종료`, `자비스 서비스 종료`, notification `Jarvis 종료`도 service를 종료한다.
 
+`scripts/jarvis-photo-command-audit.sh`는 debug command window에 `take_photo`를 주입해 접근성 서비스 수신, 셔터 좌표 fast path, command window 재개를 한 번에 검증한다. 이 스크립트는 음성 인식 품질 자체를 증명하지는 않지만, 파서 이후 촬영 실행 경로 지연과 접근성 dispatch 회귀를 빠르게 잡는 기준으로 사용한다.
+
 ## 8.1 Owner Voice Gate
 
 소유자 목소리 인증은 오픈소스 `sherpa-onnx` Android 런타임과 3D-Speaker CAM++ speaker verification 모델을 사용한다.

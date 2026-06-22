@@ -132,6 +132,7 @@ class CommandInterpreterTest {
 
     @Test
     fun latencySensitiveSystemCommandsUseFastPartialPath() {
+        assertTrue(CommandBus.COMMAND_TAKE_PHOTO in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
         assertTrue(CommandBus.COMMAND_WAKE_SCREEN in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
         assertTrue(CommandBus.COMMAND_SLEEP_SCREEN in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
         assertTrue(CommandBus.COMMAND_STOP_LISTENING in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
