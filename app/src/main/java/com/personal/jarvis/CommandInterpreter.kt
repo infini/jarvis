@@ -117,7 +117,8 @@ object CommandInterpreter {
     }
 
     private fun hasWakeWord(normalized: String): Boolean {
-        return WAKE_WORDS.any(normalized::contains)
+        return WAKE_WORDS.any(normalized::contains) ||
+            COMMAND_ASR_EQUIVALENT_WAKE_WORDS.any(normalized::startsWith)
     }
 
     private val FRONT_CAMERA_WORDS = listOf("셀피", "셀카", "전면", "앞카메라", "프론트카메라")
@@ -150,6 +151,13 @@ object CommandInterpreter {
         "잡비스",
         "잡스",
         "jarvis",
+    )
+    private val COMMAND_ASR_EQUIVALENT_WAKE_WORDS = listOf(
+        "자비서",
+        "자비쓰",
+        "자비수",
+        "잡이스",
+        "서비스",
     )
     private val ACTIVATION_ASR_EQUIVALENT_WAKE_WORDS = WAKE_WORDS + listOf("다비스")
 }

@@ -17,7 +17,7 @@ class JarvisCommandExecutor(
         traceStartedAtMs: Long? = null,
     ): Result {
         val now = System.currentTimeMillis()
-        if (lastCommand == command && now - lastCommandAt < COMMAND_COOLDOWN_MS) {
+        if (lastCommand == command && now - lastCommandAt < cooldownMsFor(command)) {
             Log.d(TAG, "Ignored duplicate command: $command")
             return Result(command.keepsCommandWindowOpen())
         }
@@ -63,6 +63,7 @@ class JarvisCommandExecutor(
     companion object {
         private const val TAG = "JarvisCommandExecutor"
         private const val COMMAND_COOLDOWN_MS = 1400L
+        private const val TAKE_PHOTO_COMMAND_COOLDOWN_MS = 500L
         private const val CAMERA_OPEN_DELAY_MS = 1500L
 
         val CAMERA_SESSION_COMMANDS = setOf(
@@ -96,6 +97,14 @@ class JarvisCommandExecutor(
 
         fun shouldStopVoiceService(command: String): Boolean {
             return command in VOICE_SERVICE_STOP_COMMANDS
+        }
+
+        fun cooldownMsFor(command: String): Long {
+            return if (command == CommandBus.COMMAND_TAKE_PHOTO) {
+                TAKE_PHOTO_COMMAND_COOLDOWN_MS
+            } else {
+                COMMAND_COOLDOWN_MS
+            }
         }
 
         fun String.keepsCommandWindowOpen(): Boolean {

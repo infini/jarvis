@@ -20,6 +20,9 @@ class CommandInterpreterTest {
         assertEquals(CommandBus.COMMAND_SWITCH_CAMERA, CommandInterpreter.parse("자비스, 전후면 전환"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍기"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍어"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자 비서, 사진 찍어"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("서비스, 사진 찍어"))
+        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비쓰, 사진 찍어"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍어줘"))
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, CommandInterpreter.parse("자비스, 사진 찍어 주세요"))
@@ -93,6 +96,8 @@ class CommandInterpreterTest {
         assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("자비스 카메라 실행"))
         assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("자비스 깨어나 카메라 실행"))
         assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("카메라 실행"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("서비스 깨어나"))
+        assertFalse(CommandInterpreter.isActivationWakeAsrEquivalent("자비서 깨어나"))
         assertNull(CommandInterpreter.parse("다비스 카메라 실행"))
     }
 
@@ -137,5 +142,13 @@ class CommandInterpreterTest {
         assertTrue(CommandBus.COMMAND_SLEEP_SCREEN in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
         assertTrue(CommandBus.COMMAND_STOP_LISTENING in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
         assertTrue(CommandBus.COMMAND_STOP_SERVICE in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
+    }
+
+    @Test
+    fun photoCommandUsesShorterDuplicateCooldown() {
+        assertTrue(
+            JarvisCommandExecutor.cooldownMsFor(CommandBus.COMMAND_TAKE_PHOTO) <
+                JarvisCommandExecutor.cooldownMsFor(CommandBus.COMMAND_OPEN_CAMERA),
+        )
     }
 }
