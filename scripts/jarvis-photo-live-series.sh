@@ -68,7 +68,7 @@ mkdir -p "$(dirname "$SUMMARY_FILE")"
 mkdir -p "$(dirname "$TSV_FILE")"
 : > "$SUMMARY_FILE"
 : > "$TSV_FILE"
-printf 'trial\tstatus\tfailure_type\tparsed_source\tparsed_candidate_index\tparsed_ms\tspeech_parse_ms\taccess_ms\tspeech_access_ms\tcommand_access_ms\tstt_bias_count\tstt_min_ms\tstt_possible_silence_ms\tstt_complete_silence_ms\tstt_text\tready_for_speech\tspeech_begin\tpartial_results\tfinal_results\tparse_no_command\tlog_file\tdiagnostic_log_file\toutput_file\n' > "$TSV_FILE"
+printf 'trial\tstatus\tfailure_type\tparsed_source\tparsed_candidate_index\tparsed_ms\tspeech_parse_ms\taccess_ms\tspeech_access_ms\tcommand_access_ms\tshutter_ms\tspeech_shutter_ms\tcommand_shutter_ms\taccess_shutter_ms\tshutter_result\tstt_bias_count\tstt_min_ms\tstt_possible_silence_ms\tstt_complete_silence_ms\tstt_text\tready_for_speech\tspeech_begin\tpartial_results\tfinal_results\tparse_no_command\tlog_file\tdiagnostic_log_file\toutput_file\n' > "$TSV_FILE"
 
 echo "photo_live_series request_id=$REQUEST_ID trials=$TRIALS duration_seconds=$DURATION_SECONDS" | tee -a "$SUMMARY_FILE"
 echo "Say '자비스 사진 찍어' once per trial when prompted." | tee -a "$SUMMARY_FILE"
@@ -104,6 +104,11 @@ for trial in $(seq 1 "$TRIALS"); do
   ACCESS_MS="$(extract_field "$RESULT_LINE" access_ms)"
   SPEECH_ACCESS_MS="$(extract_field "$RESULT_LINE" speech_access_ms)"
   COMMAND_ACCESS_MS="$(extract_field "$RESULT_LINE" command_access_ms)"
+  SHUTTER_MS="$(extract_field "$RESULT_LINE" shutter_ms)"
+  SPEECH_SHUTTER_MS="$(extract_field "$RESULT_LINE" speech_shutter_ms)"
+  COMMAND_SHUTTER_MS="$(extract_field "$RESULT_LINE" command_shutter_ms)"
+  ACCESS_SHUTTER_MS="$(extract_field "$RESULT_LINE" access_shutter_ms)"
+  SHUTTER_RESULT="$(extract_field "$RESULT_LINE" shutter_result)"
   STT_BIAS_COUNT="$(extract_field "$RESULT_LINE" stt_bias_count)"
   STT_MIN_MS="$(extract_field "$RESULT_LINE" stt_min_ms)"
   STT_POSSIBLE_SILENCE_MS="$(extract_field "$RESULT_LINE" stt_possible_silence_ms)"
@@ -123,6 +128,11 @@ for trial in $(seq 1 "$TRIALS"); do
   ACCESS_MS="${ACCESS_MS:-0}"
   SPEECH_ACCESS_MS="${SPEECH_ACCESS_MS:-0}"
   COMMAND_ACCESS_MS="${COMMAND_ACCESS_MS:-0}"
+  SHUTTER_MS="${SHUTTER_MS:-0}"
+  SPEECH_SHUTTER_MS="${SPEECH_SHUTTER_MS:-0}"
+  COMMAND_SHUTTER_MS="${COMMAND_SHUTTER_MS:-0}"
+  ACCESS_SHUTTER_MS="${ACCESS_SHUTTER_MS:-0}"
+  SHUTTER_RESULT="${SHUTTER_RESULT:--}"
   STT_BIAS_COUNT="${STT_BIAS_COUNT:--}"
   STT_MIN_MS="${STT_MIN_MS:--}"
   STT_POSSIBLE_SILENCE_MS="${STT_POSSIBLE_SILENCE_MS:--}"
@@ -147,7 +157,7 @@ for trial in $(seq 1 "$TRIALS"); do
       echo "  $FAIL_LINE" | tee -a "$SUMMARY_FILE"
     fi
   fi
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$trial" \
     "$RESULT_STATUS" \
     "$FAILURE_TYPE" \
@@ -158,6 +168,11 @@ for trial in $(seq 1 "$TRIALS"); do
     "$ACCESS_MS" \
     "$SPEECH_ACCESS_MS" \
     "$COMMAND_ACCESS_MS" \
+    "$SHUTTER_MS" \
+    "$SPEECH_SHUTTER_MS" \
+    "$COMMAND_SHUTTER_MS" \
+    "$ACCESS_SHUTTER_MS" \
+    "$SHUTTER_RESULT" \
     "$STT_BIAS_COUNT" \
     "$STT_MIN_MS" \
     "$STT_POSSIBLE_SILENCE_MS" \

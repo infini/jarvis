@@ -16,6 +16,7 @@ MAX_PARSED_MS="${JARVIS_PHOTO_MAX_PARSED_MS:-2500}"
 MAX_SPEECH_PARSE_MS="${JARVIS_PHOTO_MAX_SPEECH_PARSE_MS:-1500}"
 MAX_ACCESS_MS="${JARVIS_PHOTO_MAX_ACCESS_MS:-3000}"
 MAX_COMMAND_ACCESS_MS="${JARVIS_PHOTO_MAX_COMMAND_ACCESS_MS:-800}"
+MAX_COMMAND_SHUTTER_MS="${JARVIS_PHOTO_MAX_COMMAND_SHUTTER_MS:-900}"
 MIN_STT_BIAS_COUNT="${JARVIS_PHOTO_MIN_BIAS_COUNT:-267}"
 
 case "$DURATION_SECONDS" in
@@ -84,7 +85,7 @@ result_line() {
   local stt_possible_silence_ms="${12}"
   local stt_complete_silence_ms="${13}"
   local stt_text="${14}"
-  printf 'result status=%s failure_type=%s parsed_source=%s parsed_candidate_index=%s parsed_ms=%s speech_parse_ms=%s access_ms=%s speech_access_ms=%s command_access_ms=%s stt_bias_count=%s stt_min_ms=%s stt_possible_silence_ms=%s stt_complete_silence_ms=%s stt_text=%s\n' \
+  printf 'result status=%s failure_type=%s parsed_source=%s parsed_candidate_index=%s parsed_ms=%s speech_parse_ms=%s access_ms=%s speech_access_ms=%s command_access_ms=%s shutter_ms=%s speech_shutter_ms=%s command_shutter_ms=%s access_shutter_ms=%s shutter_result=%s stt_bias_count=%s stt_min_ms=%s stt_possible_silence_ms=%s stt_complete_silence_ms=%s stt_text=%s\n' \
     "$status" \
     "$failure_type" \
     "$parsed_source" \
@@ -94,6 +95,11 @@ result_line() {
     "$access_ms" \
     "$speech_access_ms" \
     "$command_access_ms" \
+    "$SHUTTER_MS" \
+    "$SPEECH_SHUTTER_MS" \
+    "$COMMAND_SHUTTER_MS" \
+    "$ACCESS_SHUTTER_MS" \
+    "$SHUTTER_RESULT" \
     "$stt_bias_count" \
     "$stt_min_ms" \
     "$stt_possible_silence_ms" \
@@ -191,6 +197,11 @@ SPEECH_PARSE_MS="$(report_field "$PHOTO_REPORT_LINE" speech_parse)"
 ACCESS_MS="$(report_field "$PHOTO_REPORT_LINE" access)"
 SPEECH_ACCESS_MS="$(report_field "$PHOTO_REPORT_LINE" speech_access)"
 COMMAND_ACCESS_MS="$(report_field "$PHOTO_REPORT_LINE" command_access)"
+SHUTTER_MS="$(report_field "$PHOTO_REPORT_LINE" shutter)"
+SPEECH_SHUTTER_MS="$(report_field "$PHOTO_REPORT_LINE" speech_shutter)"
+COMMAND_SHUTTER_MS="$(report_field "$PHOTO_REPORT_LINE" command_shutter)"
+ACCESS_SHUTTER_MS="$(report_field "$PHOTO_REPORT_LINE" access_shutter)"
+SHUTTER_RESULT="$(report_field "$PHOTO_REPORT_LINE" shutter_result)"
 STT_BIAS_COUNT="$(report_field "$PHOTO_REPORT_LINE" stt_bias_count)"
 STT_MIN_MS="$(report_field "$PHOTO_REPORT_LINE" stt_min_ms)"
 STT_POSSIBLE_SILENCE_MS="$(report_field "$PHOTO_REPORT_LINE" stt_possible_silence_ms)"
@@ -216,6 +227,11 @@ SPEECH_PARSE_MS="${SPEECH_PARSE_MS:-0}"
 ACCESS_MS="${ACCESS_MS:-0}"
 SPEECH_ACCESS_MS="${SPEECH_ACCESS_MS:-0}"
 COMMAND_ACCESS_MS="${COMMAND_ACCESS_MS:-0}"
+SHUTTER_MS="${SHUTTER_MS:-0}"
+SPEECH_SHUTTER_MS="${SPEECH_SHUTTER_MS:-0}"
+COMMAND_SHUTTER_MS="${COMMAND_SHUTTER_MS:-0}"
+ACCESS_SHUTTER_MS="${ACCESS_SHUTTER_MS:-0}"
+SHUTTER_RESULT="${SHUTTER_RESULT:--}"
 STT_BIAS_COUNT="${STT_BIAS_COUNT:--}"
 STT_MIN_MS="${STT_MIN_MS:--}"
 STT_POSSIBLE_SILENCE_MS="${STT_POSSIBLE_SILENCE_MS:--}"
@@ -308,6 +324,12 @@ fi
 if [[ "$COMMAND_ACCESS_MS" -gt "$MAX_COMMAND_ACCESS_MS" ]]; then
   result_line "FAIL" "slow_command_access" "$PARSED_SOURCE" "$PARSED_CANDIDATE_INDEX" "$PARSED_MS" "$SPEECH_PARSE_MS" "$ACCESS_MS" "$SPEECH_ACCESS_MS" "$COMMAND_ACCESS_MS" "$STT_BIAS_COUNT" "$STT_MIN_MS" "$STT_POSSIBLE_SILENCE_MS" "$STT_COMPLETE_SILENCE_MS" "$STT_TEXT_SAMPLE"
   echo "FAIL: take_photo reached accessibility too slowly after parsing: ${COMMAND_ACCESS_MS}ms > ${MAX_COMMAND_ACCESS_MS}ms." >&2
+  exit 1
+fi
+
+if [[ "$COMMAND_SHUTTER_MS" -gt "$MAX_COMMAND_SHUTTER_MS" ]]; then
+  result_line "FAIL" "slow_command_shutter" "$PARSED_SOURCE" "$PARSED_CANDIDATE_INDEX" "$PARSED_MS" "$SPEECH_PARSE_MS" "$ACCESS_MS" "$SPEECH_ACCESS_MS" "$COMMAND_ACCESS_MS" "$STT_BIAS_COUNT" "$STT_MIN_MS" "$STT_POSSIBLE_SILENCE_MS" "$STT_COMPLETE_SILENCE_MS" "$STT_TEXT_SAMPLE"
+  echo "FAIL: take_photo reached shutter too slowly after parsing: ${COMMAND_SHUTTER_MS}ms > ${MAX_COMMAND_SHUTTER_MS}ms." >&2
   exit 1
 fi
 
