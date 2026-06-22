@@ -145,35 +145,46 @@ object SpeechRecognitionIntentFactory {
         PHOTO_JOINED_ENDINGS.map { ending -> "$wakeWord $ending" }
     }
 
-    private val ADDITIONAL_COMMAND_BIASING_STRINGS =
-        GENERATED_PHOTO_BIASING_STRINGS + listOf(
-            "자비스 사진 찌거",
-            "자비스 사진 찌꺼",
-            "자비스 사진 지거",
-            "자비스 사진 지꺼",
-            "자비스 사진 치거",
-            "자비스 사진 치꺼",
-            "자비스 사진 찌겨",
-            "자비스 사진 지겨",
-            "자비스 사진 치겨",
-            "자비스 사진 찍혀",
-            "자비스 사진 지켜",
-            "자비스 사진 치켜",
-            "자비스 찌거",
-            "자비스 찌꺼",
-            "자비스 지거",
-            "자비스 지꺼",
-            "자비스 치거",
-            "자비스 치꺼",
-            "자비서 사진 찍어",
-            "제이비스 사진 찍어",
-            "자비써 사진 찍어",
-            "자비쓰 사진 찍어",
-            "서비스 사진 찍어",
-        )
+    private val PHOTO_ASR_VARIANT_BIAS_WAKE_WORDS = listOf(
+        "자비스",
+        "자비서",
+        "제이비스",
+        "서비스",
+    )
+
+    private val PHOTO_ASR_VARIANT_ENDINGS = listOf(
+        "사진 찌거",
+        "사진 찌꺼",
+        "사진 지거",
+        "사진 지꺼",
+        "사진 치거",
+        "사진 치꺼",
+        "사진 찌겨",
+        "사진 지겨",
+        "사진 치겨",
+        "사진 찍혀",
+        "사진 지켜",
+        "사진 치켜",
+    )
+
+    private val DIRECT_ASR_VARIANT_ENDINGS = listOf(
+        "찌거",
+        "찌꺼",
+        "지거",
+        "지꺼",
+        "치거",
+        "치꺼",
+    )
+
+    private val GENERATED_PHOTO_ASR_VARIANT_BIASING_STRINGS =
+        PHOTO_ASR_VARIANT_BIAS_WAKE_WORDS.flatMap { wakeWord ->
+            PHOTO_ASR_VARIANT_ENDINGS.map { ending -> "$wakeWord $ending" } +
+                DIRECT_ASR_VARIANT_ENDINGS.map { ending -> "$wakeWord $ending" }
+        }
 
     private val COMMAND_BIASING_STRINGS = CommandCatalog.entries
         .flatMap { it.phrases }
-        .plus(ADDITIONAL_COMMAND_BIASING_STRINGS)
+        .plus(GENERATED_PHOTO_BIASING_STRINGS)
+        .plus(GENERATED_PHOTO_ASR_VARIANT_BIASING_STRINGS)
         .distinct()
 }
