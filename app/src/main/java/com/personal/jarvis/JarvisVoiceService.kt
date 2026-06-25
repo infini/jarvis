@@ -1047,6 +1047,9 @@ class JarvisVoiceService : Service(), RecognitionListener {
         }
         when {
             command != null -> {
+                if (result?.endpoint == "voice_sample_match") {
+                    saveCommandRecognitionCapture("local_voice_sample_match", result)
+                }
                 markLatency("command_parsed", "source=local candidateIndex=1 command=$command text=${result.text}")
                 Log.d(
                     TAG,
@@ -1062,6 +1065,7 @@ class JarvisVoiceService : Service(), RecognitionListener {
                 scheduleNextCapture(COMMAND_RETRY_DELAY_MS)
             }
             else -> {
+                saveCommandRecognitionCapture("local_no_command", result)
                 markLatency(
                     "local_no_command",
                     "endpoint=${result?.endpoint.orEmpty()} text=${result?.text.orEmpty()} " +
@@ -1241,6 +1245,32 @@ class JarvisVoiceService : Service(), RecognitionListener {
             )
         }.onFailure {
             Log.w(TAG, "Failed to write activation debug capture: ${it.message}")
+        }
+    }
+
+    private fun saveCommandRecognitionCapture(
+        outcome: String,
+        result: LocalCommandRecognizer.Result?,
+    ) {
+        if (!isDebuggableApp() || result == null || result.samples.isEmpty()) return
+
+        runCatching {
+            CommandRecognitionCaptureStore.save(
+                context = applicationContext,
+                outcome = outcome,
+                result = result,
+            )
+        }.onSuccess { capture ->
+            if (capture != null) {
+                Log.i(
+                    TAG,
+                    "command_debug_capture wav=${capture.wavFile.absolutePath} " +
+                        "metadata=${capture.metadataFile.absolutePath} " +
+                        "outcome=$outcome endpoint=${result.endpoint} text=${result.text}",
+                )
+            }
+        }.onFailure {
+            Log.w(TAG, "Failed to write command debug capture: ${it.message}")
         }
     }
 

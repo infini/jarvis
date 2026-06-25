@@ -206,6 +206,11 @@ object CommandInterpreter {
         }
     }
 
+    fun containsCommandWakeWord(text: String): Boolean {
+        val normalized = normalize(text)
+        return normalized.isNotBlank() && hasWakeWord(normalized)
+    }
+
     private fun normalize(text: String): String {
         return text
             .lowercase(Locale.KOREAN)

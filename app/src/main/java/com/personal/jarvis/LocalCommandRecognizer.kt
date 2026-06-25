@@ -31,6 +31,7 @@ object LocalCommandRecognizer {
     private const val ACTIVATION_BUFFERED_CHECK_INTERVAL_MS = 800L
     private const val ACTIVATION_MAX_SEGMENT_MS = 8000L
     private const val ACTIVATION_ROLLING_AUDIO_MS = 3600L
+    private const val COMMAND_SAMPLE_FALLBACK_AUDIO_MS = 6000L
     private const val LOCAL_ASR_TARGET_RMS = 0.04f
     private const val LOCAL_ASR_GAIN_MIN_RMS = 0.00008f
     private const val LOCAL_ASR_MAX_GAIN = 30f
@@ -64,6 +65,13 @@ object LocalCommandRecognizer {
         val asrGain: Float = 1f,
         val candidateStartMs: Long = 0L,
         val candidateDurationMs: Long = 0L,
+        val samples: FloatArray = FloatArray(0),
+        val sampleMatchCommandId: String? = null,
+        val sampleMatchAccepted: Boolean = false,
+        val sampleMatchReason: String = "",
+        val sampleMatchDistance: Float = Float.POSITIVE_INFINITY,
+        val sampleMatchNextDistance: Float = Float.POSITIVE_INFINITY,
+        val sampleMatchDurationRatio: Float = 0f,
     )
 
     data class ActivationResult(
@@ -166,6 +174,7 @@ object LocalCommandRecognizer {
                 asrGain = maxOf(hotwordResult.asrGain, greedyResult.asrGain),
                 candidateStartMs = templateResult.candidateStartMs,
                 candidateDurationMs = templateResult.candidateDurationMs,
+                samples = samples,
             )
         }
 
@@ -451,6 +460,7 @@ object LocalCommandRecognizer {
         val stream = localRecognizer.createStream()
         val recorder = createRecorder()
         val readSize = (SAMPLE_RATE_HZ * READ_INTERVAL_MS / 1000L).toInt()
+        val fallbackSamples = (SAMPLE_RATE_HZ * COMMAND_SAMPLE_FALLBACK_AUDIO_MS / 1000L).toInt()
         val buffer = ShortArray(readSize)
         var lastText = ""
         var speechSeen = false
@@ -462,6 +472,8 @@ object LocalCommandRecognizer {
         var rmsSum = 0.0
         var rmsFrameCount = 0
         var maxAsrGain = 1f
+        val chunks = ArrayDeque<FloatArray>()
+        var totalSamples = 0
 
         try {
             recorder.startRecording()
@@ -481,6 +493,11 @@ object LocalCommandRecognizer {
                 }
 
                 val samples = FloatArray(read) { index -> buffer[index] / 32768.0f }
+                chunks.addLast(samples)
+                totalSamples += read
+                while (chunks.isNotEmpty() && totalSamples - chunks.first.size >= fallbackSamples) {
+                    totalSamples -= chunks.removeFirst().size
+                }
                 val asrGain = asrGainForRms(rms)
                 maxAsrGain = maxOf(maxAsrGain, asrGain)
                 stream.acceptWaveform(applyAsrGain(samples, asrGain), SAMPLE_RATE_HZ)
@@ -506,6 +523,11 @@ object LocalCommandRecognizer {
                         peakRms = peakRms,
                         meanRms = meanRms(rmsSum, rmsFrameCount),
                         asrGain = maxAsrGain,
+                        samples = flattenLastSamples(
+                            chunks = chunks,
+                            sampleCount = totalSamples,
+                            totalSamples = totalSamples,
+                        ),
                     )
                 }
 
@@ -549,16 +571,55 @@ object LocalCommandRecognizer {
             } else {
                 endpoint
             }
+            val bufferedSamples = if (speechSeen && totalSamples > 0) {
+                flattenLastSamples(
+                    chunks = chunks,
+                    sampleCount = totalSamples,
+                    totalSamples = totalSamples,
+                )
+            } else {
+                FloatArray(0)
+            }
+            val sampleFallbackAllowed = finalText.isBlank() || CommandInterpreter.containsCommandWakeWord(finalText)
+            val sampleMatch = if (finalCommand == null && bufferedSamples.isNotEmpty() && sampleFallbackAllowed) {
+                CommandVoiceSampleMatcher.match(context.applicationContext, bufferedSamples)
+            } else {
+                if (finalCommand == null && bufferedSamples.isNotEmpty() && !sampleFallbackAllowed) {
+                    Log.d(TAG, "Skipping command voice sample fallback because final text has no wake word: '$finalText'")
+                }
+                null
+            }
+            val matchedCommand = finalCommand ?: sampleMatch?.commandId
+            val matchedEndpoint = if (finalCommand == null && sampleMatch?.accepted == true) {
+                "voice_sample_match"
+            } else {
+                finalEndpoint
+            }
+            if (sampleMatch != null) {
+                Log.d(
+                    TAG,
+                    "Command voice sample fallback accepted=${sampleMatch.accepted} " +
+                        "command=${sampleMatch.commandId.orEmpty()} distance=${sampleMatch.distance} " +
+                        "next=${sampleMatch.nextCommandDistance} reason=${sampleMatch.reason}",
+                )
+            }
             return Result(
-                command = finalCommand,
+                command = matchedCommand,
                 text = finalText,
                 elapsedMs = SystemClock.elapsedRealtime() - startedAt,
-                endpoint = finalEndpoint,
+                endpoint = matchedEndpoint,
                 activeSpeechMs = activeSpeechMs,
                 trailingSilenceMs = trailing,
                 peakRms = peakRms,
                 meanRms = meanRms(rmsSum, rmsFrameCount),
                 asrGain = maxAsrGain,
+                samples = bufferedSamples,
+                sampleMatchCommandId = sampleMatch?.commandId,
+                sampleMatchAccepted = sampleMatch?.accepted == true,
+                sampleMatchReason = sampleMatch?.reason.orEmpty(),
+                sampleMatchDistance = sampleMatch?.distance ?: Float.POSITIVE_INFINITY,
+                sampleMatchNextDistance = sampleMatch?.nextCommandDistance ?: Float.POSITIVE_INFINITY,
+                sampleMatchDurationRatio = sampleMatch?.durationRatio ?: 0f,
             )
         } finally {
             runCatching { recorder.stop() }
@@ -605,6 +666,7 @@ object LocalCommandRecognizer {
                 peakRms = audioLevelStats.peakRms,
                 meanRms = audioLevelStats.meanRms,
                 asrGain = asrGain,
+                samples = samples,
             )
         } finally {
             stream.release()

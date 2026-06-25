@@ -6,7 +6,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 
 ## 1. Current Status
 
-작성일: 2026-06-23
+작성일: 2026-06-25
 
 현재 상태:
 
@@ -14,6 +14,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - Android 전원 버튼 길게 누르기 자체는 일반 앱이 직접 가로챌 수 없다. Jarvis는 `JarvisAssistantActivity`를 `ACTION_ASSIST`/`ACTION_VOICE_COMMAND` 처리 Activity로 등록하고, 사용자가 Jarvis를 기본 디지털 어시스턴트 앱으로 선택했을 때 시스템 호출을 받는다. Xiaomi/HyperOS에서 전원 버튼 길게 누르기가 Gemini 대신 기본 어시스턴트를 실행하도록 설정되어 있어야 한다.
 - 하이퍼아일랜드와 카메라 세부 제어는 `JarvisAccessibilityService`가 켜져 있고 실제 접근성 서비스가 현재 앱 프로세스에 연결되어 있어야 동작한다. 2026-06-22 실기기에서 `enabled_accessibility_services=null` 상태가 확인됐고, 이후 `enabled_accessibility_services`에는 남아 있지만 Android accessibility manager의 `Crashed services`에 들어간 상태도 확인됐다. 이 상태에서는 `카메라 실행`처럼 Activity intent만 필요한 명령은 가능해 보여도 `전면`/`후면`/`사진 찍어`/`카메라 종료`와 overlay는 동작하지 않는다. 이제 앱은 접근성 상태를 `꺼짐`, `연결 필요`, `켜짐`으로 구분하고, 꺼짐 또는 연결 필요 상태면 assistant 진입점과 앱 버튼 모두 command window를 시작하지 않고 앱 화면에서 접근성 설정을 안내한다.
 - 2026-06-23 앱 메인 화면에 `명령어 리스트` 항목을 유지하고, 목록에서는 전체 지원 명령의 대표 문구를 보여주며, 명령 선택 시 전체 인식 문구, 실행 동작, 상세 설명, 필요 조건, 명령 후 상태, 빠른 partial 실행 정책을 확인할 수 있게 했다.
+- 2026-06-25 `명령어 리스트` 상세 화면에서 명령어별 음성 샘플을 3초 녹음하고 삭제할 수 있게 했다. 샘플은 앱 private storage의 `command_voice_samples/<commandId>/` 아래 WAV/JSON 쌍으로 저장하고 명령어당 최신 12개만 유지한다. `LocalCommandRecognizer`가 Android STT 실패 후 local ASR 텍스트 명령을 만들지 못한 경우, local ASR 텍스트가 비었거나 호출어를 포함하고, 같은 명령에 샘플이 2개 이상 있으며 거리/길이/후보 차이 기준을 통과하면 `CommandVoiceSampleMatcher`가 `voice_sample_match` endpoint로 보조 명령을 반환한다. debug APK는 local command no-command와 `voice_sample_match` 발화를 cache `command-recognition-attempts/`에 WAV/JSON으로 저장하고, `jarvis-command-replay.sh`가 저장 캡처와 명령어별 샘플을 replay해 matcher distance/reason을 로그로 남긴다. 목록에는 명령어별 저장 샘플 수와 최근 녹음 정보가 표시된다.
 - `JarvisVoiceService`는 호출형 세션으로 동작한다. `JarvisVoiceServiceStarter.openCommandWindow()`가 30초 command window를 열 때만 마이크 foreground service를 시작하고, timeout/`자비스 잠들어`/`자비스 완전 종료` 이후에는 `START_NOT_STICKY` 서비스가 내려간다.
 - 접근성 서비스 watchdog이 `JarvisVoiceService`를 15초마다 되살리던 동작은 제거했다. 접근성 서비스는 이제 카메라/시스템 조작 명령을 실행하는 역할만 맡고, 음성 세션 시작은 기본 어시스턴트 호출, boot notification 탭, 앱의 `Jarvis 명령 듣기` 버튼이 담당한다.
 - 새 명령 UX는 command window 안에서도 호출어를 포함한다. 지원 기준 문구는 `자비스 카메라 실행`, `자비스 카메라 전면`, `자비스 카메라 후면`, `자비스 사진 찍어`, `자비스 카메라 종료`다. 호출어 없는 `찍어`, `후면` 같은 단독 명령은 live command path에서 실행하지 않는다.
@@ -247,7 +248,13 @@ JarvisAccessibilityService
 | `JarvisAssistantActivity.kt` | Android `ACTION_ASSIST`/`ACTION_VOICE_COMMAND` 호출을 받아 30초 command window 시작 |
 | `JarvisAccessibilityStatus.kt` | Jarvis 접근성 서비스 설정값과 현재 프로세스 direct receiver 연결 상태를 함께 확인 |
 | `CommandCatalog.kt` | 지원 명령어 대표 문구, 전체 인식 문구, 상세 동작, 필요 조건, command window 유지 정책을 UI 표시용으로 정리 |
-| `CommandListActivity.kt` | 앱의 `명령어 리스트` 화면. 지원 명령 수와 예시 문구 수를 표시하고, 목록에서 명령별 대표 문구를 보여주며, 명령 선택 시 전체 인식 문구/동작/상세 설명/필요 조건/명령 후 상태/인식 속도 정책/명령 ID 상세 표시 |
+| `CommandListActivity.kt` | 앱의 `명령어 리스트` 화면. 지원 명령 수와 예시 문구 수를 표시하고, 목록에서 명령별 대표 문구와 음성 샘플 수를 보여주며, 명령 선택 시 전체 인식 문구/동작/상세 설명/필요 조건/명령 후 상태/인식 속도 정책/명령 ID 표시 |
+| `CommandVoiceSamplePanel.kt` | `명령어 리스트` 상세 화면의 명령어별 샘플 수, 녹음, 삭제, 권한 요청 후 녹음 재개 UI 처리 |
+| `CommandVoiceSampleStore.kt` | 명령어별 WAV 샘플과 JSON 메타데이터를 앱 private storage의 `command_voice_samples/<commandId>/`에 저장, 조회, 삭제하고 명령어당 최신 12개만 유지 |
+| `CommandVoiceSampleRecorder.kt` | `명령어 리스트` 상세 화면에서 실행되는 3초 명령어 샘플 녹음 workflow, 진행률, 완료/실패 callback |
+| `CommandVoiceSampleMatcher.kt` | local ASR이 텍스트 명령을 파싱하지 못했을 때 저장된 명령어 샘플과 입력 음성을 DTW 기반으로 비교해 보조 명령 후보 선택 |
+| `CommandRecognitionCaptureStore.kt` | debug APK에서 local command 실패/샘플 매칭 발화를 cache `command-recognition-attempts/`에 WAV/JSON으로 저장하고 오래된 캡처 정리 |
+| `AudioTemplateMatcher.kt` | wake phrase와 명령어 샘플 매칭이 공유하는 frame RMS/ZCR feature, speech segment, DTW 계산 유틸리티 |
 | `OwnerVoiceEnrollmentController.kt` | 소유자 목소리 등록 workflow, 진행률, 완료/실패 callback |
 | `JarvisBootReceiver.kt` | 부팅/앱 업데이트 후 Jarvis command window 시작 알림 표시 |
 | `JarvisVoiceService.kt` | command window 동안만 동작하는 포그라운드 음성 인식 서비스 orchestration |
@@ -255,10 +262,11 @@ JarvisAccessibilityService
 | `debug/JarvisDebugStartActivity.kt` | debug APK 전용 ADB service start 진입점 |
 | `debug/JarvisDebugOwnerEnrollActivity.kt` | debug APK 전용 ADB owner voice 재등록 진입점 |
 | `debug/JarvisDebugProfileStatusActivity.kt` | debug APK 전용 owner voice profile 상태 로그 진입점 |
+| `debug/JarvisDebugCommandReplayActivity.kt` / `Service.kt` | 저장된 command recognition capture와 명령어별 샘플을 local ASR 및 `CommandVoiceSampleMatcher`로 replay하는 debug 진단 진입점 |
 | `OwnerVoiceGate.kt` | local activation ASR을 사용할 수 없을 때의 fallback owner voice verification 관리 |
 | `OwnerVoiceEngine.kt` | sherpa-onnx speaker embedding 묶음 생성, 녹음, cosine 검증 |
 | `OwnerVoiceStore.kt` | 소유자 음성 embedding 묶음 저장 |
-| `LocalCommandRecognizer.kt` | sherpa-onnx 한국어 streaming ASR 기반 activation 및 command fallback 인식 |
+| `LocalCommandRecognizer.kt` | sherpa-onnx 한국어 streaming ASR 기반 activation 및 command fallback 인식. command fallback에서 텍스트 파싱 실패 시 저장된 명령어 음성 샘플 matcher를 보조 경로로 사용 |
 | `LocalActivationSession.kt` | idle activation ASR 실행 스레드와 rolling audio 상태 관리 |
 | `LocalCommandSession.kt` | 로컬 명령 ASR 실행 스레드와 상태 관리 |
 | `SpeechRecognitionIntentFactory.kt` | Android `SpeechRecognizer` intent/timing option 생성 |
@@ -638,7 +646,11 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - 접근성 서비스 `꺼짐`/`연결 필요`/`켜짐` 상태가 UI에 표시됨
 - 접근성 서비스가 꺼져 있거나 설정에는 남아 있지만 bind되지 않았으면 `Jarvis 명령 듣기`와 기본 어시스턴트 호출이 command window를 시작하지 않고 접근성 설정을 안내함
 - 배터리 최적화/앱 정보 설정 화면으로 이동할 수 있음
-- 앱 메인 화면의 `명령어 리스트`에서 지원 명령 수, 예시 문구 수, 모든 `CommandBus` 명령의 대표 문구를 확인할 수 있고, 명령 선택 시 전체 인식 문구와 상세 동작을 확인할 수 있음
+- 앱 메인 화면의 `명령어 리스트`에서 지원 명령 수, 예시 문구 수, 모든 `CommandBus` 명령의 대표 문구와 음성 샘플 수를 확인할 수 있고, 명령 선택 시 전체 인식 문구와 상세 동작을 확인할 수 있음
+- `명령어 리스트` 상세 화면에서 마이크 권한이 없으면 샘플 녹음 전 권한 요청이 발생함
+- `명령어 리스트` 상세 화면에서 명령어별 3초 음성 샘플을 한 번씩 녹음하면 WAV/JSON이 앱 private storage에 저장되고 목록의 샘플 수가 갱신됨
+- 같은 명령 샘플을 12개 초과로 녹음하면 오래된 샘플이 자동 삭제되고 최신 12개만 유지됨
+- 명령어별 샘플 삭제를 누르면 해당 명령의 샘플만 삭제되고 다른 명령 샘플은 유지됨
 
 ### Voice Test
 
@@ -656,6 +668,10 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - command window 안에서 `자비스 완전 종료` 또는 `자비스 서비스 종료`가 음성 서비스를 종료한다.
 - 카메라 세션 명령 후 30초 동안 다음 명령이 없으면 overlay가 사라지고 음성 서비스가 종료된다.
 - command window가 닫힌 뒤 예약된 Android STT 시작이 남아 있어도 다시 `ready_for_speech`가 발생하지 않는다.
+- Android STT 실패 후 local ASR이 텍스트 명령을 파싱하지 못하고, local ASR 텍스트가 비었거나 호출어를 포함하며, 같은 명령에 샘플이 2개 이상 저장되어 있고 거리/길이/후보 차이 기준이 통과하면 `local_complete endpoint=voice_sample_match`와 `command_parsed source=local` 경로로 명령이 실행된다.
+- local ASR 텍스트가 비어 있지 않은데 호출어가 없으면 명령어별 음성 샘플 fallback을 시도하지 않는다.
+- 저장 샘플이 0개 또는 1개뿐인 명령은 local ASR 실패 보조 매칭 후보로 실행되지 않는다.
+- debug APK에서 local command no-command 또는 `voice_sample_match`가 발생하면 WAV/JSON 캡처가 `command-recognition-attempts/`에 저장되고, `scripts/jarvis-command-replay.sh`로 local ASR 재디코딩과 샘플 matcher 결과를 확인할 수 있다.
 - `adb logcat -v time -s JarvisLatency`로 한 사이클을 측정했을 때 같은 trace id 안에서 STT 수신, 명령 파싱, 실행, 접근성 수신 이벤트가 확인된다.
 
 ### State Feedback Test
@@ -708,6 +724,8 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - ONNX 모델과 native library를 앱에 포함하므로 APK 크기가 커진다.
 - 접근성 API를 자동화 비서로 쓰는 방식은 개인용 실험에는 적합하지만 Google Play 배포에는 정책 검토가 필요하다.
 - 보안 화면에서는 접근성 노드가 가려지거나 동작이 차단될 수 있다.
+- 명령어별 음성 샘플 매칭은 ASR 실패 보조 휴리스틱이다. 서로 비슷한 명령을 비슷한 톤으로 녹음하면 후보가 애매해져 실행되지 않거나, threshold가 느슨하면 오탐 가능성이 생긴다. 현재는 명령당 최소 2개 샘플, 명령어당 최신 12개 보관, 호출어 없는 텍스트 fallback 차단, 거리 threshold, 길이 비율, 다음 후보와의 margin으로 보수적으로 제한한다. threshold 조정은 `command-recognition-attempts/` replay와 저장 샘플 진단 로그를 먼저 확인한 뒤 진행한다.
+- 명령어별 음성 샘플은 앱 private storage에 저장되므로 앱 삭제 또는 데이터 삭제 시 함께 사라진다. `adb install -r` 재설치는 데이터를 보존하지만, 서명 불일치로 uninstall/install을 수행하면 샘플과 owner profile이 모두 삭제된다.
 
 ## 14. Roadmap
 
@@ -744,6 +762,35 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - 단, 루팅 의존은 기본 방향으로 삼지 않는다.
 
 ## 15. Daily Work Log
+
+### 2026-06-25 명령어별 음성 샘플 녹음
+
+목표는 `명령어 리스트`에서 각 명령마다 사용자의 실제 발화 샘플을 여러 개 녹음해, Android STT와 local ASR 텍스트 파싱이 실패한 경우에도 사용자의 발화 패턴으로 보조 매칭할 수 있게 하는 것이다.
+
+구현 내용:
+
+1. `CommandVoiceSampleStore`를 추가해 명령어별 WAV/JSON 샘플을 앱 private storage에 저장, 조회, 삭제하고 명령어당 최신 12개만 유지한다.
+2. `CommandVoiceSampleRecorder`를 추가해 `명령어 리스트` 상세 화면에서 3초 샘플 녹음, 진행률, 음량/길이 검증, 저장 완료/실패 callback을 처리한다.
+3. `AudioTemplateMatcher`를 추가해 wake phrase와 명령어 샘플 매칭의 frame RMS/ZCR feature, speech segment, DTW 계산 중복을 제거했다.
+4. `CommandVoiceSampleMatcher`를 추가해 저장 샘플을 frame RMS/ZCR feature로 만들고 DTW 거리 기반으로 입력 음성과 비교한다.
+5. `CommandListActivity`에 명령어별 샘플 수 표시를 추가하고, 상세 화면 샘플 녹음/최근 녹음/삭제/권한 재개 UI는 `CommandVoiceSamplePanel`로 분리했다.
+6. `LocalCommandRecognizer.listenForCommand()`가 final local ASR 텍스트를 명령으로 파싱하지 못한 경우에만 저장 샘플 fallback을 시도한다. 오탐 방지를 위해 local ASR 텍스트가 비어 있지 않으면 호출어가 포함되어야 하고, 같은 명령에 샘플이 2개 이상이어야 하며, best distance, 길이 비율, next command distance margin 기준을 통과해야 `voice_sample_match` endpoint로 명령을 반환한다.
+7. `CommandRecognitionCaptureStore`와 debug `JarvisDebugCommandReplayService`를 추가해 local command no-command 및 `voice_sample_match` WAV/JSON을 저장하고, 저장 캡처와 명령어별 샘플을 replay해 local ASR 결과와 matcher distance/reason을 재확인할 수 있게 했다.
+8. `scripts/jarvis-command-replay.sh`와 `scripts/jarvis-command-captures.sh`를 추가해 replay 로그 확인과 캡처 pull을 자동화했다.
+9. `CommandVoiceSampleStoreTest`, `CommandVoiceSampleMatcherTest`, `CommandRecognitionCaptureStoreTest`로 command id 저장 디렉터리 sanitize, 샘플/capture pruning, matcher accept/reject 규칙을 고정했다.
+
+검증:
+
+- `/Users/infini/workspace/thumbi/android/gradlew -p /Users/infini/workspace/jarvis testDebugUnitTest` 성공
+- `/Users/infini/workspace/thumbi/android/gradlew -p /Users/infini/workspace/jarvis assembleDebug` 성공
+- `adb -s 2f43bdae install -r /Users/infini/workspace/jarvis/app/build/outputs/apk/debug/app-debug.apk` 성공
+
+주의:
+
+- 샘플 fallback은 텍스트 ASR을 대체하는 1차 경로가 아니라 실패 보조 경로다.
+- 명령어당 최소 2개 이상이어야 matcher 후보가 되고, UI에서는 3개 이상을 권장한다. 녹음은 한 번에 한 샘플씩 저장하며, 같은 명령에서 12개를 초과하면 오래된 샘플이 자동 정리된다.
+- debug command replay 결과가 충분히 쌓이기 전에는 matcher threshold를 느슨하게 조정하지 않는다.
+- 설치만으로 접근성 권한은 자동 허용되지 않는다. 기존 접근성/기본 어시스턴트 설정은 Android 정책에 따라 사용자가 유지/확인해야 한다.
 
 ### 2026-06-23 `자비스 사진 찍어` 인식률/속도 개선
 

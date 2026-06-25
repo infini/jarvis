@@ -6,6 +6,8 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -14,9 +16,37 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 class CommandListActivity : Activity() {
+    private val handler = Handler(Looper.getMainLooper())
+    private var currentDialog: AlertDialog? = null
+    private val samplePanel by lazy {
+        CommandVoiceSamplePanel(
+            activity = this,
+            handler = handler,
+            onSamplesChanged = {
+                if (!isFinishing && currentDialog?.isShowing != true) {
+                    setContentView(buildContentView())
+                }
+            },
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildContentView())
+    }
+
+    override fun onDestroy() {
+        samplePanel.stop()
+        super.onDestroy()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        samplePanel.onRequestPermissionsResult(requestCode, grantResults)
     }
 
     private fun buildContentView(): ScrollView {
@@ -129,17 +159,37 @@ class CommandListActivity : Activity() {
                     textSize = 14f
                     setTextColor(Color.rgb(76, 86, 96))
                 },
+                matchWrap(bottomMargin = dp(4)),
+            )
+            addView(
+                TextView(context).apply {
+                    val summary = CommandVoiceSampleStore.summary(context, entry.commandId)
+                    text = sampleSummaryText(summary)
+                    textSize = 13f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(if (summary.count > 0) Color.rgb(21, 128, 61) else Color.rgb(132, 142, 153))
+                },
                 matchWrap(bottomMargin = 0),
             )
         }
     }
 
     private fun showCommandDetail(entry: CommandCatalog.Entry) {
-        AlertDialog.Builder(this)
+        currentDialog = AlertDialog.Builder(this)
             .setTitle(entry.title)
-            .setMessage(detailText(entry))
-            .setPositiveButton("확인", null)
-            .show()
+            .setView(samplePanel.build(entry, detailText(entry)))
+            .setPositiveButton("닫기", null)
+            .create()
+            .apply {
+                setOnDismissListener {
+                    samplePanel.onDismiss(entry)
+                    if (currentDialog === this) {
+                        currentDialog = null
+                        if (!isFinishing) setContentView(buildContentView())
+                    }
+                }
+                show()
+            }
     }
 
     private fun detailText(entry: CommandCatalog.Entry): String {
@@ -167,6 +217,14 @@ class CommandListActivity : Activity() {
             appendLine()
             appendLine("명령 ID")
             appendLine(entry.commandId)
+        }
+    }
+
+    private fun sampleSummaryText(summary: CommandVoiceSampleStore.Summary): String {
+        return if (summary.count > 0) {
+            "음성 샘플 ${summary.count}/${CommandVoiceSampleStore.MAX_SAMPLES_PER_COMMAND}개 저장됨"
+        } else {
+            "음성 샘플 미등록"
         }
     }
 
