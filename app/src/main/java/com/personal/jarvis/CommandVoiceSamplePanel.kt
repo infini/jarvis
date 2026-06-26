@@ -147,7 +147,7 @@ class CommandVoiceSamplePanel(
         if (sampleRecorder.isRecording) {
             sampleRecorder.stop()
             refreshSampleViews(entry)
-            sampleStatusView?.text = "녹음을 중지했습니다."
+            sampleStatusView?.text = activity.getString(R.string.sample_recording_stopped)
             return
         }
 
@@ -162,7 +162,7 @@ class CommandVoiceSamplePanel(
 
     private fun startSampleRecording(entry: CommandCatalog.Entry) {
         if (JarvisVoiceService.isRunning) {
-            sampleStatusView?.text = "Jarvis 명령 대기를 잠시 중지하고 녹음을 시작합니다."
+            sampleStatusView?.text = activity.getString(R.string.sample_recording_stop_jarvis)
             activity.stopService(Intent(activity, JarvisVoiceService::class.java))
             handler.postDelayed({ beginSampleRecording(entry) }, SAMPLE_RECORDING_START_DELAY_MS)
             return

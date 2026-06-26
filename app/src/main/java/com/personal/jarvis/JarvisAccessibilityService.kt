@@ -1,6 +1,7 @@
 package com.personal.jarvis
 
 import android.accessibilityservice.AccessibilityService
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -63,6 +64,7 @@ class JarvisAccessibilityService : AccessibilityService(), CommandBus.DirectRece
         super.onDestroy()
     }
 
+    @SuppressLint("UnspecifiedRegisterReceiverFlag")
     private fun registerServiceReceivers() {
         if (receiversRegistered) return
 

@@ -6,6 +6,8 @@
 
 2026-06-23 `자비스 사진 찍어` 인식률/속도 개선 작업의 상세 기록은 [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md)의 `Daily Work Log`에 남겨 둡니다.
 
+2026-06-26 품질 정리로 repo-local Gradle wrapper와 `scripts/jarvis-quality-check.sh`를 추가했습니다. 변경 후 handoff 전에는 해당 스크립트로 단위 테스트, debug 빌드, Android lint, shell script 문법, whitespace check를 함께 확인합니다.
+
 ## 현재 구조
 
 - `JarvisVoiceService`: command window가 열린 동안만 마이크를 사용하는 포그라운드 서비스입니다.
@@ -38,6 +40,7 @@
 - `AccessibilityNodeMatcher`: 접근성 노드 키워드 검색과 스코어링을 담당합니다.
 - `ScreenController`: 짧은 wake lock으로 꺼진 화면을 깨웁니다.
 - `MainActivity`: 마이크/알림 권한 요청, 접근성/기본 어시스턴트 설정 열기, Jarvis 명령 듣기 UI입니다.
+- `scripts/jarvis-quality-check.sh`: 단위 테스트, debug APK 빌드, Android lint, shell script 문법, whitespace check를 한 번에 실행하는 handoff 전 품질 게이트입니다.
 
 ## 지원 명령 초안
 
@@ -235,11 +238,21 @@ USB 디버깅이 연결되어 있으면 `scripts/jarvis-owner-enroll.sh 6`으로
 USB 디버깅이 연결된 개발 기기에서는 다음 명령으로 최신 debug APK를 빌드하고 기존 앱 데이터를 보존한 채 재설치할 수 있습니다.
 
 ```bash
-/path/to/gradlew -p /path/to/jarvis assembleDebug
+./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 접근성 권한은 APK 설치만으로 자동 허용되지 않습니다. Jarvis 앱을 처음 실행한 뒤 `접근성 설정 열기`를 눌러 `Jarvis` 접근성 서비스를 직접 켜야 합니다. Android/HyperOS가 `앱의 액세스가 거부됨`을 표시하면 앱 정보 화면에서 `제한된 설정 허용`을 먼저 켜야 접근성 서비스를 활성화할 수 있습니다.
+
+## 품질 검증
+
+코드 변경 후 기본 품질 게이트는 다음 명령입니다.
+
+```bash
+./scripts/jarvis-quality-check.sh
+```
+
+이 스크립트는 `testDebugUnitTest`, `assembleDebug`, `lintDebug`, unstaged/staged `git diff --check`, `bash -n scripts/*.sh`를 순서대로 실행합니다. 실기기 음성/카메라 동작을 바꾼 경우에는 여기에 더해 관련 live check 스크립트와 실제 발화 테스트를 별도로 수행합니다.
 
 ## 한계
 

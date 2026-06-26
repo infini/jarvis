@@ -2,6 +2,7 @@ package com.personal.jarvis
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.speech.RecognizerIntent
 
 object SpeechRecognitionIntentFactory {
@@ -23,7 +24,7 @@ object SpeechRecognitionIntentFactory {
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
             val biasingStrings = biasingStringsFor(commandWindowOpen)
-            if (biasingStrings.isNotEmpty()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && biasingStrings.isNotEmpty()) {
                 putStringArrayListExtra(
                     RecognizerIntent.EXTRA_BIASING_STRINGS,
                     ArrayList(biasingStrings),

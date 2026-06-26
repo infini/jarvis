@@ -6,7 +6,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 
 ## 1. Current Status
 
-작성일: 2026-06-25
+작성일: 2026-06-26
 
 현재 상태:
 
@@ -15,6 +15,7 @@ Jarvis는 개인 Android 폰을 음성으로 제어하기 위한 개인 비서 �
 - 하이퍼아일랜드와 카메라 세부 제어는 `JarvisAccessibilityService`가 켜져 있고 실제 접근성 서비스가 현재 앱 프로세스에 연결되어 있어야 동작한다. 2026-06-22 실기기에서 `enabled_accessibility_services=null` 상태가 확인됐고, 이후 `enabled_accessibility_services`에는 남아 있지만 Android accessibility manager의 `Crashed services`에 들어간 상태도 확인됐다. 이 상태에서는 `카메라 실행`처럼 Activity intent만 필요한 명령은 가능해 보여도 `전면`/`후면`/`사진 찍어`/`카메라 종료`와 overlay는 동작하지 않는다. 이제 앱은 접근성 상태를 `꺼짐`, `연결 필요`, `켜짐`으로 구분하고, 꺼짐 또는 연결 필요 상태면 assistant 진입점과 앱 버튼 모두 command window를 시작하지 않고 앱 화면에서 접근성 설정을 안내한다.
 - 2026-06-23 앱 메인 화면에 `명령어 리스트` 항목을 유지하고, 목록에서는 전체 지원 명령의 대표 문구를 보여주며, 명령 선택 시 전체 인식 문구, 실행 동작, 상세 설명, 필요 조건, 명령 후 상태, 빠른 partial 실행 정책을 확인할 수 있게 했다.
 - 2026-06-25 `명령어 리스트` 상세 화면에서 명령어별 음성 샘플을 3초 녹음하고 삭제할 수 있게 했다. 샘플은 앱 private storage의 `command_voice_samples/<commandId>/` 아래 WAV/JSON 쌍으로 저장하고 명령어당 최신 12개만 유지한다. `LocalCommandRecognizer`가 Android STT 실패 후 local ASR 텍스트 명령을 만들지 못한 경우, local ASR 텍스트가 비었거나 호출어를 포함하고, 같은 명령에 샘플이 2개 이상 있으며 거리/길이/후보 차이 기준을 통과하면 `CommandVoiceSampleMatcher`가 `voice_sample_match` endpoint로 보조 명령을 반환한다. debug APK는 local command no-command와 `voice_sample_match` 발화를 cache `command-recognition-attempts/`에 WAV/JSON으로 저장하고, `jarvis-command-replay.sh`가 저장 캡처와 명령어별 샘플을 replay해 matcher distance/reason을 로그로 남긴다. 목록에는 명령어별 저장 샘플 수와 최근 녹음 정보가 표시된다.
+- 2026-06-26 품질 정리로 repo-local Gradle wrapper와 `scripts/jarvis-quality-check.sh`를 추가했다. `JarvisAccessibilityService`의 동적 receiver 등록은 API 33 이상에서 `RECEIVER_NOT_EXPORTED`를 쓰고, API 26~32 호환 분기는 lint false positive만 좁게 suppress한다. Android 13 이상에서만 `EXTRA_BIASING_STRINGS`를 전달하고, Android 12+ data extraction/full backup rules는 앱 private 음성 샘플과 owner profile이 백업/전송되지 않도록 명시적으로 제외한다.
 - `JarvisVoiceService`는 호출형 세션으로 동작한다. `JarvisVoiceServiceStarter.openCommandWindow()`가 30초 command window를 열 때만 마이크 foreground service를 시작하고, timeout/`자비스 잠들어`/`자비스 완전 종료` 이후에는 `START_NOT_STICKY` 서비스가 내려간다.
 - 접근성 서비스 watchdog이 `JarvisVoiceService`를 15초마다 되살리던 동작은 제거했다. 접근성 서비스는 이제 카메라/시스템 조작 명령을 실행하는 역할만 맡고, 음성 세션 시작은 기본 어시스턴트 호출, boot notification 탭, 앱의 `Jarvis 명령 듣기` 버튼이 담당한다.
 - 새 명령 UX는 command window 안에서도 호출어를 포함한다. 지원 기준 문구는 `자비스 카메라 실행`, `자비스 카메라 전면`, `자비스 카메라 후면`, `자비스 사진 찍어`, `자비스 카메라 종료`다. 호출어 없는 `찍어`, `후면` 같은 단독 명령은 live command path에서 실행하지 않는다.
@@ -638,6 +639,9 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - Android Studio Gradle Sync 성공
 - Debug APK 빌드 성공
 - Xiaomi 15 Ultra에 설치 성공
+- Repo-local `./gradlew`로 `testDebugUnitTest`, `assembleDebug`, `lintDebug` 실행 성공
+- `scripts/jarvis-quality-check.sh`가 단위 테스트, debug 빌드, Android lint, unstaged/staged `git diff --check`, `bash -n scripts/*.sh`를 모두 통과
+- `lintDebug`는 0 errors 상태여야 한다. 현재 남은 warning은 `targetSdk=35`가 설치 SDK 최신 API 36보다 낮다는 경고와, Xiaomi 15 Ultra용 `arm64-v8a` native-only 빌드가 ChromeOS x86_64를 지원하지 않는다는 경고다.
 
 ### Permission Test
 
@@ -726,6 +730,9 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - 보안 화면에서는 접근성 노드가 가려지거나 동작이 차단될 수 있다.
 - 명령어별 음성 샘플 매칭은 ASR 실패 보조 휴리스틱이다. 서로 비슷한 명령을 비슷한 톤으로 녹음하면 후보가 애매해져 실행되지 않거나, threshold가 느슨하면 오탐 가능성이 생긴다. 현재는 명령당 최소 2개 샘플, 명령어당 최신 12개 보관, 호출어 없는 텍스트 fallback 차단, 거리 threshold, 길이 비율, 다음 후보와의 margin으로 보수적으로 제한한다. threshold 조정은 `command-recognition-attempts/` replay와 저장 샘플 진단 로그를 먼저 확인한 뒤 진행한다.
 - 명령어별 음성 샘플은 앱 private storage에 저장되므로 앱 삭제 또는 데이터 삭제 시 함께 사라진다. `adb install -r` 재설치는 데이터를 보존하지만, 서명 불일치로 uninstall/install을 수행하면 샘플과 owner profile이 모두 삭제된다.
+- 현재 `targetSdk=35`다. 설치 SDK에는 API 36도 있지만 targetSdk를 올리면 foreground service, 접근성, 권한 동작이 바뀔 수 있으므로 별도 compatibility 검증 후 올린다.
+- 현재 native dependency는 `arm64-v8a`만 포함한다. 목표 기기인 Xiaomi 15 Ultra에는 맞지만 ChromeOS/x86_64 지원 APK가 아니다.
+- Gradle 8.14.3 기준 빌드는 통과하지만 Gradle 9.0 비호환 deprecation warning이 남아 있다. Android Gradle Plugin/Kotlin plugin 업그레이드는 별도 작업으로 추적한다.
 
 ## 14. Roadmap
 
@@ -762,6 +769,26 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 - 단, 루팅 의존은 기본 방향으로 삼지 않는다.
 
 ## 15. Daily Work Log
+
+### 2026-06-26 품질 게이트 정리
+
+목표는 handoff 전 기본 품질 게이트를 실제로 통과시키고, 다음 작업자가 같은 명령으로 재현할 수 있게 만드는 것이다.
+
+구현 내용:
+
+1. repo-local Gradle wrapper를 추가해 `/Users/infini/workspace/thumbi/android/gradlew` 외부 경로 의존을 제거했다.
+2. `scripts/jarvis-quality-check.sh`를 추가해 `testDebugUnitTest`, `assembleDebug`, `lintDebug`, unstaged/staged `git diff --check`, `bash -n scripts/*.sh`를 한 번에 실행한다.
+3. `JarvisAccessibilityService`의 동적 broadcast receiver 등록 lint error를 정리했다. API 33 이상은 기존처럼 `Context.RECEIVER_NOT_EXPORTED`를 쓰고, API 26~32 호환 overload는 해당 분기에만 `UnspecifiedRegisterReceiverFlag` suppress를 둔다.
+4. minSdk 26 기준 불필요한 `Build.VERSION_CODES.O` 분기를 제거하고, foreground microphone service type은 API 30 이상에서만 전달하도록 정리했다.
+5. Android STT biasing strings는 `RecognizerIntent.EXTRA_BIASING_STRINGS`가 있는 Android 13 이상에서만 전달한다.
+6. Android 12+ `dataExtractionRules`와 구버전 `fullBackupContent`를 추가해 owner profile과 명령어별 음성 샘플이 백업/기기 전송 대상이 아님을 명시했다.
+7. lint가 지적한 주요 UI 문구를 string resource로 옮기고, Android 11 미만 overlay inset fallback의 internal status bar resource 접근은 해당 메서드에만 좁게 suppress했다.
+
+검증:
+
+- `./scripts/jarvis-quality-check.sh` 성공
+- `lintDebug` 결과 `0 errors, 2 warnings`
+- 남은 warning은 `targetSdk=35`와 `arm64-v8a` only 빌드 정책 경고이며 Known Risks에 기록했다.
 
 ### 2026-06-25 명령어별 음성 샘플 녹음
 
@@ -890,4 +917,5 @@ APK 수동 설치도 가능하지만, 접근성 서비스는 반드시 사용자
 5. 실기기 테스트 결과로 좌표나 키워드를 바꾸면 Accessibility Automation Strategy에 기록한다.
 6. 새 기능이 사용자에게 보이면 README도 갱신한다.
 7. 새 앱 자동화를 추가할 때는 `JarvisAccessibilityService`에 로직을 직접 누적하지 말고 앱별 controller와 필요한 matcher/helper로 분리한다.
-8. 문서 수정이 완료되면 변경 내용을 커밋하고 원격 저장소에 푸시한다.
+8. handoff 전 `./scripts/jarvis-quality-check.sh`를 실행한다.
+9. 문서 수정이 완료되면 변경 내용을 커밋하고 원격 저장소에 푸시한다.

@@ -2,4 +2,11 @@
 <resources>
     <string name="app_name">Jarvis</string>
     <string name="accessibility_service_description">Jarvis가 음성 명령에 따라 카메라 셔터와 기본 화면 조작을 수행합니다.</string>
+    <string name="main_title">JARVIS</string>
+    <string name="main_subtitle">개인 Android 비서 MVP</string>
+    <string name="main_setup_notes">접근성 서비스를 켠 뒤 기본 어시스턴트로 Jarvis를 선택하세요.\n전원 버튼 길게 누르기나 Jarvis 명령 듣기를 누른 뒤 \'자비스 카메라 실행\'처럼 말합니다.</string>
+    <string name="command_list_title">명령어 리스트</string>
+    <string name="command_list_summary">지원 명령 %1$d개, 예시 문구 %2$d개. 항목을 선택하면 실행 동작, 필요 조건, 명령 후 상태를 확인합니다.</string>
+    <string name="sample_recording_stopped">녹음을 중지했습니다.</string>
+    <string name="sample_recording_stop_jarvis">Jarvis 명령 대기를 잠시 중지하고 녹음을 시작합니다.</string>
 </resources>

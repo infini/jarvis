@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 
@@ -27,11 +26,7 @@ class JarvisDebugOwnerEnrollActivity : Activity() {
         val serviceIntent = Intent(this, JarvisDebugOwnerEnrollService::class.java)
             .putExtra(EXTRA_DURATION_MS, durationMs)
             .putExtra(EXTRA_REQUEST_ID, requestId)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
+        startForegroundService(serviceIntent)
         finish()
     }
 

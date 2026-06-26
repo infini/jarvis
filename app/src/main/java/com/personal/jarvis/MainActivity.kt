@@ -68,7 +68,7 @@ class MainActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = "JARVIS"
+            text = getString(R.string.main_title)
             textSize = 32f
             setTextColor(Color.rgb(16, 20, 24))
             gravity = Gravity.CENTER_HORIZONTAL
@@ -76,7 +76,7 @@ class MainActivity : Activity() {
         root.addView(title, matchWrap())
 
         val subtitle = TextView(this).apply {
-            text = "개인 Android 비서 MVP"
+            text = getString(R.string.main_subtitle)
             textSize = 16f
             setTextColor(Color.rgb(68, 76, 86))
             gravity = Gravity.CENTER_HORIZONTAL
@@ -125,7 +125,7 @@ class MainActivity : Activity() {
         root.addView(button("테스트: 화면 끄기") { CommandBus.send(this, CommandBus.COMMAND_SLEEP_SCREEN) })
 
         val notes = TextView(this).apply {
-            text = "접근성 서비스를 켠 뒤 기본 어시스턴트로 Jarvis를 선택하세요.\n전원 버튼 길게 누르기나 Jarvis 명령 듣기를 누른 뒤 '자비스 카메라 실행'처럼 말합니다."
+            text = getString(R.string.main_setup_notes)
             textSize = 14f
             setTextColor(Color.rgb(76, 86, 96))
             setPadding(0, dp(18), 0, 0)

@@ -60,7 +60,7 @@ class CommandListActivity : Activity() {
 
         root.addView(
             TextView(this).apply {
-                text = "명령어 리스트"
+                text = getString(R.string.command_list_title)
                 textSize = 26f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.rgb(16, 20, 24))
@@ -70,7 +70,7 @@ class CommandListActivity : Activity() {
         )
         root.addView(
             TextView(this).apply {
-                text = "지원 명령 ${commandCount}개, 예시 문구 ${phraseCount}개. 항목을 선택하면 실행 동작, 필요 조건, 명령 후 상태를 확인합니다."
+                text = getString(R.string.command_list_summary, commandCount, phraseCount)
                 textSize = 14f
                 setTextColor(Color.rgb(76, 86, 96))
                 gravity = Gravity.CENTER_HORIZONTAL

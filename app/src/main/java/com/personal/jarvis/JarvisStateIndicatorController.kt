@@ -1,6 +1,7 @@
 package com.personal.jarvis
 
 import android.accessibilityservice.AccessibilityService
+import android.annotation.SuppressLint
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
@@ -213,6 +214,7 @@ class JarvisStateIndicatorController(
         return statusBarHeight()
     }
 
+    @SuppressLint("DiscouragedApi", "InternalInsetResource")
     private fun statusBarHeight(): Int {
         val resourceId = service.resources.getIdentifier(
             "status_bar_height",

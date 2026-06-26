@@ -17,8 +17,6 @@ class JarvisNotificationController(
     private var contentText = defaultText
 
     fun createChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-
         val manager = service.getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -33,7 +31,7 @@ class JarvisNotificationController(
 
     fun startForeground() {
         val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             service.startForeground(
                 NOTIFICATION_ID,
                 notification,

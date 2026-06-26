@@ -4,7 +4,6 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
 
 object JarvisVoiceServiceStarter {
@@ -49,11 +48,7 @@ object JarvisVoiceServiceStarter {
         }
 
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                appContext.startForegroundService(intent)
-            } else {
-                appContext.startService(intent)
-            }
+            appContext.startForegroundService(intent)
             Log.d(TAG, "Requested JarvisVoiceService start: source=$source")
             true
         } catch (e: Exception) {

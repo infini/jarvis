@@ -8,7 +8,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.graphics.drawable.Icon
-import android.os.Build
 import android.util.Log
 
 class JarvisBootReceiver : BroadcastReceiver() {
@@ -22,17 +21,15 @@ class JarvisBootReceiver : BroadcastReceiver() {
 
     private fun showStartNotification(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Jarvis startup",
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ).apply {
-                description = "부팅 후 Jarvis 시작 알림"
-                setShowBadge(false)
-            }
-            manager.createNotificationChannel(channel)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Jarvis startup",
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = "부팅 후 Jarvis 시작 알림"
+            setShowBadge(false)
         }
+        manager.createNotificationChannel(channel)
 
         val startIntent = Intent(context, JarvisAssistantActivity::class.java)
         val startPendingIntent = PendingIntent.getActivity(

@@ -101,12 +101,7 @@ class JarvisFeedbackController(
         val deviceVibrator = vibrator ?: return
         if (!deviceVibrator.hasVibrator()) return
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            deviceVibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
-        } else {
-            @Suppress("DEPRECATION")
-            deviceVibrator.vibrate(pattern, -1)
-        }
+        deviceVibrator.vibrate(VibrationEffect.createWaveform(pattern, -1))
     }
 
     companion object {
