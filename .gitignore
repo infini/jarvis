@@ -1,4 +1,5 @@
 .gradle/
+.kotlin/
 .idea/
 build/
 local.properties
@@ -6,3 +7,7 @@ captures/
 *.iml
 
 app/build/
+dist/
+keystore.properties
+*.jks
+*.keystore

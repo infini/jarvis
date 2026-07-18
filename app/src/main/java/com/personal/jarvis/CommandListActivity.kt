@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -18,13 +17,14 @@ import android.widget.TextView
 class CommandListActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private var currentDialog: AlertDialog? = null
+    private var contentScrollView: ScrollView? = null
     private val samplePanel by lazy {
         CommandVoiceSamplePanel(
             activity = this,
             handler = handler,
             onSamplesChanged = {
                 if (!isFinishing && currentDialog?.isShowing != true) {
-                    setContentView(buildContentView())
+                    refreshContent()
                 }
             },
         )
@@ -32,12 +32,30 @@ class CommandListActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(buildContentView())
+        JarvisUi.prepareWindow(this)
+        showContent(preserveScroll = false)
+    }
+
+    override fun onStop() {
+        samplePanel.stop()
+        super.onStop()
     }
 
     override fun onDestroy() {
         samplePanel.stop()
         super.onDestroy()
+    }
+
+    private fun refreshContent() {
+        if (!isFinishing && !isDestroyed) showContent(preserveScroll = true)
+    }
+
+    private fun showContent(preserveScroll: Boolean) {
+        val scrollY = if (preserveScroll) contentScrollView?.scrollY ?: 0 else 0
+        val content = buildContentView()
+        contentScrollView = content
+        setContentView(content)
+        if (preserveScroll && scrollY > 0) content.post { content.scrollTo(0, scrollY) }
     }
 
     override fun onRequestPermissionsResult(
@@ -55,8 +73,20 @@ class CommandListActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(28))
-            setBackgroundColor(Color.rgb(246, 247, 249))
+            setBackgroundColor(JarvisUi.BACKGROUND)
         }
+
+        root.addView(
+            JarvisUi.statusPill(this, "‹  메인", JarvisUi.INK, JarvisUi.SURFACE).apply {
+                minHeight = dp(48)
+                isClickable = true
+                isFocusable = true
+                contentDescription = "메인 화면으로 돌아가기"
+                background = JarvisUi.ripple(JarvisUi.SURFACE, JarvisUi.BORDER, context)
+                setOnClickListener { finish() }
+            },
+            matchWrap(bottomMargin = dp(18)),
+        )
 
         root.addView(
             TextView(this).apply {
@@ -64,7 +94,7 @@ class CommandListActivity : Activity() {
                 textSize = 26f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.rgb(16, 20, 24))
-                gravity = Gravity.CENTER_HORIZONTAL
+                gravity = Gravity.START
             },
             matchWrap(bottomMargin = dp(8)),
         )
@@ -73,7 +103,7 @@ class CommandListActivity : Activity() {
                 text = getString(R.string.command_list_summary, commandCount, phraseCount)
                 textSize = 14f
                 setTextColor(Color.rgb(76, 86, 96))
-                gravity = Gravity.CENTER_HORIZONTAL
+                gravity = Gravity.START
                 setPadding(0, 0, 0, dp(12))
             },
             matchWrap(bottomMargin = dp(12)),
@@ -88,7 +118,10 @@ class CommandListActivity : Activity() {
                 }
             }
 
-        return ScrollView(this).apply { addView(root) }
+        return ScrollView(this).apply {
+            addView(root)
+            JarvisUi.applySystemBarPadding(this)
+        }
     }
 
     private fun categoryHeader(text: String): TextView {
@@ -104,8 +137,10 @@ class CommandListActivity : Activity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             isClickable = true
+            isFocusable = true
+            contentDescription = "${entry.title}. ${entry.phrases.first()}. 상세 보기"
             setPadding(dp(14), dp(12), dp(14), dp(12))
-            background = roundedBackground(Color.WHITE)
+            background = JarvisUi.ripple(JarvisUi.SURFACE, JarvisUi.BORDER, context)
             setOnClickListener { showCommandDetail(entry) }
 
             addView(
@@ -123,10 +158,10 @@ class CommandListActivity : Activity() {
                     )
                     addView(
                         TextView(context).apply {
-                            text = "상세 보기"
+                            text = "보기  ›"
                             textSize = 12f
                             typeface = Typeface.DEFAULT_BOLD
-                            setTextColor(Color.rgb(0, 122, 255))
+                            setTextColor(JarvisUi.PRIMARY)
                         },
                         LinearLayout.LayoutParams(
                             ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -138,7 +173,7 @@ class CommandListActivity : Activity() {
             )
             addView(
                 TextView(context).apply {
-                    text = "대표 명령"
+                    text = "이렇게 말해 보세요"
                     textSize = 12f
                     typeface = Typeface.DEFAULT_BOLD
                     setTextColor(Color.rgb(90, 100, 112))
@@ -149,7 +184,7 @@ class CommandListActivity : Activity() {
                 TextView(context).apply {
                     text = entry.phrases.first()
                     textSize = 14f
-                    setTextColor(Color.rgb(0, 122, 255))
+                    setTextColor(JarvisUi.PRIMARY)
                 },
                 matchWrap(bottomMargin = dp(4)),
             )
@@ -167,7 +202,7 @@ class CommandListActivity : Activity() {
                     text = sampleSummaryText(summary)
                     textSize = 13f
                     typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(if (summary.count > 0) Color.rgb(21, 128, 61) else Color.rgb(132, 142, 153))
+                    setTextColor(if (summary.count > 0) JarvisUi.SUCCESS else JarvisUi.MUTED)
                 },
                 matchWrap(bottomMargin = 0),
             )
@@ -185,7 +220,7 @@ class CommandListActivity : Activity() {
                     samplePanel.onDismiss(entry)
                     if (currentDialog === this) {
                         currentDialog = null
-                        if (!isFinishing) setContentView(buildContentView())
+                        if (!isFinishing) refreshContent()
                     }
                 }
                 show()
@@ -194,44 +229,26 @@ class CommandListActivity : Activity() {
 
     private fun detailText(entry: CommandCatalog.Entry): String {
         return buildString {
-            appendLine("대표 명령")
-            appendLine(entry.phrases.first())
+            appendLine("이렇게 말해 보세요")
+            entry.phrases.forEach { appendLine("• $it") }
             appendLine()
-            appendLine("인식 문구")
-            entry.phrases.forEach { appendLine("- $it") }
-            appendLine()
-            appendLine("실행 동작")
-            appendLine(entry.summary)
-            appendLine()
-            appendLine("상세 설명")
+            appendLine("Jarvis가 하는 일")
             appendLine(entry.detail)
             appendLine()
-            appendLine("필요 조건")
-            entry.requirements.forEach { appendLine("- $it") }
-            appendLine()
-            appendLine("명령 후 상태")
-            appendLine(if (entry.keepsCommandWindowOpen) "처리 후 30초 명령 대기를 다시 엽니다." else "처리 후 현재 명령 대기를 닫습니다.")
-            appendLine()
-            appendLine("인식 속도 정책")
-            appendLine(if (entry.fastPartial) "final STT의 잘린 사진 명령 후보도 복구합니다." else "완성된 final STT 결과에서만 실행합니다.")
-            appendLine()
-            appendLine("명령 ID")
-            appendLine(entry.commandId)
+            appendLine("사용 전 확인")
+            entry.requirements.forEach { appendLine("• $it") }
+            if (entry.keepsCommandWindowOpen) {
+                appendLine()
+                append("실행 뒤에도 30초 동안 다음 명령을 이어서 말할 수 있습니다.")
+            }
         }
     }
 
     private fun sampleSummaryText(summary: CommandVoiceSampleStore.Summary): String {
         return if (summary.count > 0) {
-            "음성 샘플 ${summary.count}/${CommandVoiceSampleStore.MAX_SAMPLES_PER_COMMAND}개 저장됨"
+            "내 발음 ${summary.count}개 등록됨"
         } else {
-            "음성 샘플 미등록"
-        }
-    }
-
-    private fun roundedBackground(color: Int): GradientDrawable {
-        return GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(8).toFloat()
+            "내 발음으로 인식 개선 가능"
         }
     }
 

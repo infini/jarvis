@@ -1,365 +1,403 @@
 package com.personal.jarvis
 
-import android.Manifest
 import android.app.Activity
-import android.app.role.RoleManager
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
-import android.net.Uri
-import android.os.Build
+import android.graphics.Typeface
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.provider.Settings
 import android.view.Gravity
-import android.view.ViewGroup
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 
 class MainActivity : Activity() {
-    private val handler = Handler(Looper.getMainLooper())
-    private lateinit var statusView: TextView
-    private lateinit var ownerVoiceStatusView: TextView
-    private lateinit var enrollProgress: ProgressBar
-    private lateinit var enrollButton: Button
-    private val ownerVoiceEnrollmentController by lazy {
-        OwnerVoiceEnrollmentController(
-            context = applicationContext,
-            postToMain = { action -> runOnUiThread(action) },
-            onProgress = { percent -> enrollProgress.progress = percent },
-            onStatus = { status -> ownerVoiceStatusView.text = status },
-            onCompleted = { embeddingCount ->
-                stopOwnerEnrollment("내 목소리 등록 완료: ${embeddingCount}개 음성 특징 저장됨")
-                updateStatus()
-                restartJarvisAfterOwnerEnrollment(embeddingCount)
-            },
-            onFailed = { message ->
-                showOwnerVoiceError(message)
-                stopOwnerEnrollment()
-            },
-        )
+    private lateinit var heroStatus: TextView
+    private lateinit var heroTitle: TextView
+    private lateinit var heroDescription: TextView
+    private lateinit var primaryButton: Button
+    private lateinit var stopButton: Button
+    private lateinit var setupHeadline: TextView
+    private lateinit var setupDescription: TextView
+    private lateinit var noticeView: TextView
+
+    private var latestVoiceState = JarvisVoiceState.IDLE
+    private var persistentNoticeCode: String? = null
+    private val stateListener = JarvisStateBus.Listener { state ->
+        latestVoiceState = state
+        runOnUiThread(::render)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        JarvisUi.prepareWindow(this)
+        persistentNoticeCode = intent?.getStringExtra(EXTRA_NOTICE_CODE)
         setContentView(buildContentView())
+        render()
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        persistentNoticeCode = intent?.getStringExtra(EXTRA_NOTICE_CODE)
+        render()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        JarvisStateBus.addListener(stateListener)
     }
 
     override fun onResume() {
         super.onResume()
-        updateStatus()
+        latestVoiceState = if (JarvisVoiceService.isRunning) {
+            JarvisStateBus.current()
+        } else {
+            JarvisVoiceState.IDLE
+        }
+        render()
     }
 
-    override fun onDestroy() {
-        stopOwnerEnrollment()
-        super.onDestroy()
+    override fun onStop() {
+        JarvisStateBus.removeListener(stateListener)
+        super.onStop()
     }
 
     private fun buildContentView(): ScrollView {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(28), dp(24), dp(28))
-            setBackgroundColor(Color.rgb(246, 247, 249))
+            setPadding(dp(20), dp(18), dp(20), dp(32))
+            setBackgroundColor(JarvisUi.BACKGROUND)
         }
 
-        val title = TextView(this).apply {
-            text = getString(R.string.main_title)
-            textSize = 32f
-            setTextColor(Color.rgb(16, 20, 24))
-            gravity = Gravity.CENTER_HORIZONTAL
+        root.addView(buildAppHeader(), JarvisUi.matchWrap(this, bottom = 20))
+        root.addView(buildHeroCard(), JarvisUi.matchWrap(this, bottom = 16))
+
+        noticeView = JarvisUi.label(this, "", 14f, JarvisUi.DANGER, bold = true).apply {
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = JarvisUi.rounded(Color.rgb(255, 239, 241), dp(14).toFloat())
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { consumeNoticeAndOpenSetup() }
+            visibility = View.GONE
         }
-        root.addView(title, matchWrap())
+        root.addView(noticeView, JarvisUi.matchWrap(this, bottom = 16))
 
-        val subtitle = TextView(this).apply {
-            text = getString(R.string.main_subtitle)
-            textSize = 16f
-            setTextColor(Color.rgb(68, 76, 86))
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(0, dp(6), 0, dp(24))
+        root.addView(buildSetupCard(), JarvisUi.matchWrap(this, bottom = 22))
+        root.addView(sectionTitle("이렇게 말해 보세요"), JarvisUi.matchWrap(this, bottom = 10))
+        root.addView(buildCommandSuggestions(), JarvisUi.matchWrap(this, bottom = 22))
+        root.addView(sectionTitle("빠른 메뉴"), JarvisUi.matchWrap(this, bottom = 10))
+        root.addView(buildQuickMenu(), JarvisUi.matchWrap(this, bottom = 18))
+
+        if (isDebuggableApp()) {
+            root.addView(
+                JarvisUi.button(this, "개발자 메뉴", primary = false) { openDeveloperMenu() },
+                JarvisUi.matchWrap(this, bottom = 16),
+            )
         }
-        root.addView(subtitle, matchWrap())
 
-        statusView = TextView(this).apply {
-            textSize = 15f
-            setTextColor(Color.rgb(32, 38, 44))
-            setBackgroundColor(Color.WHITE)
-            setPadding(dp(16), dp(16), dp(16), dp(16))
+        root.addView(
+            JarvisUi.label(
+                this,
+                "내 목소리 프로필과 맞춤 음성 샘플은 이 기기의 앱 전용 저장공간에 보관됩니다.",
+                12f,
+                JarvisUi.MUTED,
+            ).apply { gravity = Gravity.CENTER_HORIZONTAL },
+            JarvisUi.matchWrap(this, bottom = 0),
+        )
+
+        return ScrollView(this).apply {
+            isFillViewport = true
+            addView(root)
+            JarvisUi.applySystemBarPadding(this)
         }
-        root.addView(statusView, matchWrap(bottomMargin = dp(18)))
-
-        ownerVoiceStatusView = TextView(this).apply {
-            textSize = 15f
-            setTextColor(Color.rgb(32, 38, 44))
-            setBackgroundColor(Color.WHITE)
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-        }
-        root.addView(ownerVoiceStatusView, matchWrap(bottomMargin = dp(18)))
-
-        enrollProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            progress = 0
-        }
-        root.addView(enrollProgress, matchWrap())
-
-        enrollButton = button("내 목소리 등록 시작") { toggleOwnerEnrollment() }
-        root.addView(enrollButton, matchWrap())
-        root.addView(button("내 목소리 등록 삭제") { clearOwnerVoiceProfile() })
-
-        root.addView(button("마이크/알림 권한 요청") { requestRuntimePermissions() })
-        root.addView(button("접근성 설정 열기") { openAccessibilitySettings() })
-        root.addView(button("기본 어시스턴트 설정") { openAssistantSettings() })
-        root.addView(button("배터리 최적화 설정 열기") { openBatteryOptimizationSettings() })
-        root.addView(button("앱 자동 시작/배터리 설정 열기") { openAppSettings() })
-        root.addView(button("Jarvis 명령 듣기") { startJarvisCommandWindow() })
-        root.addView(button("명령어 리스트") { openCommandList() })
-        root.addView(button("테스트: 카메라 열기") { CameraLauncher.open(this) })
-        root.addView(button("테스트: 셀피 카메라 열기") { CommandBus.send(this, CommandBus.COMMAND_OPEN_FRONT_CAMERA) })
-        root.addView(button("테스트: 후면 카메라 열기") { CommandBus.send(this, CommandBus.COMMAND_OPEN_REAR_CAMERA) })
-        root.addView(button("테스트: 셔터 누르기") { CommandBus.send(this, CommandBus.COMMAND_TAKE_PHOTO) })
-        root.addView(button("테스트: 화면 켜기") { ScreenController.wake(this) })
-        root.addView(button("테스트: 화면 끄기") { CommandBus.send(this, CommandBus.COMMAND_SLEEP_SCREEN) })
-
-        val notes = TextView(this).apply {
-            text = getString(R.string.main_setup_notes)
-            textSize = 14f
-            setTextColor(Color.rgb(76, 86, 96))
-            setPadding(0, dp(18), 0, 0)
-        }
-        root.addView(notes, matchWrap())
-
-        return ScrollView(this).apply { addView(root) }
     }
 
-    private fun requestRuntimePermissions() {
-        val permissions = mutableListOf(Manifest.permission.RECORD_AUDIO)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions += Manifest.permission.POST_NOTIFICATIONS
+    private fun buildAppHeader(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(
+                JarvisUi.label(context, "JARVIS", 18f, JarvisUi.PRIMARY_DARK, bold = true).apply {
+                    letterSpacing = 0.12f
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            addView(
+                JarvisUi.statusPill(context, "VOICE ASSISTANT", JarvisUi.PRIMARY, JarvisUi.SOFT_BLUE),
+                JarvisUi.wrapWrap(context),
+            )
         }
-        requestPermissions(permissions.toTypedArray(), REQUEST_PERMISSIONS)
     }
 
-    private fun toggleOwnerEnrollment() {
-        if (ownerVoiceEnrollmentController.isEnrolling) {
-            stopOwnerEnrollment("목소리 등록을 중지했습니다.")
-            return
+    private fun buildHeroCard(): LinearLayout {
+        return JarvisUi.card(this, padding = 22).apply {
+            background = JarvisUi.rounded(JarvisUi.PRIMARY_DARK, dp(24).toFloat())
+            elevation = dp(5).toFloat()
+
+            heroStatus = JarvisUi.statusPill(
+                context,
+                "준비 상태 확인 중",
+                Color.WHITE,
+                Color.rgb(38, 68, 113),
+            ).apply { accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
+            addView(heroStatus, JarvisUi.wrapWrap(context))
+
+            heroTitle = JarvisUi.label(context, "무엇을 도와드릴까요?", 28f, Color.WHITE, bold = true).apply {
+                setPadding(0, dp(18), 0, 0)
+            }
+            addView(heroTitle, JarvisUi.matchWrap(context, bottom = 8))
+
+            heroDescription = JarvisUi.label(context, "", 15f, Color.rgb(205, 217, 237)).apply {
+                accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+            }
+            addView(heroDescription, JarvisUi.matchWrap(context, bottom = 20))
+
+            primaryButton = JarvisUi.button(context, "Jarvis에게 말하기", primary = true) {
+                handlePrimaryAction()
+            }
+            addView(primaryButton, JarvisUi.matchWrap(context, bottom = 10))
+
+            stopButton = JarvisUi.button(context, "듣기 중지", primary = false) { stopListening() }.apply {
+                visibility = View.GONE
+            }
+            addView(stopButton, JarvisUi.matchWrap(context, bottom = 0))
         }
+    }
 
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestRuntimePermissions()
-            return
+    private fun buildSetupCard(): LinearLayout {
+        return JarvisUi.card(this).apply {
+            isClickable = true
+            isFocusable = true
+            background = JarvisUi.ripple(JarvisUi.SURFACE, JarvisUi.BORDER, context)
+            setOnClickListener { openSetup() }
+
+            addView(
+                LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setupHeadline = JarvisUi.label(context, "시작하기", 17f, JarvisUi.INK, bold = true)
+                    addView(
+                        setupHeadline,
+                        LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+                    )
+                    addView(JarvisUi.label(context, "설정  ›", 14f, JarvisUi.PRIMARY, bold = true))
+                },
+                JarvisUi.matchWrap(context, bottom = 7),
+            )
+            setupDescription = JarvisUi.label(context, "", 14f, JarvisUi.MUTED)
+            addView(setupDescription, JarvisUi.matchWrap(context, bottom = 0))
         }
+    }
 
-        if (JarvisVoiceService.isRunning) {
-            val message = "Jarvis 서비스를 잠시 중지하고 목소리 등록을 시작합니다."
-            ownerVoiceStatusView.text = message
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-            stopService(Intent(this, JarvisVoiceService::class.java))
-            handler.postDelayed({ beginOwnerEnrollment() }, OWNER_ENROLLMENT_START_DELAY_MS)
-            return
+    private fun buildCommandSuggestions(): LinearLayout {
+        return JarvisUi.card(this, padding = 0).apply {
+            addView(suggestionRow("카메라 열기", "자비스 카메라 실행", showDivider = true))
+            addView(suggestionRow("사진 찍기", "자비스 사진 찍어", showDivider = true))
+            addView(suggestionRow("화면 끄기", "자비스 화면 꺼", showDivider = false))
         }
-
-        beginOwnerEnrollment()
     }
 
-    private fun beginOwnerEnrollment() {
-        if (ownerVoiceEnrollmentController.isEnrolling) return
-
-        JarvisVoiceServiceStarter.setOwnerEnrollmentActive(true)
-        enrollButton.text = "내 목소리 등록 중지"
-        ownerVoiceEnrollmentController.start(ENROLLMENT_DURATION_MS)
-    }
-
-    private fun stopOwnerEnrollment(message: String? = null) {
-        ownerVoiceEnrollmentController.stop()
-        JarvisVoiceServiceStarter.setOwnerEnrollmentActive(false)
-        if (::enrollButton.isInitialized) enrollButton.text = "내 목소리 등록 시작"
-        message?.let { ownerVoiceStatusView.text = it }
-    }
-
-    private fun clearOwnerVoiceProfile() {
-        OwnerVoiceStore.clearProfile(this)
-        enrollProgress.progress = 0
-        updateStatus()
-        Toast.makeText(this, "내 목소리 등록 삭제됨", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun showOwnerVoiceError(message: String) {
-        ownerVoiceStatusView.text = message
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-    }
-
-    private fun openAccessibilitySettings() {
-        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
-
-    private fun openAssistantSettings() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val roleManager = getSystemService(RoleManager::class.java)
-            if (roleManager.isRoleAvailable(RoleManager.ROLE_ASSISTANT) &&
-                !roleManager.isRoleHeld(RoleManager.ROLE_ASSISTANT)
-            ) {
-                startActivityForResult(
-                    roleManager.createRequestRoleIntent(RoleManager.ROLE_ASSISTANT),
-                    REQUEST_ASSISTANT_ROLE,
-                )
-                return
+    private fun suggestionRow(title: String, phrase: String, showDivider: Boolean): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(15), dp(18), if (showDivider) 0 else dp(15))
+            addView(JarvisUi.label(context, title, 13f, JarvisUi.MUTED, bold = true))
+            addView(
+                JarvisUi.label(context, "“$phrase”", 16f, JarvisUi.INK, bold = true),
+                JarvisUi.matchWrap(context, top = 3, bottom = if (showDivider) 13 else 0),
+            )
+            if (showDivider) {
+                addView(View(context).apply { setBackgroundColor(JarvisUi.BORDER) }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(1),
+                ))
             }
         }
+    }
 
-        runCatching {
-            startActivity(Intent(Settings.ACTION_VOICE_INPUT_SETTINGS))
-        }.onFailure {
-            startActivity(Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+    private fun buildQuickMenu(): LinearLayout {
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            val commandButton = JarvisUi.button(context, "지원 명령", primary = false) { openCommandList() }
+            val setupButton = JarvisUi.button(context, "설정 관리", primary = false) { openSetup() }
+            addView(commandButton, LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginEnd = dp(6) })
+            addView(setupButton, LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginStart = dp(6) })
         }
     }
 
-    private fun openBatteryOptimizationSettings() {
-        startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+    private fun sectionTitle(text: String): TextView =
+        JarvisUi.label(this, text, 17f, JarvisUi.INK, bold = true)
+
+    private fun render() {
+        if (!::heroStatus.isInitialized) return
+        val setup = JarvisSetupStatus.capture(this)
+        val serviceRunning = JarvisVoiceService.isRunning
+
+        when {
+            !setup.canListen -> renderSetupRequired(setup)
+            serviceRunning -> renderVoiceState(latestVoiceState)
+            else -> renderReady()
+        }
+
+        setupHeadline.text = if (setup.canListen) "Jarvis 설정" else "시작하기"
+        setupDescription.text = setupSummary(setup)
+        stopButton.visibility = if (serviceRunning) View.VISIBLE else View.GONE
+
+        if (noticeResolved(persistentNoticeCode, setup)) clearNotice()
+        val notice = noticeMessage(persistentNoticeCode)
+        noticeView.text = if (notice.isNullOrBlank()) "" else "$notice\n설정 관리에서 확인하기  ›"
+        noticeView.visibility = if (notice.isNullOrBlank()) View.GONE else View.VISIBLE
     }
 
-    private fun openAppSettings() {
-        val intent = Intent(
-            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.parse("package:$packageName"),
+    private fun renderSetupRequired(setup: JarvisSetupStatus) {
+        heroStatus.text = getString(
+            R.string.main_setup_progress,
+            setup.completedRequiredSteps,
+            setup.requiredStepCount,
         )
-        startActivity(intent)
+        heroStatus.setTextColor(Color.rgb(255, 221, 156))
+        heroStatus.background = JarvisUi.rounded(Color.rgb(89, 67, 35), dp(99).toFloat())
+        heroTitle.setText(R.string.main_setup_title)
+        heroDescription.text = when (setup.nextRequiredStep) {
+            JarvisSetupStatus.RequiredStep.MICROPHONE -> "먼저 마이크 사용을 허용해 주세요. 음성 명령을 듣는 데 필요합니다."
+            JarvisSetupStatus.RequiredStep.OWNER_VOICE -> "내 목소리를 등록하면 다른 사람의 명령으로 실행되는 일을 줄일 수 있습니다."
+            JarvisSetupStatus.RequiredStep.ACCESSIBILITY -> "접근성을 연결하면 카메라와 화면 명령을 안전하게 실행할 수 있습니다."
+            null -> "필수 설정을 확인해 주세요."
+        }
+        primaryButton.text = "설정 계속하기"
+    }
+
+    private fun renderReady() {
+        heroStatus.text = "사용 준비 완료"
+        heroStatus.setTextColor(Color.rgb(151, 244, 194))
+        heroStatus.background = JarvisUi.rounded(Color.rgb(25, 78, 74), dp(99).toFloat())
+        heroTitle.text = "무엇을 도와드릴까요?"
+        heroDescription.setText(R.string.main_ready_description)
+        primaryButton.setText(R.string.main_listen_action)
+    }
+
+    private fun renderVoiceState(state: JarvisVoiceState) {
+        val presentation = when (state) {
+            JarvisVoiceState.COMMAND_READY -> VoicePresentation("듣는 중", "지금 말씀해 주세요", "‘자비스 사진 찍어’처럼 말하면 바로 실행합니다.", Color.rgb(151, 244, 194))
+            JarvisVoiceState.COMMAND_PROCESSING -> VoicePresentation("처리 중", "명령을 확인하고 있어요", "잠시만 기다려 주세요.", Color.rgb(255, 214, 137))
+            JarvisVoiceState.COMMAND_HANDLED -> VoicePresentation("완료", "명령 전달을 마쳤어요", "계속 듣는 중이면 다음 명령도 이어서 말할 수 있습니다.", Color.rgb(155, 205, 255))
+            JarvisVoiceState.COMMAND_FAILED -> VoicePresentation("다시 말해 주세요", "명령을 이해하지 못했어요", "‘자비스’와 동작을 또렷하게 이어서 말해 주세요.", Color.rgb(255, 167, 174))
+            JarvisVoiceState.IDLE -> VoicePresentation("준비 중", "Jarvis를 깨우고 있어요", "곧 명령을 들을 준비가 됩니다.", Color.rgb(205, 217, 237))
+        }
+        heroStatus.text = presentation.status
+        heroStatus.setTextColor(presentation.statusColor)
+        heroStatus.background = JarvisUi.rounded(Color.rgb(38, 68, 113), dp(99).toFloat())
+        heroTitle.text = presentation.title
+        heroDescription.text = presentation.description
+        primaryButton.setText(R.string.main_extend_action)
+    }
+
+    private fun setupSummary(setup: JarvisSetupStatus): String {
+        if (!setup.canListen) {
+            return "필수 설정 ${setup.remainingRequiredSteps}개가 남았습니다. 항목별 안내를 따라 완료해 주세요."
+        }
+        val recommendations = buildList {
+            if (!setup.quickLaunchConfigured) add("전원 버튼 빠른 호출")
+            if (!setup.notificationsGranted) add("알림")
+            if (!setup.batteryOptimizationDisabled) add("배터리 예외")
+        }
+        return if (recommendations.isEmpty()) {
+            "필수 설정과 안정적인 실행을 위한 권장 설정이 모두 완료됐습니다."
+        } else {
+            "필수 설정 완료 · 권장: ${recommendations.joinToString(", ")}"
+        }
+    }
+
+    private fun handlePrimaryAction() {
+        clearNotice()
+        val setup = JarvisSetupStatus.capture(this)
+        if (!setup.canListen) {
+            openSetup()
+            return
+        }
+
+        if (!JarvisVoiceServiceStarter.openCommandWindow(this, "main_activity")) {
+            persistentNoticeCode = NOTICE_START_FAILED
+            render()
+            return
+        }
+
+        latestVoiceState = JarvisVoiceState.COMMAND_READY
+        render()
+    }
+
+    private fun stopListening() {
+        stopService(Intent(this, JarvisVoiceService::class.java))
+        latestVoiceState = JarvisVoiceState.IDLE
+        Toast.makeText(this, "Jarvis 듣기를 중지했습니다.", Toast.LENGTH_SHORT).show()
+        render()
+    }
+
+    private fun openSetup() {
+        startActivity(Intent(this, SetupActivity::class.java))
+    }
+
+    private fun consumeNoticeAndOpenSetup() {
+        clearNotice()
+        openSetup()
+    }
+
+    private fun clearNotice() {
+        persistentNoticeCode = null
+        intent?.removeExtra(EXTRA_NOTICE_CODE)
+    }
+
+    private fun noticeMessage(code: String?): String? = when (code) {
+        NOTICE_MICROPHONE_REQUIRED -> "Jarvis를 호출하려면 마이크 권한이 필요합니다."
+        NOTICE_ACCESSIBILITY_REQUIRED -> "카메라와 화면 명령을 사용하려면 접근성 연결이 필요합니다."
+        NOTICE_OWNER_VOICE_REQUIRED -> "Jarvis를 사용하려면 내 목소리를 먼저 등록해 주세요."
+        NOTICE_START_FAILED -> "Jarvis를 시작하지 못했습니다. 권한과 배터리 설정을 확인해 주세요."
+        else -> null
+    }
+
+    private fun noticeResolved(code: String?, setup: JarvisSetupStatus): Boolean = when (code) {
+        NOTICE_MICROPHONE_REQUIRED -> setup.microphoneGranted
+        NOTICE_ACCESSIBILITY_REQUIRED -> setup.accessibilityReady
+        NOTICE_OWNER_VOICE_REQUIRED -> setup.ownerVoiceConfigured
+        else -> false
     }
 
     private fun openCommandList() {
         startActivity(Intent(this, CommandListActivity::class.java))
     }
 
-    private fun startJarvisCommandWindow() {
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestRuntimePermissions()
-            return
-        }
-        val accessibilityStatus = JarvisAccessibilityStatus.current(this)
-        if (!accessibilityStatus.isReadyForAutomation) {
-            val message = accessibilityStatus.guidance
-                ?: "Jarvis 접근성 서비스를 먼저 확인하세요. 하이퍼아일랜드와 카메라 세부 제어에 필요합니다."
-            statusView.text = message
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-            openAccessibilitySettings()
-            updateStatus()
-            return
-        }
-        if (!OwnerVoiceStore.isConfigured(this)) {
-            val message = ownerVoiceStartBlockMessage()
-            ownerVoiceStatusView.text = message
-            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-            if (JarvisVoiceService.isRunning) stopService(Intent(this, JarvisVoiceService::class.java))
-            updateStatus()
-            return
-        }
-
-        val started = JarvisVoiceServiceStarter.openCommandWindow(this, "main_activity")
-        if (!started) {
-            Toast.makeText(this, "Jarvis 명령 대기를 시작하지 못했습니다. 알림/배터리 설정을 확인하세요.", Toast.LENGTH_LONG).show()
-        }
-        updateStatus()
-    }
-
-    private fun restartJarvisAfterOwnerEnrollment(embeddingCount: Int) {
-        if (!OwnerVoiceStore.isConfigured(this)) return
-
-        val message = "내 목소리 등록 완료: ${embeddingCount}개 저장. 전원 버튼 길게 누르기나 Jarvis 명령 듣기로 호출하세요."
-        ownerVoiceStatusView.text = message
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-    }
-
-    private fun ownerVoiceStartBlockMessage(): String {
-        return if (OwnerVoiceStore.hasProfile(this)) {
-            "저장된 소유자 목소리가 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}' activation용 프로필이 아닙니다. 내 목소리 등록을 다시 완료해야 Jarvis가 대기합니다."
-        } else {
-            "소유자 목소리를 먼저 등록하세요."
-        }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray,
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == REQUEST_PERMISSIONS) updateStatus()
-    }
-
-    private fun updateStatus() {
-        if (ownerVoiceEnrollmentController.isEnrolling) return
-
-        val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val notification = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        val accessibilityStatus = JarvisAccessibilityStatus.current(this)
-        val hasOwnerProfile = OwnerVoiceStore.hasProfile(this)
-        val ownerProfileConfigured = OwnerVoiceStore.isConfigured(this)
-        val ownerEmbeddingCount = OwnerVoiceStore.embeddingCount(this)
-        val ownerPhraseId = OwnerVoiceStore.enrollmentPhraseId(this)
-
-        statusView.text = buildString {
-            appendLine("마이크 권한: ${if (mic) "허용됨" else "필요함"}")
-            appendLine("알림 권한: ${if (notification) "허용됨" else "필요함"}")
-            appendLine("접근성 서비스: ${accessibilityStatus.label}")
-            appendLine("Jarvis 명령 대기: ${if (JarvisVoiceService.isRunning) "실행 중" else "꺼짐"}")
-            appendLine()
-            append(
-                accessibilityStatus.guidance
-                    ?: "하이퍼아일랜드와 카메라 세부 제어를 실행할 준비가 되어 있습니다.",
+    private fun openDeveloperMenu() {
+        runCatching {
+            startActivity(
+                Intent().setClassName(packageName, "$packageName.debug.JarvisDeveloperMenuActivity"),
             )
-        }
-
-        ownerVoiceStatusView.text = buildString {
-            appendLine(
-                "소유자 목소리 인증: " + when {
-                    ownerProfileConfigured -> "등록됨"
-                    hasOwnerProfile -> "재등록 필요"
-                    else -> "미등록"
-                },
-            )
-            if (hasOwnerProfile) appendLine("저장된 음성 특징: ${ownerEmbeddingCount}개")
-            if (hasOwnerProfile) {
-                appendLine("등록 문구: ${ownerPhraseId ?: "이전 버전/알 수 없음"}")
-            }
-            if (hasOwnerProfile && !ownerProfileConfigured) {
-                appendLine("등록 문구 '${OwnerVoiceStore.OWNER_ENROLLMENT_PHRASE}'로 다시 등록해야 Jarvis 대기를 시작합니다.")
-                appendLine("내 목소리 등록 시작을 눌러 다시 등록하세요.")
-            }
-            appendLine("음성 엔진: sherpa-onnx / 3D-Speaker CAM++ / Korean streaming ASR")
-            appendLine("기본 threshold: ${OwnerVoiceStore.DEFAULT_ACCEPT_THRESHOLD}")
-            appendLine("소유자 확인 보정: 고신뢰 1회, 근접 2회 또는 soft score")
-            append("등록이 완료되면 Jarvis는 시스템 어시스턴트 호출 또는 앱 버튼으로만 명령을 듣습니다.")
+        }.onFailure {
+            Toast.makeText(this, "개발자 메뉴를 열 수 없습니다.", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun button(text: String, onClick: () -> Unit): Button {
-        return Button(this).apply {
-            this.text = text
-            textSize = 16f
-            setAllCaps(false)
-            setPadding(0, dp(8), 0, dp(8))
-            setOnClickListener { onClick() }
-        }
-    }
+    private fun isDebuggableApp(): Boolean =
+        applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
 
-    private fun matchWrap(bottomMargin: Int = dp(10)): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT,
-        ).apply { setMargins(0, 0, 0, bottomMargin) }
-    }
+    private fun dp(value: Int): Int = JarvisUi.dp(this, value)
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private data class VoicePresentation(
+        val status: String,
+        val title: String,
+        val description: String,
+        val statusColor: Int,
+    )
 
     companion object {
-        private const val REQUEST_PERMISSIONS = 1001
-        private const val REQUEST_ASSISTANT_ROLE = 1002
-        private const val ENROLLMENT_DURATION_MS = 6000L
-        private const val OWNER_ENROLLMENT_START_DELAY_MS = 500L
+        const val EXTRA_NOTICE_CODE = "main_notice_code"
+        const val NOTICE_MICROPHONE_REQUIRED = "microphone_required"
+        const val NOTICE_ACCESSIBILITY_REQUIRED = "accessibility_required"
+        const val NOTICE_OWNER_VOICE_REQUIRED = "owner_voice_required"
+        const val NOTICE_START_FAILED = "start_failed"
     }
 }

@@ -3,6 +3,11 @@
 
     <application>
         <activity
+            android:name=".debug.JarvisDeveloperMenuActivity"
+            android:exported="false"
+            android:label="Jarvis Developer" />
+
+        <activity
             android:name=".debug.JarvisDebugStartActivity"
             android:excludeFromRecents="true"
             android:exported="true"

@@ -1,70 +1,92 @@
 package com.personal.jarvis
 
 import android.content.Context
-import android.os.Handler
+import android.os.SystemClock
 import android.util.Log
+import java.util.concurrent.atomic.AtomicBoolean
 
 class JarvisCommandExecutor(
     private val context: Context,
-    private val handler: Handler,
 ) {
-    private var lastCommand: String? = null
-    private var lastCommandAt = 0L
+    private val executionTracker = CommandExecutionTracker(SystemClock::elapsedRealtime)
 
     fun run(
         command: String,
         traceId: Long? = null,
         traceStartedAtMs: Long? = null,
-    ): Result {
-        val now = System.currentTimeMillis()
-        if (lastCommand == command && now - lastCommandAt < cooldownMsFor(command)) {
+        onCompleted: (Result) -> Unit,
+    ) {
+        val reservation = executionTracker.reserve(command, cooldownMsFor(command))
+        if (reservation == null) {
             Log.d(TAG, "Ignored duplicate command: $command")
-            return Result(command.keepsCommandWindowOpen())
+            onCompleted(
+                Result(
+                    command = command,
+                    keepsCommandWindowOpen = command.keepsCommandWindowOpen(),
+                    succeeded = true,
+                    wasDispatched = false,
+                ),
+            )
+            return
         }
 
-        lastCommand = command
-        lastCommandAt = now
         Log.d(TAG, "Running command: $command")
-
-        when (command) {
-            CommandBus.COMMAND_STOP_LISTENING -> Log.d(TAG, "Closing current Jarvis command window")
-            CommandBus.COMMAND_STOP_SERVICE -> Log.d(TAG, "Stopping Jarvis voice service by command")
-            CommandBus.COMMAND_OPEN_CAMERA -> CameraLauncher.open(context)
-            CommandBus.COMMAND_OPEN_FRONT_CAMERA,
-            CommandBus.COMMAND_OPEN_REAR_CAMERA -> {
-                CommandBus.send(context, command, "voice", traceId, traceStartedAtMs)
-            }
-            CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO -> {
-                CameraLauncher.open(context)
-                handler.postDelayed(
-                    {
-                        CommandBus.send(
-                            context = context,
-                            command = CommandBus.COMMAND_TAKE_PHOTO,
-                            source = "voice",
-                            traceId = traceId,
-                            traceStartedAtMs = traceStartedAtMs,
-                        )
-                    },
-                    CAMERA_OPEN_DELAY_MS,
+        val completionDelivered = AtomicBoolean(false)
+        val complete: (Boolean) -> Unit = { succeeded ->
+            if (completionDelivered.compareAndSet(false, true)) {
+                executionTracker.complete(reservation, succeeded)
+                onCompleted(
+                    Result(
+                        command = command,
+                        keepsCommandWindowOpen = command.keepsCommandWindowOpen(),
+                        succeeded = succeeded,
+                        wasDispatched = true,
+                    ),
                 )
             }
-            CommandBus.COMMAND_WAKE_SCREEN -> ScreenController.wake(context)
-            else -> CommandBus.send(context, command, "voice", traceId, traceStartedAtMs)
         }
 
-        return Result(command.keepsCommandWindowOpen())
+        when (command) {
+            CommandBus.COMMAND_STOP_LISTENING -> {
+                Log.d(TAG, "Closing current Jarvis command window")
+                complete(true)
+            }
+            CommandBus.COMMAND_STOP_SERVICE -> {
+                Log.d(TAG, "Stopping Jarvis voice service by command")
+                complete(true)
+            }
+            CommandBus.COMMAND_OPEN_CAMERA -> complete(CameraLauncher.open(context))
+            CommandBus.COMMAND_OPEN_FRONT_CAMERA,
+            CommandBus.COMMAND_OPEN_REAR_CAMERA -> {
+                CommandBus.send(command, "voice", traceId, traceStartedAtMs, complete)
+            }
+            CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO -> {
+                CommandBus.send(command, "voice", traceId, traceStartedAtMs, complete)
+            }
+            CommandBus.COMMAND_WAKE_SCREEN -> complete(ScreenController.wake(context))
+            else -> CommandBus.send(command, "voice", traceId, traceStartedAtMs, complete)
+        }
     }
 
     data class Result(
+        val command: String,
         val keepsCommandWindowOpen: Boolean,
+        val succeeded: Boolean,
+        val wasDispatched: Boolean,
     )
+
+    fun hasPendingExecution(): Boolean = executionTracker.hasActiveCommand()
+
+    fun isCommandInFlight(command: String): Boolean = executionTracker.isActive(command)
+
+    fun cancelPendingExecution() {
+        executionTracker.cancelActive()
+    }
 
     companion object {
         private const val TAG = "JarvisCommandExecutor"
         private const val COMMAND_COOLDOWN_MS = 1400L
         private const val TAKE_PHOTO_COMMAND_COOLDOWN_MS = 500L
-        private const val CAMERA_OPEN_DELAY_MS = 1500L
 
         val CAMERA_SESSION_COMMANDS = setOf(
             CommandBus.COMMAND_OPEN_CAMERA,

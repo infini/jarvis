@@ -1,17 +1,8 @@
 package com.personal.jarvis
 
-import android.content.Context
-import android.content.Intent
 import android.os.SystemClock
 
 object CommandBus {
-    const val ACTION_COMMAND = "com.personal.jarvis.ACTION_COMMAND"
-    const val EXTRA_COMMAND = "command"
-    const val EXTRA_SOURCE = "source"
-    const val EXTRA_TRACE_ID = "trace_id"
-    const val EXTRA_TRACE_STARTED_AT_MS = "trace_started_at_ms"
-    const val EXTRA_SENT_AT_MS = "sent_elapsed_ms"
-
     const val COMMAND_OPEN_CAMERA = "open_camera"
     const val COMMAND_OPEN_FRONT_CAMERA = "open_front_camera"
     const val COMMAND_OPEN_REAR_CAMERA = "open_rear_camera"
@@ -29,13 +20,16 @@ object CommandBus {
     @Volatile private var directReceiver: DirectReceiver? = null
 
     interface DirectReceiver {
+        fun cancelPendingCommands()
+
         fun onDirectCommand(
             command: String,
             source: String,
             traceId: Long?,
             traceStartedAtMs: Long,
             sentAtMs: Long,
-        ): Boolean
+            onCompleted: (Boolean) -> Unit,
+        )
     }
 
     fun registerDirectReceiver(receiver: DirectReceiver) {
@@ -50,37 +44,36 @@ object CommandBus {
         return directReceiver != null
     }
 
+    fun cancelPending() {
+        directReceiver?.let { receiver -> runCatching(receiver::cancelPendingCommands) }
+    }
+
     fun send(
-        context: Context,
         command: String,
         source: String = "jarvis",
         traceId: Long? = null,
         traceStartedAtMs: Long? = null,
-    ) {
+        onCompleted: (Boolean) -> Unit = {},
+    ): Boolean {
         val sentAtMs = SystemClock.elapsedRealtime()
-        if (
-            directReceiver?.onDirectCommand(
+        val receiver = directReceiver
+        if (receiver == null) {
+            runCatching { onCompleted(false) }
+            return false
+        }
+        return runCatching {
+            receiver.onDirectCommand(
                 command = command,
                 source = source,
                 traceId = traceId,
                 traceStartedAtMs = traceStartedAtMs ?: 0L,
                 sentAtMs = sentAtMs,
-            ) == true
-        ) {
-            return
+                onCompleted = onCompleted,
+            )
+            true
+        }.getOrElse {
+            runCatching { onCompleted(false) }
+            false
         }
-
-        val intent = Intent(ACTION_COMMAND)
-            .setPackage(context.packageName)
-            .putExtra(EXTRA_COMMAND, command)
-            .putExtra(EXTRA_SOURCE, source)
-            .putExtra(EXTRA_SENT_AT_MS, sentAtMs)
-        if (traceId != null) {
-            intent.putExtra(EXTRA_TRACE_ID, traceId)
-        }
-        if (traceStartedAtMs != null) {
-            intent.putExtra(EXTRA_TRACE_STARTED_AT_MS, traceStartedAtMs)
-        }
-        context.sendBroadcast(intent)
     }
 }

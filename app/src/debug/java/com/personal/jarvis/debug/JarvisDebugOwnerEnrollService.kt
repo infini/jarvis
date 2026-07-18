@@ -13,9 +13,7 @@ import com.personal.jarvis.CommandInterpreter
 import com.personal.jarvis.LocalCommandRecognizer
 import com.personal.jarvis.OwnerVoiceEngine
 import com.personal.jarvis.OwnerVoiceStore
-import com.personal.jarvis.PcmWavFile
 import com.personal.jarvis.WakePhraseTemplateMatcher
-import java.io.File
 
 class JarvisDebugOwnerEnrollService : Service() {
     @Volatile private var enrolling = false
@@ -60,9 +58,7 @@ class JarvisDebugOwnerEnrollService : Service() {
                     durationMs = durationMs,
                     shouldContinue = { enrolling },
                 )
-                val debugWav = writeDebugWav(samples)
                 Log.i(TAG, "request_id=$requestId status=embedding samples=${samples.size}")
-                Log.i(TAG, "request_id=$requestId status=debug_wav path=${debugWav.absolutePath}")
                 val activationCheck = LocalCommandRecognizer.recognizeBufferedActivation(
                     context = this,
                     samples = samples,
@@ -96,6 +92,8 @@ class JarvisDebugOwnerEnrollService : Service() {
                     return@Thread
                 }
 
+                val debugWav = WakePhraseTemplateMatcher.saveEnrollmentTemplate(this, samples)
+                Log.i(TAG, "request_id=$requestId status=debug_wav path=${debugWav.absolutePath}")
                 OwnerVoiceStore.saveEmbeddings(this, embeddings)
                 completedEmbeddingCount = embeddings.size
             } catch (error: Exception) {
@@ -132,18 +130,10 @@ class JarvisDebugOwnerEnrollService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun writeDebugWav(samples: FloatArray): File {
-        val file = File(cacheDir, "jarvis-owner-enroll-last.wav")
-        PcmWavFile.writeMono16(file, samples, SAMPLE_RATE_HZ)
-        WakePhraseTemplateMatcher.invalidateCache()
-        return file
-    }
-
     companion object {
         private const val TAG = "JarvisDebugEnroll"
         private const val DEFAULT_DURATION_MS = 6_000L
         private const val MIN_DURATION_MS = 3_000L
         private const val MAX_DURATION_MS = 12_000L
-        private const val SAMPLE_RATE_HZ = 16_000
     }
 }

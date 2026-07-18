@@ -1,21 +1,30 @@
 package com.personal.jarvis
 
-import android.content.Context
-import android.content.Intent
+import java.util.concurrent.CopyOnWriteArraySet
 
 object JarvisStateBus {
-    const val ACTION_STATE = "com.personal.jarvis.ACTION_STATE"
-    const val EXTRA_STATE = "state"
-
-    fun send(context: Context, state: JarvisVoiceState) {
-        val intent = Intent(ACTION_STATE)
-            .setPackage(context.packageName)
-            .putExtra(EXTRA_STATE, state.name)
-        context.sendBroadcast(intent)
+    fun interface Listener {
+        fun onStateChanged(state: JarvisVoiceState)
     }
 
-    fun stateFrom(intent: Intent?): JarvisVoiceState? {
-        val stateName = intent?.getStringExtra(EXTRA_STATE) ?: return null
-        return runCatching { JarvisVoiceState.valueOf(stateName) }.getOrNull()
+    private val listeners = CopyOnWriteArraySet<Listener>()
+    @Volatile private var latestState = JarvisVoiceState.IDLE
+
+    fun send(state: JarvisVoiceState) {
+        latestState = state
+        listeners.forEach { listener ->
+            runCatching { listener.onStateChanged(state) }
+        }
     }
+
+    fun addListener(listener: Listener, emitCurrent: Boolean = true) {
+        listeners += listener
+        if (emitCurrent) listener.onStateChanged(latestState)
+    }
+
+    fun removeListener(listener: Listener) {
+        listeners -= listener
+    }
+
+    fun current(): JarvisVoiceState = latestState
 }

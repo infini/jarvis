@@ -89,7 +89,7 @@ class JarvisFeedbackController(
         if (!force && currentState == state) return
 
         currentState = state
-        JarvisStateBus.send(context, state)
+        JarvisStateBus.send(state)
         feedback()
     }
 

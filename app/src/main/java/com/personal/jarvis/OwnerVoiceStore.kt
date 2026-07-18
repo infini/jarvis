@@ -63,15 +63,16 @@ object OwnerVoiceStore {
             enrollmentPhraseId(context) == OWNER_ENROLLMENT_PHRASE_ID
     }
 
-    fun clearProfile(context: Context) {
-        prefs(context)
+    fun clearProfile(context: Context): Boolean {
+        if (!WakePhraseTemplateMatcher.clearEnrollmentTemplate(context)) return false
+        return prefs(context)
             .edit()
                 .remove(KEY_EMBEDDINGS)
                 .remove(KEY_EMBEDDING)
                 .remove(KEY_ENROLLMENT_PHRASE_ID)
                 .remove(KEY_ACCESS_KEY_LEGACY)
                 .remove(KEY_PROFILE_LEGACY)
-            .apply()
+            .commit()
     }
 
     private fun encodeEmbedding(embedding: FloatArray): String {

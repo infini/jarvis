@@ -41,10 +41,15 @@
             android:exported="false" />
 
         <activity
+            android:name=".SetupActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".JarvisAssistantActivity"
             android:excludeFromRecents="true"
             android:exported="true"
             android:noHistory="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION"
             android:theme="@style/AppTheme.NoDisplay">
             <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />

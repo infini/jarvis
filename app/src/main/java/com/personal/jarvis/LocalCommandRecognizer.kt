@@ -151,7 +151,6 @@ object LocalCommandRecognizer {
             samples = samples,
             endpoint = endpoint,
             parseCommand = true,
-            logLabel = "Buffered local command",
         )
     }
 
@@ -170,7 +169,6 @@ object LocalCommandRecognizer {
             samples = samples,
             endpoint = "${endpoint}_hotword",
             parseCommand = false,
-            logLabel = "Buffered activation hotword",
         )
         if (CommandInterpreter.isActivationWakeAsrEquivalent(hotwordResult.text)) return hotwordResult
 
@@ -179,7 +177,6 @@ object LocalCommandRecognizer {
             samples = samples,
             endpoint = "${endpoint}_greedy_after_hotword",
             parseCommand = false,
-            logLabel = "Buffered activation greedy fallback",
         )
         val templateResult = WakePhraseTemplateMatcher.match(applicationContext, samples)
         if (isStrictAcousticWakeTemplate(templateResult)) {
@@ -356,7 +353,6 @@ object LocalCommandRecognizer {
             }
             val finalText = localRecognizer.getResult(stream).text.trim()
             if (finalText.isNotBlank() && finalText != lastText) {
-                Log.d(TAG, "Local activation final text='$finalText'")
                 onText(finalText)
             }
             val endpointForResult = when {
@@ -406,7 +402,6 @@ object LocalCommandRecognizer {
                 val text = localRecognizer.getResult(stream).text.trim()
                 if (text.isNotBlank() && text != lastText) {
                     lastText = text
-                    Log.d(TAG, "Local activation text='$text'")
                     onText(text)
                 }
                 if (CommandInterpreter.isActivationWakeAsrEquivalent(text)) {
@@ -527,29 +522,9 @@ object LocalCommandRecognizer {
                 }
 
                 val text = localRecognizer.getResult(stream).text.trim()
-                val command = commandFromText(text)
                 if (text.isNotBlank() && text != lastText) {
                     lastText = text
-                    Log.d(TAG, "Local command text='$text' command=$command")
                     onText(text)
-                }
-                if (command != null) {
-                    return Result(
-                        command = command,
-                        text = text,
-                        elapsedMs = SystemClock.elapsedRealtime() - startedAt,
-                        endpoint = "partial_command",
-                        activeSpeechMs = activeSpeechMs,
-                        trailingSilenceMs = trailingSilenceMs(lastSpeechAtMs),
-                        peakRms = peakRms,
-                        meanRms = meanRms(rmsSum, rmsFrameCount),
-                        asrGain = maxAsrGain,
-                        samples = flattenLastSamples(
-                            chunks = chunks,
-                            sampleCount = totalSamples,
-                            totalSamples = totalSamples,
-                        ),
-                    )
                 }
 
                 val elapsedMs = now - startedAt
@@ -579,7 +554,6 @@ object LocalCommandRecognizer {
             val finalText = localRecognizer.getResult(stream).text.trim()
             val finalCommand = commandFromText(finalText)
             if (finalText.isNotBlank() && finalText != lastText) {
-                Log.d(TAG, "Local command final text='$finalText' command=$finalCommand")
                 onText(finalText)
             }
             val trailing = if (finalTrailingSilenceMs == 0L) {
@@ -601,12 +575,12 @@ object LocalCommandRecognizer {
             } else {
                 FloatArray(0)
             }
-            val sampleFallbackAllowed = finalText.isBlank() || CommandInterpreter.containsCommandWakeWord(finalText)
+            val sampleFallbackAllowed = isVoiceSampleFallbackAllowed(finalText)
             val sampleMatch = if (finalCommand == null && bufferedSamples.isNotEmpty() && sampleFallbackAllowed) {
                 CommandVoiceSampleMatcher.match(context.applicationContext, bufferedSamples)
             } else {
                 if (finalCommand == null && bufferedSamples.isNotEmpty() && !sampleFallbackAllowed) {
-                    Log.d(TAG, "Skipping command voice sample fallback because final text has no wake word: '$finalText'")
+                    Log.d(TAG, "Skipping command voice sample fallback because the wake word was not detected")
                 }
                 null
             }
@@ -654,12 +628,17 @@ object LocalCommandRecognizer {
         return CommandInterpreter.parse(text = text, requireWakeWord = true)
     }
 
+    internal fun isVoiceSampleFallbackAllowed(text: String): Boolean {
+        if (text.isBlank()) return true
+        return CommandInterpreter.containsCommandWakeWord(text) &&
+            !CommandInterpreter.isCommandNegated(text)
+    }
+
     private fun decodeBufferedSamples(
         recognizer: OnlineRecognizer,
         samples: FloatArray,
         endpoint: String,
         parseCommand: Boolean,
-        logLabel: String,
     ): Result {
         val startedAt = SystemClock.elapsedRealtime()
         val stream = recognizer.createStream()
@@ -677,7 +656,6 @@ object LocalCommandRecognizer {
 
             val text = recognizer.getResult(stream).text.trim()
             val command = if (parseCommand) commandFromText(text) else null
-            Log.d(TAG, "$logLabel text='$text' command=$command endpoint=$endpoint")
             Result(
                 command = command,
                 text = text,

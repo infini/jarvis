@@ -10,6 +10,7 @@ import android.graphics.Typeface
 import android.os.Handler
 import android.text.format.DateFormat
 import android.view.ViewGroup
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -29,12 +30,18 @@ class CommandVoiceSamplePanel(
     private var sampleProgress: ProgressBar? = null
     private var sampleRecordButton: Button? = null
     private var sampleDeleteButton: Button? = null
+    private var pendingSampleStart: Runnable? = null
     private val sampleRecorder by lazy {
         CommandVoiceSampleRecorder(
             context = activity.applicationContext,
             postToMain = { action -> activity.runOnUiThread(action) },
-            onProgress = { percent -> sampleProgress?.progress = percent },
-            onStatus = { status -> sampleStatusView?.text = status },
+            onProgress = { percent ->
+                val displayed = if (percent >= 100) 100 else (percent / 20) * 20
+                if (sampleProgress?.progress != displayed) sampleProgress?.progress = displayed
+            },
+            onStatus = { status ->
+                if (shouldDisplayProgressStatus(status)) sampleStatusView?.text = status
+            },
             onCompleted = { info ->
                 activeEntry?.let(::refreshSampleViews)
                 onSamplesChanged()
@@ -46,7 +53,8 @@ class CommandVoiceSamplePanel(
             },
             onFailed = { message ->
                 sampleStatusView?.text = message
-                sampleRecordButton?.text = "음성 샘플 녹음"
+                sampleRecordButton?.text = "내 발음 녹음하기"
+                sampleProgress?.visibility = View.GONE
                 Toast.makeText(activity, message, Toast.LENGTH_LONG).show()
             },
         )
@@ -68,7 +76,7 @@ class CommandVoiceSamplePanel(
             matchWrap(bottomMargin = dp(14)),
         )
 
-        root.addView(sectionLabel("음성 샘플"), matchWrap(bottomMargin = dp(6)))
+        root.addView(sectionLabel("내 발음으로 인식 개선"), matchWrap(bottomMargin = dp(6)))
         sampleCountView = TextView(activity).apply {
             textSize = 14f
             setTextColor(Color.rgb(32, 38, 44))
@@ -86,18 +94,19 @@ class CommandVoiceSamplePanel(
         sampleProgress = ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
             progress = 0
+            visibility = View.GONE
         }
         root.addView(sampleProgress, matchWrap(bottomMargin = dp(8)))
 
         sampleRecordButton = Button(activity).apply {
-            text = "음성 샘플 녹음"
+            text = "내 발음 녹음하기"
             setAllCaps(false)
             setOnClickListener { toggleSampleRecording(entry) }
         }
         root.addView(sampleRecordButton, matchWrap(bottomMargin = dp(8)))
 
         sampleDeleteButton = Button(activity).apply {
-            text = "이 명령어 샘플 삭제"
+            text = "이 명령의 녹음 삭제"
             setAllCaps(false)
             setOnClickListener { confirmDeleteSamples(entry) }
         }
@@ -108,6 +117,7 @@ class CommandVoiceSamplePanel(
     }
 
     fun onDismiss(entry: CommandCatalog.Entry) {
+        cancelPendingSampleStart()
         if (sampleRecorder.recordingCommandId == entry.commandId) {
             sampleRecorder.stop()
         }
@@ -140,7 +150,11 @@ class CommandVoiceSamplePanel(
     }
 
     fun stop() {
+        val wasRecording = sampleRecorder.isRecording || pendingSampleStart != null
+        cancelPendingSampleStart()
         sampleRecorder.stop()
+        activeEntry?.let(::refreshSampleViews)
+        if (wasRecording) sampleStatusView?.text = "화면을 벗어나 녹음을 중지했습니다."
     }
 
     private fun toggleSampleRecording(entry: CommandCatalog.Entry) {
@@ -164,7 +178,13 @@ class CommandVoiceSamplePanel(
         if (JarvisVoiceService.isRunning) {
             sampleStatusView?.text = activity.getString(R.string.sample_recording_stop_jarvis)
             activity.stopService(Intent(activity, JarvisVoiceService::class.java))
-            handler.postDelayed({ beginSampleRecording(entry) }, SAMPLE_RECORDING_START_DELAY_MS)
+            cancelPendingSampleStart()
+            pendingSampleStart = Runnable {
+                pendingSampleStart = null
+                if (activeEntry?.commandId == entry.commandId && !activity.isFinishing && !activity.isDestroyed) {
+                    beginSampleRecording(entry)
+                }
+            }.also { handler.postDelayed(it, SAMPLE_RECORDING_START_DELAY_MS) }
             return
         }
 
@@ -176,6 +196,7 @@ class CommandVoiceSamplePanel(
 
         sampleRecordButton?.text = "녹음 중지"
         sampleProgress?.progress = 0
+        sampleProgress?.visibility = View.VISIBLE
         sampleRecorder.start(entry, SAMPLE_RECORDING_DURATION_MS)
     }
 
@@ -215,17 +236,22 @@ class CommandVoiceSamplePanel(
         sampleStatusView?.text = if (sampleRecorder.recordingCommandId == entry.commandId) {
             "녹음 중입니다."
         } else {
-            "저장된 샘플은 로컬 ASR이 명령을 못 찾았을 때 보조 매칭 후보로 사용됩니다."
+            "평소 발음으로 여러 번 녹음하면 기본 음성 인식이 놓친 명령을 보완할 수 있습니다."
         }
         sampleProgress?.progress = if (sampleRecorder.recordingCommandId == entry.commandId) {
             sampleProgress?.progress ?: 0
         } else {
             0
         }
+        sampleProgress?.visibility = if (sampleRecorder.recordingCommandId == entry.commandId) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
         sampleRecordButton?.text = if (sampleRecorder.recordingCommandId == entry.commandId) {
             "녹음 중지"
         } else {
-            "음성 샘플 녹음"
+            "내 발음 녹음하기"
         }
         sampleDeleteButton?.isEnabled = summary.count > 0 && !sampleRecorder.isRecording
     }
@@ -251,6 +277,16 @@ class CommandVoiceSamplePanel(
         return DateFormat.format("yyyy-MM-dd HH:mm", timestampMs).toString()
     }
 
+    private fun cancelPendingSampleStart() {
+        pendingSampleStart?.let(handler::removeCallbacks)
+        pendingSampleStart = null
+    }
+
+    private fun shouldDisplayProgressStatus(status: String): Boolean {
+        val percent = PROGRESS_PERCENT.find(status)?.groupValues?.get(1)?.toIntOrNull() ?: return true
+        return percent >= 100 || percent % 20 == 0
+    }
+
     private fun matchWrap(
         topMargin: Int = 0,
         bottomMargin: Int = dp(10),
@@ -267,5 +303,6 @@ class CommandVoiceSamplePanel(
         private const val REQUEST_RECORD_AUDIO = 2101
         private const val SAMPLE_RECORDING_DURATION_MS = 3000L
         private const val SAMPLE_RECORDING_START_DELAY_MS = 400L
+        private val PROGRESS_PERCENT = Regex("(\\d+)%")
     }
 }

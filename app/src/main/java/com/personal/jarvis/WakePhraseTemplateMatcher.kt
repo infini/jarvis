@@ -3,6 +3,9 @@ package com.personal.jarvis
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 object WakePhraseTemplateMatcher {
     private const val TAG = "JarvisWakeTemplate"
@@ -64,6 +67,46 @@ object WakePhraseTemplateMatcher {
 
     fun invalidateCache() {
         cachedTemplates = null
+    }
+
+    internal fun saveEnrollmentTemplate(context: Context, samples: FloatArray): File {
+        val target = File(context.cacheDir, ENROLLMENT_WAV_NAME)
+        val temporary = File(context.cacheDir, "$ENROLLMENT_WAV_NAME.tmp")
+        temporary.delete()
+        return try {
+            PcmWavFile.writeMono16(temporary, samples, SAMPLE_RATE_HZ)
+            try {
+                Files.move(
+                    temporary.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                    StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (_: AtomicMoveNotSupportedException) {
+                Files.move(
+                    temporary.toPath(),
+                    target.toPath(),
+                    StandardCopyOption.REPLACE_EXISTING,
+                )
+            }
+            invalidateCache()
+            target
+        } finally {
+            temporary.delete()
+        }
+    }
+
+    internal fun clearEnrollmentTemplate(context: Context): Boolean {
+        invalidateCache()
+        return listOf(
+            File(context.cacheDir, ENROLLMENT_WAV_NAME),
+            File(context.cacheDir, "$ENROLLMENT_WAV_NAME.tmp"),
+        ).all { file ->
+            runCatching {
+                Files.deleteIfExists(file.toPath())
+                true
+            }.getOrDefault(false)
+        }
     }
 
     fun match(context: Context, samples: FloatArray): Result {
