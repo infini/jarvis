@@ -14,6 +14,7 @@ import com.k2fsa.sherpa.onnx.OnlineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OnlineStream
 import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.sqrt
 
 object LocalCommandRecognizer {
@@ -47,10 +48,12 @@ object LocalCommandRecognizer {
     private const val ACOUSTIC_WAKE_TEMPLATE_MIN_PEAK_RMS = 0.006f
     private val REQUIRED_ASSETS = listOf(ENCODER, DECODER, JOINER, TOKENS, ACTIVATION_HOTWORDS)
 
+    private val availabilityLock = Any()
     private val initLock = Any()
+    @Volatile private var cachedAvailability: Boolean? = null
     @Volatile private var recognizer: OnlineRecognizer? = null
     @Volatile private var activationRecognizer: OnlineRecognizer? = null
-    @Volatile private var warmUpStarted = false
+    private val commandWarmUpStarted = AtomicBoolean(false)
 
     data class Result(
         val command: String?,
@@ -99,21 +102,39 @@ object LocalCommandRecognizer {
     )
 
     fun isAvailable(context: Context): Boolean {
-        return REQUIRED_ASSETS.all { assetExists(context, it) }
+        cachedAvailability?.let { return it }
+
+        return synchronized(availabilityLock) {
+            cachedAvailability?.let { return@synchronized it }
+
+            requiredAssetsAvailable(REQUIRED_ASSETS) { assetPath ->
+                assetExists(context, assetPath)
+            }.also { available ->
+                cachedAvailability = available
+            }
+        }
     }
 
     fun warmUp(context: Context) {
-        if (warmUpStarted || !isAvailable(context)) return
-        warmUpStarted = true
+        val applicationContext = context.applicationContext
+        if (!isAvailable(applicationContext) || !commandWarmUpStarted.compareAndSet(false, true)) return
+
         Thread({
             runCatching {
-                getRecognizer(context.applicationContext)
-                getActivationRecognizer(context.applicationContext)
-                Log.d(TAG, "Local command recognizer warmed up")
+                getRecognizer(applicationContext)
+                Log.d(TAG, "Local command recognizer command ASR warmed up")
             }.onFailure {
-                Log.w(TAG, "Local command recognizer warm-up failed: ${it.message}")
+                commandWarmUpStarted.set(false)
+                Log.w(TAG, "Local command recognizer command ASR warm-up failed: ${it.message}")
             }
         }, "JarvisLocalCommandWarmup").start()
+    }
+
+    internal fun requiredAssetsAvailable(
+        assetPaths: Iterable<String>,
+        exists: (String) -> Boolean,
+    ): Boolean {
+        return assetPaths.all(exists)
     }
 
     fun recognizeBufferedCommand(

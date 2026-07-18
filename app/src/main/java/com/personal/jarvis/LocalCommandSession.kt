@@ -11,6 +11,7 @@ class LocalCommandSession(
     @Volatile private var active = false
     @Volatile private var disabled = false
     private var thread: Thread? = null
+    private val generation = SessionGeneration()
 
     val isActive: Boolean
         get() = active
@@ -26,6 +27,7 @@ class LocalCommandSession(
     ) {
         if (active) return
 
+        val sessionToken = generation.begin()
         active = true
         thread = Thread({
             var failed = false
@@ -34,9 +36,17 @@ class LocalCommandSession(
                     context = context,
                     timeoutMs = timeoutMs,
                     shouldContinue = {
-                        active && !Thread.currentThread().isInterrupted
+                        active &&
+                            generation.isCurrent(sessionToken) &&
+                            !Thread.currentThread().isInterrupted
                     },
-                    onText = onText,
+                    onText = { text ->
+                        handler.post {
+                            if (active && generation.isCurrent(sessionToken)) {
+                                onText(text)
+                            }
+                        }
+                    },
                 )
             }.onFailure {
                 failed = true
@@ -44,7 +54,7 @@ class LocalCommandSession(
             }.getOrNull()
 
             handler.post {
-                if (!active) return@post
+                if (!active || !generation.tryComplete(sessionToken)) return@post
 
                 active = false
                 thread = null
@@ -56,6 +66,7 @@ class LocalCommandSession(
     }
 
     fun stop() {
+        generation.invalidate()
         active = false
         thread?.interrupt()
         thread = null

@@ -18,15 +18,15 @@ class SpeechCommandSelectorTest {
     }
 
     @Test
-    fun finalSelectionPreservesCandidateOrderWhenTopCandidateIsClipped() {
+    fun finalSelectionPrefersCompleteLaterCandidateOverClippedTopCandidate() {
         val selection = SpeechCommandSelector.selectFinal(
             listOf("자비스, 사진 지", "자비스, 카메라 실행"),
         )
 
-        assertEquals(CommandBus.COMMAND_TAKE_PHOTO, selection?.command)
-        assertEquals(SpeechCommandSelector.SOURCE_FINAL_FAST_PARTIAL, selection?.source)
-        assertEquals(1, selection?.candidateIndex)
-        assertEquals("자비스, 사진 지", selection?.text)
+        assertEquals(CommandBus.COMMAND_OPEN_CAMERA, selection?.command)
+        assertEquals(SpeechCommandSelector.SOURCE_FINAL, selection?.source)
+        assertEquals(2, selection?.candidateIndex)
+        assertEquals("자비스, 카메라 실행", selection?.text)
     }
 
     @Test
@@ -54,6 +54,44 @@ class SpeechCommandSelectorTest {
     }
 
     @Test
+    fun topCandidateNegationVetoesLowerRankedPositiveCommand() {
+        assertNull(
+            SpeechCommandSelector.selectFinal(
+                listOf("자비스 사진 찍지 마", "자비스 사진 찍어"),
+            ),
+        )
+    }
+
+    @Test
+    fun politeOrLowerRankedNegationVetoesAllCandidates() {
+        assertNull(
+            SpeechCommandSelector.selectFinal(
+                listOf("자비스 사진 찍지 마요", "자비스 사진 찍어"),
+            ),
+        )
+        assertNull(
+            SpeechCommandSelector.selectFinal(
+                listOf("자비스 사진 지", "자비스 사진 찍지 마"),
+            ),
+        )
+        assertNull(
+            SpeechCommandSelector.selectFinal(
+                listOf("자비스 사진 찍지 마 제발", "자비스 사진 찍어"),
+            ),
+        )
+        assertNull(
+            SpeechCommandSelector.selectFinal(
+                listOf("자비스 사진 찍지 말라고", "자비스 사진 찍어"),
+            ),
+        )
+    }
+
+    @Test
+    fun partialNegationIsNotACandidate() {
+        assertNull(SpeechCommandSelector.selectPartial(listOf("자비스 사진 찍지 마")))
+    }
+
+    @Test
     fun partialSelectionUsesFastPartialSource() {
         val selection = SpeechCommandSelector.selectPartial(
             listOf("자비스, 사진 치"),
@@ -62,6 +100,27 @@ class SpeechCommandSelectorTest {
         assertEquals(CommandBus.COMMAND_TAKE_PHOTO, selection?.command)
         assertEquals(SpeechCommandSelector.SOURCE_PARTIAL, selection?.source)
         assertEquals(1, selection?.candidateIndex)
+    }
+
+    @Test
+    fun partialSelectionOnlyUsesTopCandidate() {
+        val selection = SpeechCommandSelector.selectPartial(
+            listOf("자비스, 사진 지워", "자비스, 사진 지"),
+        )
+
+        assertNull(selection)
+    }
+
+    @Test
+    fun openCameraWaitsForFinalToAvoidPreemptingCompoundCommand() {
+        assertNull(SpeechCommandSelector.selectPartial(listOf("자비스, 카메라 실행")))
+        assertNull(SpeechCommandSelector.selectPartial(listOf("자비스, 카메라 실행하고 찍어")))
+
+        val compound = SpeechCommandSelector.selectFinal(
+            listOf("자비스, 카메라 실행하고 찍어"),
+        )
+        assertEquals(CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO, compound?.command)
+        assertEquals(SpeechCommandSelector.SOURCE_FINAL, compound?.source)
     }
 
     @Test

@@ -16,6 +16,8 @@ object SpeechCommandSelector {
         results: List<String>,
         requireWakeWord: Boolean = true,
     ): Selection? {
+        if (results.isEmpty() || results.any(CommandInterpreter::isCommandNegated)) return null
+
         for ((index, candidate) in results.withIndex()) {
             val strictCommand = CommandInterpreter.parse(
                 text = candidate,
@@ -29,7 +31,9 @@ object SpeechCommandSelector {
                     text = candidate,
                 )
             }
+        }
 
+        for ((index, candidate) in results.withIndex()) {
             val fastCommand = fastPartialCommand(candidate, requireWakeWord) ?: continue
             return Selection(
                 command = fastCommand,
@@ -45,29 +49,14 @@ object SpeechCommandSelector {
         results: List<String>,
         requireWakeWord: Boolean = true,
     ): Selection? {
-        return selectFastPartial(
-            results = results,
+        val candidate = results.firstOrNull() ?: return null
+        val command = fastPartialCommand(candidate, requireWakeWord) ?: return null
+        return Selection(
+            command = command,
             source = SOURCE_PARTIAL,
-            requireWakeWord = requireWakeWord,
+            candidateIndex = 1,
+            text = candidate,
         )
-    }
-
-    private fun selectFastPartial(
-        results: List<String>,
-        source: String,
-        requireWakeWord: Boolean,
-    ): Selection? {
-        for ((index, candidate) in results.withIndex()) {
-            val command = fastPartialCommand(candidate, requireWakeWord) ?: continue
-
-            return Selection(
-                command = command,
-                source = source,
-                candidateIndex = index + 1,
-                text = candidate,
-            )
-        }
-        return null
     }
 
     private fun fastPartialCommand(
@@ -79,6 +68,6 @@ object SpeechCommandSelector {
             requireWakeWord = requireWakeWord,
         ) ?: return null
 
-        return command.takeIf { it in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS }
+        return command.takeIf(CommandCatalog::supportsFastPartial)
     }
 }

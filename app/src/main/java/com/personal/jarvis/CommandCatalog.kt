@@ -23,7 +23,7 @@ object CommandCatalog {
             detail = "Android 카메라 인텐트로 기본 카메라 앱을 엽니다. 카메라 세션 명령이므로 처리 후에도 30초 명령 대기를 다시 엽니다.",
             requirements = listOf("기본 카메라 앱 설치", "마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = true,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "카메라",
@@ -34,7 +34,7 @@ object CommandCatalog {
             detail = "전면 카메라 힌트를 넣어 카메라를 열고, Xiaomi 카메라의 전후면 전환 버튼 상태를 읽어 목표가 전면이 아니면 한 번 전환합니다.",
             requirements = listOf("Jarvis 접근성 서비스", "기본 카메라 앱", "마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = true,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "카메라",
@@ -45,7 +45,7 @@ object CommandCatalog {
             detail = "후면 카메라 힌트를 넣어 카메라를 열고, Xiaomi 카메라의 전후면 전환 버튼 상태를 읽어 목표가 후면이 아니면 한 번 전환합니다.",
             requirements = listOf("Jarvis 접근성 서비스", "기본 카메라 앱", "마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = true,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "카메라",
@@ -56,7 +56,7 @@ object CommandCatalog {
             detail = "기본 카메라 앱을 실행하고 약 1.5초 뒤 셔터 명령을 보냅니다. 카메라 앱 로딩이 느리면 첫 촬영이 실패할 수 있습니다.",
             requirements = listOf("Jarvis 접근성 서비스", "기본 카메라 앱", "마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = true,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "카메라",
@@ -87,7 +87,7 @@ object CommandCatalog {
             detail = "Xiaomi 카메라 화면에서 필터, 효과, Leica, 색감 관련 접근성 노드를 찾고, 실패하면 필터 영역으로 예상되는 좌표를 탭합니다.",
             requirements = listOf("Jarvis 접근성 서비스", "카메라 앱 화면", "마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = true,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "카메라",
@@ -98,7 +98,7 @@ object CommandCatalog {
             detail = "Xiaomi 카메라의 전후면 전환 버튼을 찾아 탭합니다. 현재 렌즈 상태는 가능한 경우 접근성 노드 설명에서 갱신합니다.",
             requirements = listOf("Jarvis 접근성 서비스", "카메라 앱 화면", "마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = true,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "앱 이동",
@@ -109,7 +109,7 @@ object CommandCatalog {
             detail = "카메라 앱을 강제 종료하지 않고 Android 접근성 전역 홈 액션을 실행합니다. 카메라 세션 명령으로 취급되어 다음 명령을 받을 수 있게 30초 명령 대기를 다시 엽니다.",
             requirements = listOf("Jarvis 접근성 서비스", "마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = true,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "앱 이동",
@@ -120,7 +120,7 @@ object CommandCatalog {
             detail = "접근성 전역 뒤로 가기 액션을 실행합니다. 카메라나 설정 화면에서 한 단계 뒤로 이동할 때 사용합니다.",
             requirements = listOf("Jarvis 접근성 서비스", "마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = true,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "시스템",
@@ -131,7 +131,7 @@ object CommandCatalog {
             detail = "짧은 wake lock으로 디스플레이를 켭니다. Android 보안 정책상 잠금 해제까지 자동으로 수행하지는 않습니다.",
             requirements = listOf("마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = false,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "시스템",
@@ -142,7 +142,7 @@ object CommandCatalog {
             detail = "접근성 전역 잠금화면 액션을 실행합니다. 비밀번호, 지문, 얼굴인식 같은 사용자 인증은 우회하지 않습니다.",
             requirements = listOf("Jarvis 접근성 서비스", "마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = false,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "Jarvis",
@@ -153,7 +153,7 @@ object CommandCatalog {
             detail = "현재 30초 command window를 닫고 하이퍼아일랜드 표시를 숨깁니다. 호출형 정책에서는 명령 대기가 끝나면 음성 foreground service도 내려갑니다.",
             requirements = listOf("마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = false,
-            fastPartial = true,
+            fastPartial = false,
         ),
         Entry(
             category = "Jarvis",
@@ -164,7 +164,17 @@ object CommandCatalog {
             detail = "현재 실행 중인 Jarvis 음성 foreground service를 종료합니다. 앱을 삭제하거나 Android 설정의 강제 종료를 수행하는 것은 아닙니다.",
             requirements = listOf("마이크 권한", "소유자 목소리 등록"),
             keepsCommandWindowOpen = false,
-            fastPartial = true,
+            fastPartial = false,
         ),
     )
+
+    val fastPartialCommandIds: Set<String> = entries
+        .asSequence()
+        .filter(Entry::fastPartial)
+        .map(Entry::commandId)
+        .toSet()
+
+    fun supportsFastPartial(commandId: String): Boolean {
+        return commandId in fastPartialCommandIds
+    }
 }

@@ -213,7 +213,7 @@ class CommandListActivity : Activity() {
             appendLine(if (entry.keepsCommandWindowOpen) "처리 후 30초 명령 대기를 다시 엽니다." else "처리 후 현재 명령 대기를 닫습니다.")
             appendLine()
             appendLine("인식 속도 정책")
-            appendLine(if (entry.fastPartial) "partial STT 결과에서 먼저 잡히면 final 결과를 기다리지 않고 실행합니다." else "final STT 결과까지 기다릴 수 있습니다.")
+            appendLine(if (entry.fastPartial) "final STT의 잘린 사진 명령 후보도 복구합니다." else "완성된 final STT 결과에서만 실행합니다.")
             appendLine()
             appendLine("명령 ID")
             appendLine(entry.commandId)

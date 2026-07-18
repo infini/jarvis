@@ -66,6 +66,23 @@ class CommandInterpreterTest {
         assertNull(CommandInterpreter.parse("자비스, 사진 지겨워"))
         assertNull(CommandInterpreter.parse("자비스, 사진 지켜봐"))
         assertNull(CommandInterpreter.parse("자비스, 사진 찍지 마"))
+        assertNull(CommandInterpreter.parse("자비스, 사진 찍어 주지 마"))
+        assertNull(CommandInterpreter.parse("자비스, 촬영하지 마"))
+        assertNull(CommandInterpreter.parse("자비스, 카메라 실행 취소"))
+        assertNull(CommandInterpreter.parse("자비스, 사진 찍지 마요"))
+        assertNull(CommandInterpreter.parse("자비스, 사진 찍지 마 제발"))
+        assertNull(CommandInterpreter.parse("자비스, 사진 찍지 말라고"))
+        assertNull(CommandInterpreter.parse("자비스, 화면 꺼지 마요"))
+        assertNull(CommandInterpreter.parse("자비스, 화면 켜지 마요"))
+        assertNull(CommandInterpreter.parse("자비스, 카메라 실행 취소해요"))
+        assertNull(CommandInterpreter.parse("자비스, 종료하지 마"))
+        assertNull(CommandInterpreter.parse("자비스, 완전 종료하지 마"))
+        assertNull(CommandInterpreter.parse("스티브 잡스 카메라 실행"))
+        assertNull(CommandInterpreter.parse("서비스 종료"))
+        assertEquals(CommandBus.COMMAND_OPEN_CAMERA, CommandInterpreter.parse("제이비스 카메라 실행"))
+        assertEquals(CommandBus.COMMAND_SLEEP_SCREEN, CommandInterpreter.parse("자비서 화면 꺼"))
+        assertNull(CommandInterpreter.parse("자비스 홈페이지"))
+        assertNull(CommandInterpreter.parse("자비스 백업"))
         assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 카메라 종료"))
         assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 카메라 꺼"))
         assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 종료"))
@@ -258,16 +275,19 @@ class CommandInterpreterTest {
         assertFalse(JarvisCommandExecutor.shouldStopVoiceService(CommandBus.COMMAND_STOP_LISTENING))
         assertEquals(CommandBus.COMMAND_STOP_SERVICE, CommandInterpreter.parse("자비스, 완전 종료"))
         assertEquals(CommandBus.COMMAND_STOP_SERVICE, CommandInterpreter.parse("자비스, 서비스 종료"))
+        assertEquals(CommandBus.COMMAND_STOP_SERVICE, CommandInterpreter.parse("제이비스, 완전 종료"))
+        assertEquals(CommandBus.COMMAND_STOP_SERVICE, CommandInterpreter.parse("자비서, 서비스 종료"))
+        assertEquals(CommandBus.COMMAND_HOME, CommandInterpreter.parse("자비스, 카메라 앱 종료"))
         assertTrue(JarvisCommandExecutor.shouldStopVoiceService(CommandBus.COMMAND_STOP_SERVICE))
     }
 
     @Test
-    fun latencySensitiveSystemCommandsUseFastPartialPath() {
-        assertTrue(CommandBus.COMMAND_TAKE_PHOTO in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
-        assertTrue(CommandBus.COMMAND_WAKE_SCREEN in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
-        assertTrue(CommandBus.COMMAND_SLEEP_SCREEN in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
-        assertTrue(CommandBus.COMMAND_STOP_LISTENING in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
-        assertTrue(CommandBus.COMMAND_STOP_SERVICE in JarvisCommandExecutor.FAST_PARTIAL_COMMANDS)
+    fun onlyClippedPhotoCommandUsesFastPartialFallback() {
+        assertTrue(CommandCatalog.supportsFastPartial(CommandBus.COMMAND_TAKE_PHOTO))
+        assertFalse(CommandCatalog.supportsFastPartial(CommandBus.COMMAND_OPEN_CAMERA_AND_TAKE_PHOTO))
+        assertFalse(CommandCatalog.supportsFastPartial(CommandBus.COMMAND_OPEN_CAMERA))
+        assertFalse(CommandCatalog.supportsFastPartial(CommandBus.COMMAND_SLEEP_SCREEN))
+        assertFalse(CommandCatalog.supportsFastPartial(CommandBus.COMMAND_STOP_SERVICE))
     }
 
     @Test

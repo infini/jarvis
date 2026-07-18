@@ -11,6 +11,7 @@ class LocalActivationSession(
     @Volatile private var active = false
     @Volatile private var disabled = false
     private var thread: Thread? = null
+    private val generation = SessionGeneration()
 
     val isActive: Boolean
         get() = active
@@ -27,6 +28,7 @@ class LocalActivationSession(
     ) {
         if (active) return
 
+        val sessionToken = generation.begin()
         active = true
         thread = Thread({
             var failed = false
@@ -35,10 +37,24 @@ class LocalActivationSession(
                     context = context,
                     timeoutMs = timeoutMs,
                     shouldContinue = {
-                        active && !Thread.currentThread().isInterrupted
+                        active &&
+                            generation.isCurrent(sessionToken) &&
+                            !Thread.currentThread().isInterrupted
                     },
-                    onText = onText,
-                    onRejected = onRejected,
+                    onText = { text ->
+                        handler.post {
+                            if (active && generation.isCurrent(sessionToken)) {
+                                onText(text)
+                            }
+                        }
+                    },
+                    onRejected = { result ->
+                        handler.post {
+                            if (active && generation.isCurrent(sessionToken)) {
+                                onRejected(result)
+                            }
+                        }
+                    },
                 )
             }.onFailure {
                 failed = true
@@ -46,7 +62,7 @@ class LocalActivationSession(
             }.getOrNull()
 
             handler.post {
-                if (!active) return@post
+                if (!active || !generation.tryComplete(sessionToken)) return@post
 
                 active = false
                 thread = null
@@ -58,6 +74,7 @@ class LocalActivationSession(
     }
 
     fun stop() {
+        generation.invalidate()
         active = false
         thread?.interrupt()
         thread = null

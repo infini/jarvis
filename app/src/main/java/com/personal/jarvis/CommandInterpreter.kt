@@ -43,8 +43,13 @@ object CommandInterpreter {
         return parseNormalized(normalized, requireWakeWord)
     }
 
+    fun isCommandNegated(text: String): Boolean {
+        return hasCommandNegation(normalize(text))
+    }
+
     private fun parseNormalized(normalized: String, requireWakeWord: Boolean): String? {
         if (normalized.isBlank()) return null
+        if (hasCommandNegation(normalized)) return null
         if (requireWakeWord && !hasWakeWord(normalized)) return null
 
         val wantsFrontCamera = FRONT_CAMERA_WORDS.any(normalized::contains)
@@ -75,8 +80,8 @@ object CommandInterpreter {
                 FRONT_CAMERA_WORDS.any(normalized::endsWith) ||
                 REAR_CAMERA_WORDS.any(normalized::endsWith))
         val wantsFilter = FILTER_WORDS.any(normalized::contains)
-        val wantsBack = BACK_WORDS.any(normalized::contains)
-        val wantsHome = HOME_WORDS.any(normalized::contains)
+        val wantsBack = BACK_WORDS.any(normalized::endsWith)
+        val wantsHome = HOME_WORDS.any(normalized::endsWith)
         val mentionsScreen = SCREEN_WORDS.any(normalized::contains)
         val mentionsPhone = PHONE_WORDS.any(normalized::contains)
         val wantsWakeScreen = (mentionsScreen || mentionsPhone) &&
@@ -86,7 +91,7 @@ object CommandInterpreter {
         val wantsStop = STOP_WORDS.any { word ->
             normalized.contains(word) && !(word == "꺼" && wantsShot)
         }
-        val wantsFullStop = FULL_STOP_PATTERNS.any(normalized::contains)
+        val wantsFullStop = isFullStopCommand(normalized)
         val wantsCloseApp = CLOSE_APP_WORDS.any { word ->
             normalized.contains(word) && !(word == "꺼" && wantsShot)
         }
@@ -126,6 +131,7 @@ object CommandInterpreter {
         requireWakeWord: Boolean,
     ): String? {
         if (normalized.isBlank()) return null
+        if (hasCommandNegation(normalized)) return null
         if (requireWakeWord && !hasWakeWord(normalized)) return null
 
         return if (hasFastPhotoPartialSignal(normalized)) {
@@ -173,7 +179,7 @@ object CommandInterpreter {
     }
 
     fun isActivationWake(text: String): Boolean {
-        return isActivationWakeWithWords(text, WAKE_WORDS, ACTIVATION_WORDS)
+        return isActivationWakeWithWords(text, ACTIVATION_WAKE_WORDS, ACTIVATION_WORDS)
     }
 
     fun isActivationWakeAsrEquivalent(text: String): Boolean {
@@ -218,8 +224,29 @@ object CommandInterpreter {
     }
 
     private fun hasWakeWord(normalized: String): Boolean {
-        return WAKE_WORDS.any(normalized::contains) ||
-            COMMAND_ASR_EQUIVALENT_WAKE_WORDS.any(normalized::startsWith)
+        return COMMAND_WAKE_WORDS.any(normalized::startsWith) ||
+            COMMAND_ASR_EQUIVALENT_WAKE_WORDS.any(normalized::startsWith) ||
+            (AMBIGUOUS_COMMAND_WAKE_WORDS.any(normalized::startsWith) &&
+                hasPhotoCommandSignal(normalized))
+    }
+
+    private fun hasPhotoCommandSignal(normalized: String): Boolean {
+        return normalized.contains("사진") ||
+            SHOT_WORDS.any(normalized::contains) ||
+            PHOTO_CONTEXT_SHOT_ASR_VARIANT_PATTERNS.any(normalized::endsWith) ||
+            DIRECT_SHOT_ASR_VARIANT_PATTERNS.any(normalized::endsWith) ||
+            FAST_PARTIAL_PHOTO_SHOT_PATTERNS.any(normalized::endsWith) ||
+            DIRECT_SHORT_SHOT_SUFFIXES.any(normalized::endsWith)
+    }
+
+    private fun hasCommandNegation(normalized: String): Boolean {
+        return COMMAND_NEGATION_MARKERS.any(normalized::contains)
+    }
+
+    private fun isFullStopCommand(normalized: String): Boolean {
+        return (COMMAND_WAKE_WORDS + COMMAND_ASR_EQUIVALENT_WAKE_WORDS).any { wakeWord ->
+            FULL_STOP_SUFFIXES.any { suffix -> normalized == wakeWord + suffix }
+        }
     }
 
     private fun hasShotAsrVariant(normalized: String, variantPatterns: List<String>): Boolean {
@@ -300,25 +327,35 @@ object CommandInterpreter {
             FAST_PARTIAL_PHOTO_SHOT_PATTERNS).distinct()
     private val STOP_WORDS = listOf("잠들어", "잠들어라", "멈춰", "중지", "꺼", "그만")
     private val CLOSE_APP_WORDS = listOf("종료", "닫아", "닫어", "꺼", "나가", "끝내")
-    private val FULL_STOP_PATTERNS = listOf(
-        "자비스완전종료",
-        "자비스서비스종료",
-        "자비스앱종료",
-        "자비스완전히꺼",
-        "자비스완전히꺼줘",
-        "jarvis완전종료",
+    private val FULL_STOP_SUFFIXES = listOf(
+        "완전종료",
+        "서비스종료",
+        "앱종료",
+        "완전히꺼",
+        "완전히꺼줘",
+    )
+    private val COMMAND_NEGATION_MARKERS = listOf(
+        "하지마",
+        "하지말",
+        "주지마",
+        "주지말",
+        "지마",
+        "지말",
+        "아니야",
+        "아니요",
+        "아니에요",
+        "취소",
     )
     private val ACTIVATION_WORDS = listOf("깨어나")
     private val ACTIVATION_ASR_EQUIVALENT_WORDS = ACTIVATION_WORDS + listOf("게임", "때어나")
 
-    private val WAKE_WORDS = listOf(
+    private val COMMAND_WAKE_WORDS = listOf(
         "자비스",
         "자베스",
         "쟈비스",
         "제비스",
         "차비스",
         "잡비스",
-        "잡스",
         "jarvis",
     )
     private val COMMAND_ASR_EQUIVALENT_WAKE_WORDS = listOf(
@@ -328,12 +365,19 @@ object CommandInterpreter {
         "자비쓰",
         "자비수",
         "잡이스",
-        "서비스",
     )
-    private val ACTIVATION_ASR_EQUIVALENT_WAKE_WORDS = WAKE_WORDS + listOf("다비스")
+    private val AMBIGUOUS_COMMAND_WAKE_WORDS = listOf(
+        "서비스",
+        "잡스",
+    )
+    private val ACTIVATION_WAKE_WORDS = COMMAND_WAKE_WORDS + listOf("잡스")
+    private val ACTIVATION_ASR_EQUIVALENT_WAKE_WORDS = ACTIVATION_WAKE_WORDS + listOf("다비스")
+    private val DIRECT_SHORT_SHOT_SUFFIXES = listOf("찍", "찌")
     private val DIRECT_SHORT_SHOT_PATTERNS =
-        (WAKE_WORDS + COMMAND_ASR_EQUIVALENT_WAKE_WORDS).flatMap { wakeWord ->
-            listOf("${wakeWord}찍", "${wakeWord}찌")
-        }.toSet()
+        (COMMAND_WAKE_WORDS + COMMAND_ASR_EQUIVALENT_WAKE_WORDS + AMBIGUOUS_COMMAND_WAKE_WORDS)
+            .flatMap { wakeWord ->
+            DIRECT_SHORT_SHOT_SUFFIXES.map { suffix -> "$wakeWord$suffix" }
+            }
+            .toSet()
     private val NON_LETTER_OR_DIGIT_PATTERN = "[^\\p{L}\\p{N}]+".toRegex()
 }
